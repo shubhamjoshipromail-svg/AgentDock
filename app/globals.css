@@ -104,26 +104,31 @@ a {
   gap: 18px;
 }
 
-.authBox {
-  align-items: center;
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  color: var(--muted);
-  display: flex;
+.authMenu {
   flex: 0 0 auto;
-  font-size: 0.8rem;
-  gap: 10px;
-  min-height: 42px;
-  padding: 6px 8px;
+  position: relative;
 }
 
-.authBox.signedIn {
+.authTrigger {
+  align-items: center;
   background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
   color: var(--ink);
+  display: inline-flex;
+  font-size: 0.86rem;
+  font-weight: 720;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 12px;
 }
 
-.authBox img,
+.authTrigger.signedIn {
+  padding-left: 6px;
+}
+
+.authTrigger img,
+.authPopover img,
 .authAvatar {
   border-radius: 50%;
   height: 30px;
@@ -140,18 +145,89 @@ a {
   justify-content: center;
 }
 
-.authBox strong,
-.authBox span {
+.authAvatar.large {
+  height: 38px;
+  width: 38px;
+}
+
+.authPopover {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 14px;
+  min-width: 310px;
+  padding: 16px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 40;
+}
+
+.authPopover::before {
+  background: #fff;
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  content: "";
+  height: 12px;
+  position: absolute;
+  right: 20px;
+  top: -7px;
+  transform: rotate(45deg);
+  width: 12px;
+}
+
+.authPopoverHeader {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.authPopover strong,
+.authPopover span {
   display: block;
   line-height: 1.25;
 }
 
-.authBox strong {
-  font-size: 0.84rem;
+.authPopover strong {
+  font-size: 0.96rem;
 }
 
-.authBox span {
+.authPopover span,
+.authPopover p,
+.authSetupText {
   color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  margin: 5px 0 0;
+}
+
+.googleSignInButton {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  color: var(--ink);
+  display: flex;
+  font-weight: 760;
+  gap: 12px;
+  justify-content: center;
+  padding: 12px 14px;
+  width: 100%;
+}
+
+.googleSignInButton span {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: #4285f4;
+  display: inline-flex;
+  font-weight: 820;
+  height: 26px;
+  justify-content: center;
+  margin: 0;
+  width: 26px;
 }
 
 .profileAuthNotice {
@@ -304,10 +380,94 @@ h3 {
   padding: 9px 11px;
 }
 
+.capabilityBadge {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 780;
+  letter-spacing: 0.02em;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.capabilityBadge.db {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.capabilityBadge.local,
+.capabilityBadge.mock {
+  background: #f8fafc;
+  border-color: #dbe3ec;
+  color: #475569;
+}
+
+.capabilityBadge.soon {
+  background: #f4f4f5;
+  border-color: #d4d4d8;
+  color: #71717a;
+}
+
+.truthNotice {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-soft);
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 13px 15px;
+}
+
+.truthNotice strong {
+  color: var(--ink);
+}
+
+.truthNotice span:last-child {
+  flex: 1 1 420px;
+}
+
+.comingSoonButton,
+.comingSoonButton:disabled {
+  background: #f4f4f5;
+  border: 1px solid #d4d4d8;
+  box-shadow: none;
+  color: #71717a;
+  cursor: not-allowed;
+  opacity: 1;
+  transform: none;
+}
+
+.localPreviewButton::after {
+  background: #f8fafc;
+  border: 1px solid #dbe3ec;
+  border-radius: 999px;
+  color: #475569;
+  content: "Local preview";
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 780;
+  margin-left: 8px;
+  padding: 2px 6px;
+  vertical-align: middle;
+}
+
 .primaryButton:hover,
 .secondaryButton:hover,
 .ghostButton:hover {
   transform: translateY(-1px);
+}
+
+.comingSoonButton:hover,
+.primaryButton:disabled:hover,
+.secondaryButton:disabled:hover,
+.ghostButton:disabled:hover {
+  transform: none;
 }
 
 .heroPanel,
@@ -1224,6 +1384,50 @@ td span {
   padding: 11px;
 }
 
+.permissionList p strong {
+  color: var(--ink);
+}
+
+.grantEditor {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.grantEditor span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.82rem;
+  margin-top: 3px;
+}
+
+.grantToggleGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grantToggle {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 720;
+  min-height: 32px;
+  padding: 7px 9px;
+  text-transform: capitalize;
+}
+
+.grantToggle.active {
+  background: var(--green-bg);
+  border-color: #bfe8cc;
+  color: var(--green);
+}
+
 .detailActions {
   justify-content: flex-start;
 }
@@ -1287,6 +1491,74 @@ td span {
 
 .mcpGrid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mcpStoreIntro,
+.mcpBuilderPalette {
+  margin-bottom: 16px;
+}
+
+.mcpStoreIntro {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.mcpStoreIntro p,
+.mcpBuilderPalette p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.mcpPaletteGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.mcpPaletteItem {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.mcpPaletteItem span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.mcpWorkflowAttachment {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.mcpWorkflowAttachment > span,
+.mcpWorkflowAttachment div span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.mcpGrantInspector {
+  gap: 8px;
 }
 
 .mcpCard {
@@ -1620,6 +1892,11 @@ td span {
   color: var(--green);
 }
 
+.decisionBadge.info {
+  background: #f4f4f5;
+  color: #3f3f46;
+}
+
 .memorySection {
   margin-top: 18px;
 }
@@ -1927,6 +2204,578 @@ td span {
   gap: 10px;
 }
 
+.plannerGrid {
+  align-items: stretch;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.35fr) minmax(300px, 0.9fr);
+}
+
+.plannerPromptPanel,
+.plannerCanvas,
+.plannerInspector,
+.plannerCard,
+.simulationPanel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+  padding: 16px;
+}
+
+.plannerPromptPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.plannerPromptPanel span,
+.plannerCanvas .canvasHeader span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.plannerPromptPanel label {
+  color: var(--ink);
+  display: block;
+  font-size: 1.18rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.plannerPromptPanel textarea {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  line-height: 1.5;
+  min-height: 138px;
+  outline: none;
+  padding: 13px;
+  resize: vertical;
+}
+
+.plannerPromptActions {
+  display: grid;
+  gap: 9px;
+}
+
+.plannerPromptActions span,
+.plannerPromptPanel p,
+.memoryVisualizer p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.plannerGraph {
+  align-items: stretch;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+}
+
+.plannerNode {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  color: var(--ink);
+  display: grid;
+  gap: 8px;
+  min-height: 200px;
+  padding: 14px;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 214px;
+}
+
+.plannerNode:hover,
+.plannerNode.selected {
+  border-color: #111;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.plannerNode strong {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.plannerNode small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.plannerInspector {
+  min-width: 0;
+}
+
+.plannerInspector h3 {
+  font-size: 1.28rem;
+  margin: 14px 0;
+}
+
+.inspectorGrid {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.policyDiffList {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 13px;
+}
+
+.policyDiffList > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.policyDiffList p {
+  color: #34383d;
+  font-weight: 680;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.plannerSupportGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+}
+
+.memoryZoneGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.memoryZone {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  padding: 13px;
+}
+
+.memoryZone strong,
+.memoryZone span {
+  display: block;
+}
+
+.memoryZone span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 680;
+  line-height: 1.3;
+}
+
+.memoryZone.allowed,
+.memoryZone.selectedAccess {
+  background: var(--green-bg);
+  border-color: #cfecd8;
+}
+
+.memoryZone.blocked {
+  background: var(--red-bg);
+  border-color: #ffd9d6;
+}
+
+.memoryZone.approval-required,
+.memoryZone.limited {
+  background: var(--amber-bg);
+  border-color: #f4e5b5;
+}
+
+.approvalInboxList {
+  display: grid;
+  gap: 10px;
+}
+
+.approvalInboxCard {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.approvalInboxCard span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 680;
+}
+
+.approvalInboxCard p {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.dbApproval {
+  border-color: var(--line-strong);
+}
+
+.approvalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.simulationPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.unsafeSimulationResult {
+  background: var(--amber-bg);
+  border: 1px solid #f4e5b5;
+  border-radius: 16px;
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+}
+
+.unsafeSimulationResult span {
+  color: var(--amber);
+  font-weight: 720;
+}
+
+.runtimeSummary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cleanBuilderPage {
+  gap: 18px;
+}
+
+.builderHeroPrompt,
+.workflowTimelinePanel,
+.workflowInspectorPanel,
+.policySafetyPanel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow-soft);
+  padding: 22px;
+}
+
+.builderHeroPrompt {
+  display: grid;
+  gap: 16px;
+}
+
+.builderHeroPrompt h1 {
+  font-size: clamp(2rem, 4vw, 4rem);
+  letter-spacing: 0;
+  line-height: 1.02;
+  margin: 0 0 10px;
+}
+
+.builderHeroPrompt p {
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 850px;
+}
+
+.promptLabel {
+  color: var(--muted);
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 520;
+  margin: 4px 0 -8px;
+}
+
+.builderHeroPrompt textarea {
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  color: var(--ink);
+  font-size: 1.02rem;
+  line-height: 1.55;
+  min-height: 130px;
+  outline: none;
+  padding: 16px;
+  resize: vertical;
+  width: 100%;
+}
+
+.builderHeroPrompt textarea:focus {
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.06);
+}
+
+.templateChipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.templateChip {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 720;
+  padding: 9px 12px;
+}
+
+.templateChip:hover {
+  border-color: var(--line-strong);
+}
+
+.builderLibraryStrip,
+.emptyWorkflowState {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.builderLibraryStrip {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.builderLibraryStrip span,
+.builderLibraryStrip p,
+.emptyWorkflowState p {
+  color: var(--muted);
+  display: block;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.builderLibraryStrip > div > span {
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.builderLibraryStrip strong,
+.emptyWorkflowState strong {
+  color: var(--ink);
+  display: block;
+  font-size: 1.05rem;
+}
+
+.workflowPlannerLayout {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.62fr);
+}
+
+.emptyPlannerLayout {
+  grid-template-columns: 1fr;
+}
+
+.verticalWorkflow {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.workflowStepCard {
+  align-items: stretch;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--ink);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 54px minmax(0, 1fr);
+  padding: 16px;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 100%;
+}
+
+.workflowStepCard:hover,
+.workflowStepCard.selected {
+  border-color: #111;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.stepNumber {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  display: flex;
+  font-weight: 780;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+}
+
+.stepMain {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.stepTitleRow {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.stepTitleRow strong,
+.workflowInspectorPanel h3 {
+  color: var(--ink);
+  display: block;
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+
+.stepTitleRow span,
+.workflowInspectorPanel > p {
+  color: var(--muted);
+  display: block;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.workflowStepCard p,
+.workflowInspectorPanel p,
+.policySafetyPanel p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.stepDetailsGrid {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.workflowInspectorPanel {
+  position: sticky;
+  top: 90px;
+}
+
+.workflowInspectorPanel h3 {
+  margin: 14px 0 6px;
+}
+
+.cleanInspectorGrid {
+  grid-template-columns: 1fr;
+  margin-top: 14px;
+}
+
+.builderLowerGrid,
+.controlGrid,
+.libraryGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compactPolicyChecks {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compactMcpAttachPanel .mcpPaletteGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.activeRunCard {
+  display: grid;
+  gap: 14px;
+}
+
+.activeRunCard > strong {
+  font-size: 1.35rem;
+}
+
+.runMetricGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.compactActions {
+  margin-top: 4px;
+}
+
+.runTimeline {
+  display: grid;
+  gap: 10px;
+}
+
+.runTimelineItem {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 42px minmax(0, 1fr);
+}
+
+.runTimelineItem span {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 780;
+  height: 34px;
+  justify-content: center;
+}
+
+.runTimelineItem p {
+  color: var(--ink);
+  line-height: 1.45;
+  margin: 6px 0 0;
+}
+
+.compactStoreGrid {
+  gap: 14px;
+}
+
+.compactAgentCard {
+  padding: 16px;
+}
+
+.compactAgentCard h3 {
+  font-size: 1.1rem;
+}
+
+.compactStats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .runtimeSection {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -2044,11 +2893,25 @@ td span {
   }
 
   .builderGrid,
-  .builderPromptBar {
+  .builderPromptBar,
+  .plannerGrid,
+  .plannerSupportGrid,
+  .workflowPlannerLayout,
+  .builderLowerGrid,
+  .controlGrid,
+  .libraryGrid {
     grid-template-columns: 1fr;
   }
 
+  .workflowInspectorPanel {
+    position: static;
+  }
+
   .policyCheckGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memoryZoneGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2100,7 +2963,14 @@ td span {
     .detailGrid,
     .auditRow,
     .policyCheckGrid,
-    .runtimeGrid {
+    .runtimeGrid,
+    .memoryZoneGrid,
+    .inspectorGrid,
+    .stepDetailsGrid,
+    .runMetricGrid,
+    .compactPolicyChecks,
+    .compactStats,
+    .compactMcpAttachPanel .mcpPaletteGrid {
     grid-template-columns: 1fr;
   }
 
@@ -2135,5 +3005,497 @@ td span {
   .storeRow {
     align-items: start;
     grid-template-columns: 44px 1fr;
+  }
+}
+
+/* Quiet infrastructure luxury refinement pass */
+:root {
+  --bg: #f7f6f2;
+  --surface: rgba(255, 255, 255, 0.74);
+  --surface-soft: rgba(255, 255, 255, 0.48);
+  --ink: #171614;
+  --muted: #6f6a62;
+  --muted-2: #999286;
+  --line: rgba(23, 22, 20, 0.08);
+  --line-strong: rgba(23, 22, 20, 0.14);
+  --shadow: 0 24px 70px rgba(54, 48, 38, 0.08);
+  --shadow-soft: 0 10px 34px rgba(54, 48, 38, 0.045);
+  --green-bg: rgba(226, 244, 231, 0.74);
+  --amber-bg: rgba(255, 246, 217, 0.74);
+  --red-bg: rgba(255, 237, 235, 0.74);
+  --blue-bg: rgba(237, 243, 255, 0.72);
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% -8%, rgba(255, 255, 255, 0.92), transparent 34rem),
+    radial-gradient(circle at 88% 4%, rgba(232, 225, 211, 0.48), transparent 30rem),
+    linear-gradient(180deg, #faf9f5 0%, var(--bg) 42%, #f3f1ea 100%);
+  color: var(--ink);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+body::before {
+  background-image:
+    linear-gradient(rgba(23, 22, 20, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 22, 20, 0.03) 1px, transparent 1px);
+  background-size: 72px 72px;
+  content: "";
+  inset: 0;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.22), transparent 58%);
+  pointer-events: none;
+  position: fixed;
+  z-index: -1;
+}
+
+.shell {
+  padding: 28px;
+}
+
+.topbar {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(23, 22, 20, 0.08);
+  border-radius: 999px;
+  box-shadow: 0 14px 36px rgba(54, 48, 38, 0.055);
+  max-width: 1260px;
+  padding: 8px 10px;
+}
+
+.brand {
+  font-size: 0.95rem;
+  font-weight: 620;
+}
+
+.brandMark {
+  background: #1b1916;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 680;
+  height: 30px;
+  width: 30px;
+}
+
+.navLinks {
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(23, 22, 20, 0.06);
+  border-radius: 999px;
+  gap: 4px;
+  padding: 4px;
+}
+
+.navButton,
+.tabButton {
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 480;
+  padding: 8px 12px;
+}
+
+.navButton.active,
+.tabButton.active,
+.progressStep.active,
+.goalCard.selected {
+  background: rgba(23, 22, 20, 0.075);
+  color: var(--ink);
+}
+
+.authTrigger,
+.googleSignInButton {
+  background: rgba(255, 255, 255, 0.58);
+  border-color: rgba(23, 22, 20, 0.1);
+  font-weight: 560;
+}
+
+.authPopover,
+.heroPanel,
+.card,
+.agentCard,
+.successScreen,
+.compareCard,
+.mcpCard,
+.storeTable,
+.architectureFlow,
+.builderHeroPrompt,
+.workflowTimelinePanel,
+.workflowInspectorPanel,
+.policySafetyPanel,
+.plannerCard,
+.simulationPanel,
+.truthNotice,
+.builderToast,
+.memoryFirewallCard,
+.profileAuthNotice {
+  backdrop-filter: blur(18px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+}
+
+.platformPage,
+.hero,
+.contrastSection,
+.profileSection,
+.activitySection,
+.architectureSection,
+.mcpSection,
+.storeSection {
+  max-width: 1260px;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ink);
+  font-weight: 590;
+  letter-spacing: -0.018em;
+}
+
+h1 {
+  line-height: 1;
+}
+
+h2 {
+  line-height: 1.05;
+}
+
+h3,
+.stepTitleRow strong,
+.workflowInspectorPanel h3,
+.activeRunCard > strong,
+.builderLibraryStrip strong,
+.emptyWorkflowState strong {
+  font-weight: 560;
+}
+
+p,
+.sectionHeader p,
+.subheadline,
+.agentCard p,
+.heroPolicy p,
+.workflowStepCard p,
+.workflowInspectorPanel p,
+.builderHeroPrompt p {
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.65;
+}
+
+.eyebrow,
+.panelHeader span,
+.builderLibraryStrip > div > span,
+.plannerPromptPanel span,
+.plannerCanvas .canvasHeader span,
+.policyDiffList > span {
+  color: var(--muted-2);
+  font-size: 0.68rem;
+  font-weight: 560;
+  letter-spacing: 0.14em;
+}
+
+.panelHeader strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 560;
+}
+
+.primaryButton,
+.secondaryButton,
+.ghostButton,
+.revokeButton {
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 540;
+  min-height: 36px;
+  padding: 9px 14px;
+}
+
+.primaryButton {
+  background: #1c1a17;
+  box-shadow: 0 8px 22px rgba(28, 26, 23, 0.13);
+}
+
+.secondaryButton,
+.ghostButton {
+  background: rgba(255, 255, 255, 0.54);
+  border-color: rgba(23, 22, 20, 0.11);
+}
+
+.primaryButton:hover,
+.secondaryButton:hover,
+.ghostButton:hover,
+.templateChip:hover {
+  box-shadow: 0 10px 24px rgba(54, 48, 38, 0.07);
+  transform: translateY(-1px);
+}
+
+.comingSoonButton,
+.comingSoonButton:disabled {
+  background: rgba(235, 232, 224, 0.55);
+  border-color: rgba(23, 22, 20, 0.07);
+  color: #9a9388;
+}
+
+.capabilityBadge,
+.trustRow span,
+.verifiedBadge,
+.rankText,
+.credentialChecklist span,
+.successGrid span,
+.statusPill,
+.templateChip,
+.policyCheckGrid span {
+  border-color: rgba(23, 22, 20, 0.08);
+  font-weight: 520;
+}
+
+.builderHeroPrompt {
+  border-radius: 30px;
+  padding: clamp(26px, 5vw, 54px);
+}
+
+.builderHeroPrompt h1 {
+  font-size: clamp(2.55rem, 5.5vw, 5.35rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  max-width: 980px;
+}
+
+.builderHeroPrompt textarea,
+textarea {
+  background: rgba(255, 255, 255, 0.58);
+  border-color: rgba(23, 22, 20, 0.11);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  font-weight: 400;
+}
+
+.builderHeroPrompt textarea:focus,
+textarea:focus,
+input:focus {
+  border-color: rgba(23, 22, 20, 0.26);
+  box-shadow: 0 0 0 4px rgba(92, 81, 61, 0.08);
+}
+
+.templateChip,
+.truthNotice,
+.builderLibraryStrip,
+.emptyWorkflowState,
+.profileAuthNotice,
+.softNote {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.workflowPlannerLayout {
+  gap: 22px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.58fr);
+}
+
+.workflowTimelinePanel,
+.workflowInspectorPanel,
+.policySafetyPanel,
+.plannerCard,
+.simulationPanel {
+  border-radius: 26px;
+  padding: 20px;
+}
+
+.workflowStepCard {
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(23, 22, 20, 0.075);
+  border-radius: 22px;
+  box-shadow: none;
+  gap: 16px;
+  grid-template-columns: 46px minmax(0, 1fr);
+  padding: 18px;
+}
+
+.workflowStepCard:hover,
+.workflowStepCard.selected {
+  border-color: rgba(23, 22, 20, 0.18);
+  box-shadow: 0 16px 38px rgba(54, 48, 38, 0.07);
+}
+
+.stepNumber,
+.runTimelineItem span {
+  background: rgba(250, 249, 245, 0.8);
+  border-color: rgba(23, 22, 20, 0.08);
+  color: var(--muted);
+  font-weight: 560;
+}
+
+.stepTitleRow span,
+.workflowInspectorPanel > p,
+.builderLibraryStrip p,
+.emptyWorkflowState p {
+  color: var(--muted);
+}
+
+.detailBlock,
+.controlPreview div,
+.heroPolicy,
+.setupAgentBox,
+.agentStats span,
+.compactItem,
+.approvalList label,
+.policyStat,
+.dbStatus,
+.memoryRow,
+.permissionList p,
+.activityEvent,
+.architectureNode,
+.storeRow,
+.approvalInboxCard,
+.mcpPaletteItem,
+.mcpWorkflowAttachment,
+.grantEditor,
+.providerCard,
+.savedWorkflow,
+.approvalItem,
+.runHistory,
+.softNote {
+  background: rgba(255, 255, 255, 0.42);
+  border-color: rgba(23, 22, 20, 0.07);
+}
+
+.detailBlock {
+  padding: 12px;
+}
+
+.detailBlock span,
+.metric span,
+.agentStats span,
+.storeRow > span:not(.storeRank),
+.controlPreview span {
+  color: var(--muted-2);
+  font-weight: 480;
+}
+
+.detailBlock strong,
+.metric strong,
+.agentStats strong,
+.storeRow strong,
+.controlPreview strong {
+  color: var(--ink);
+  font-weight: 560;
+}
+
+.policyCheckGrid span {
+  background: rgba(255, 255, 255, 0.42);
+  border-radius: 999px;
+  color: #514b43;
+  padding: 8px 10px;
+}
+
+.policyDiffList {
+  background: rgba(250, 249, 245, 0.54);
+  border-color: rgba(23, 22, 20, 0.07);
+  border-radius: 20px;
+}
+
+.approvalInboxCard,
+.mcpPaletteItem,
+.mcpCard,
+.agentCard,
+.compactAgentCard {
+  box-shadow: none;
+}
+
+.approvalActions {
+  gap: 7px;
+}
+
+.tabRow {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(23, 22, 20, 0.07);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.tabButton {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+}
+
+.tabButton.active {
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 5px 14px rgba(54, 48, 38, 0.05);
+}
+
+.agentGrid,
+.mcpGrid,
+.templateGrid,
+.dashboardGrid,
+.controlGrid,
+.libraryGrid,
+.builderLowerGrid {
+  gap: 20px;
+}
+
+.compactAgentCard,
+.agentCard,
+.mcpCard {
+  border-radius: 24px;
+}
+
+.agentStats.compactStats,
+.compactStats {
+  gap: 8px;
+}
+
+.runTimelineItem p {
+  color: var(--ink);
+  font-weight: 430;
+}
+
+.memoryFirewallCard {
+  border-radius: 28px;
+}
+
+@media (max-width: 1080px) {
+  .workflowPlannerLayout,
+  .builderLowerGrid,
+  .controlGrid,
+  .libraryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflowInspectorPanel {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 14px;
+  }
+
+  .topbar {
+    border-radius: 24px;
+  }
+
+  .navLinks,
+  .tabRow {
+    border-radius: 22px;
+    width: 100%;
+  }
+
+  .builderHeroPrompt {
+    padding: 22px;
+  }
+
+  .workflowStepCard {
+    grid-template-columns: 1fr;
+  }
+
+  .stepDetailsGrid,
+  .runMetricGrid,
+  .runtimeSummary,
+  .compactStats,
+  .compactMcpAttachPanel .mcpPaletteGrid {
+    grid-template-columns: 1fr;
   }
 }

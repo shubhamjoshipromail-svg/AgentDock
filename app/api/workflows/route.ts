@@ -22,6 +22,20 @@ type CreateWorkflowInput = {
   agents?: WorkflowAgentInput[];
 };
 
+const starterWorkflow: CreateWorkflowInput = {
+  name: "Job Search Automation",
+  goal: "Find high-fit AI platform roles, research each company, tailor the resume, and draft outreach for approval.",
+  weeklyBudgetCents: 500,
+  maxRunBudgetCents: 150,
+  approvalMode: "approval_gated",
+  agents: [
+    { agentName: "Job Discovery Agent", roleInWorkflow: "Discover roles", routeOrder: 1, defaultMode: "Autonomous discovery" },
+    { agentName: "Company Research Agent", roleInWorkflow: "Research targets", routeOrder: 2, defaultMode: "Human-reviewed notes" },
+    { agentName: "Resume Tailoring Agent", roleInWorkflow: "Tailor resume", routeOrder: 3, defaultMode: "Approval before export" },
+    { agentName: "Outreach Draft Agent", roleInWorkflow: "Draft outreach", routeOrder: 4, defaultMode: "Draft-only" }
+  ]
+};
+
 const mockAgentDefaults: Record<string, {
   category: string;
   provider: string;
@@ -69,6 +83,26 @@ const mockAgentDefaults: Record<string, {
   }
 };
 
+const workflowInclude = {
+  workflowAgents: {
+    orderBy: { routeOrder: "asc" },
+    include: { agent: true }
+  },
+  workflowMcps: {
+    include: {
+      mcpServer: true
+    },
+    orderBy: { createdAt: "desc" }
+  },
+  mcpAccessGrants: {
+    include: {
+      mcpServer: true,
+      agent: true
+    },
+    orderBy: { createdAt: "desc" }
+  }
+} as const;
+
 async function getCurrentUser() {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id;
@@ -88,41 +122,11 @@ async function getCurrentUser() {
   });
 }
 
-export async function GET() {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return NextResponse.json({ message: "Unauthorized. Sign in with Google to load saved workflows." }, { status: 401 });
+async function resolveWorkflowAgents(agentInputs: WorkflowAgentInput[]) {
+  if (agentInputs.length === 0) {
+    return { workflowAgents: [], skippedAgents: [] };
   }
 
-  const workflows = await prisma.workflow.findMany({
-    where: { userId: user.id },
-    include: {
-      workflowAgents: {
-        orderBy: { routeOrder: "asc" },
-        include: { agent: true }
-      }
-    },
-    orderBy: { updatedAt: "desc" }
-  });
-
-  return NextResponse.json({ workflows });
-}
-
-export async function POST(request: Request) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return NextResponse.json({ message: "Unauthorized. Sign in with Google to save workflows." }, { status: 401 });
-  }
-
-  const body = (await request.json()) as Partial<CreateWorkflowInput>;
-
-  if (!body.name || !body.goal || !body.weeklyBudgetCents || !body.maxRunBudgetCents || !body.approvalMode) {
-    return NextResponse.json({ message: "Missing required workflow fields." }, { status: 400 });
-  }
-
-  const agentInputs = body.agents ?? [];
   const agentNames = agentInputs
     .map((agent) => agent.agentName ?? agent.name)
     .filter((name): name is string => Boolean(name));
@@ -155,46 +159,125 @@ export async function POST(request: Request) {
   const agentByName = new Map(matchedAgents.map((agent) => [agent.name, agent]));
   const agentById = new Map(matchedAgents.map((agent) => [agent.id, agent]));
 
-  const workflow = await prisma.workflow.create({
-    data: {
-      userId: user.id,
-      name: body.name,
-      goal: body.goal,
-      status: "active",
-      weeklyBudgetCents: body.weeklyBudgetCents,
-      maxRunBudgetCents: body.maxRunBudgetCents,
-      approvalMode: body.approvalMode,
-      workflowAgents: {
-        create: agentInputs.flatMap((input) => {
-          const agent = (input.agentId ? agentById.get(input.agentId) : null) ?? agentByName.get(input.agentName ?? input.name ?? "");
+  return {
+    workflowAgents: agentInputs.flatMap((input) => {
+      const agent = (input.agentId ? agentById.get(input.agentId) : null) ?? agentByName.get(input.agentName ?? input.name ?? "");
 
-          if (!agent) {
-            return [];
-          }
+      if (!agent) {
+        return [];
+      }
 
-          return {
-            agentId: agent.id,
-            roleInWorkflow: input.roleInWorkflow,
-            routeOrder: input.routeOrder,
-            defaultMode: input.defaultMode
-          };
-        })
-      }
-    },
-    include: {
-      workflowAgents: {
-        orderBy: { routeOrder: "asc" },
-        include: { agent: true }
-      }
+      return {
+        agentId: agent.id,
+        roleInWorkflow: input.roleInWorkflow,
+        routeOrder: input.routeOrder,
+        defaultMode: input.defaultMode
+      };
+    }),
+    skippedAgents: agentInputs
+      .filter((input) => {
+        const agent = (input.agentId ? agentById.get(input.agentId) : null) ?? agentByName.get(input.agentName ?? input.name ?? "");
+        return !agent;
+      })
+      .map((input) => input.agentName ?? input.name ?? input.agentId ?? "Unknown agent")
+  };
+}
+
+async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
+  const { workflowAgents, skippedAgents } = await resolveWorkflowAgents(body.agents ?? []);
+  const existingWorkflow = await prisma.workflow.findFirst({
+    where: {
+      userId,
+      name: body.name
     }
   });
 
-  const skippedAgents = agentInputs
-    .filter((input) => {
-      const agent = (input.agentId ? agentById.get(input.agentId) : null) ?? agentByName.get(input.agentName ?? input.name ?? "");
-      return !agent;
-    })
-    .map((input) => input.agentName ?? input.name ?? input.agentId ?? "Unknown agent");
+  const workflow = existingWorkflow
+    ? await prisma.$transaction(async (tx) => {
+        await tx.workflowAgent.deleteMany({ where: { workflowId: existingWorkflow.id } });
+
+        return tx.workflow.update({
+          where: { id: existingWorkflow.id },
+          data: {
+            goal: body.goal,
+            status: "active",
+            weeklyBudgetCents: body.weeklyBudgetCents,
+            maxRunBudgetCents: body.maxRunBudgetCents,
+            approvalMode: body.approvalMode,
+            workflowAgents: {
+              create: workflowAgents
+            }
+          },
+          include: workflowInclude
+        });
+      })
+    : await prisma.workflow.create({
+        data: {
+          userId,
+          name: body.name,
+          goal: body.goal,
+          status: "active",
+          weeklyBudgetCents: body.weeklyBudgetCents,
+          maxRunBudgetCents: body.maxRunBudgetCents,
+          approvalMode: body.approvalMode,
+          workflowAgents: {
+            create: workflowAgents
+          }
+        },
+        include: workflowInclude
+      });
+
+  return { workflow, skippedAgents };
+}
+
+async function findWorkflowsForUser(userId: string) {
+  return prisma.workflow.findMany({
+    where: { userId },
+    include: workflowInclude,
+    orderBy: { updatedAt: "desc" }
+  });
+}
+
+export async function GET() {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return NextResponse.json({ message: "Unauthorized. Sign in with Google to load saved workflows." }, { status: 401 });
+  }
+
+  let workflows = await findWorkflowsForUser(user.id);
+  let bootstrapped = false;
+
+  if (workflows.length === 0) {
+    await saveWorkflowForUser(user.id, starterWorkflow);
+    workflows = await findWorkflowsForUser(user.id);
+    bootstrapped = true;
+  }
+
+  return NextResponse.json({ workflows, bootstrapped });
+}
+
+export async function POST(request: Request) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return NextResponse.json({ message: "Unauthorized. Sign in with Google to save workflows." }, { status: 401 });
+  }
+
+  const body = (await request.json()) as Partial<CreateWorkflowInput>;
+
+  if (!body.name || !body.goal || !body.weeklyBudgetCents || !body.maxRunBudgetCents || !body.approvalMode) {
+    return NextResponse.json({ message: "Missing required workflow fields." }, { status: 400 });
+  }
+
+  const { workflow, skippedAgents } = await saveWorkflowForUser(user.id, {
+    name: body.name,
+    goal: body.goal,
+    weeklyBudgetCents: body.weeklyBudgetCents,
+    maxRunBudgetCents: body.maxRunBudgetCents,
+    approvalMode: body.approvalMode,
+    agents: body.agents ?? []
+  });
 
   return NextResponse.json({ workflow, skippedAgents }, { status: 201 });
 }

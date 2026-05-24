@@ -60,6 +60,8 @@ async function main() {
     });
   }
 
+  await prisma.activityLog.deleteMany({ where: { userId: user.id } });
+  await prisma.workflowRun.deleteMany({ where: { userId: user.id } });
   await prisma.workflow.deleteMany({ where: { userId: user.id } });
   await prisma.memoryPartition.deleteMany({ where: { userId: user.id } });
   await prisma.policyProfile.deleteMany({ where: { userId: user.id } });

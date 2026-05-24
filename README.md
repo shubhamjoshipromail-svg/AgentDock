@@ -62,6 +62,8 @@ npx prisma generate
 npm run dev
 ```
 
+Use the same host everywhere during OAuth. For this prototype, use `localhost`: open `http://localhost:3000`, set `AUTH_URL` to `http://localhost:3000`, and register `http://localhost:3000/api/auth/callback/google` in Google Cloud. Mixing `localhost` and `127.0.0.1` causes OAuth callback/cookie errors.
+
 ## Saving workflows
 
 Saved workflows are the first user-specific persistence feature. To test it locally:
@@ -73,6 +75,44 @@ Saved workflows are the first user-specific persistence feature. To test it loca
 5. AgentDock stores the Job Search Automation workflow in Postgres for the signed-in user.
 
 Signed-out users can still explore the mock demo, but saving requires Google sign-in.
+
+## Database-backed workflow simulation
+
+Workflow simulation is mock execution with real persistence. AgentDock does not call agents, MCP servers, Gmail scopes, or model APIs. A signed-in simulation writes runtime records to Postgres:
+
+- `workflow_runs`
+- `workflow_run_events`
+- `approval_requests`
+- `activity_logs`
+
+To test:
+
+1. Sign in with Google.
+2. Save `Job Search Automation` if it is not already saved.
+3. Click `Simulate run` in Builder or `Run` in Workflows.
+4. Open Activity to see DB-backed activity logs.
+5. Resolve pending approvals in the Builder approval inbox.
+6. Refresh the page and confirm runs, approvals, and activity remain available.
+
+Apply the runtime tables with:
+
+```bash
+npx prisma migrate deploy
+```
+
+## MCP Store Phase 1
+
+The MCP Store is metadata-only in this phase. AgentDock does not install MCP packages, execute MCP servers, call MCP tools, request Google Workspace scopes, or store real secrets.
+
+To test:
+
+1. Sign in with Google.
+2. Open Store → `MCPs / Tools`.
+3. Click `Sync MCP Registry`.
+4. AgentDock imports the curated safe fallback MCP catalog into Postgres.
+5. Click `Add to workflow` on `Search MCP` or `Gmail Draft MCP`.
+6. Open Workflows to see attached MCP metadata and generated permission templates.
+7. Open Activity to see sync and attach audit events.
 
 ## Security Notes
 

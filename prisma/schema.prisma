@@ -77,6 +77,68 @@ enum CredentialStatus {
   pending
 }
 
+enum WorkflowRunStatus {
+  pending
+  running
+  waiting_for_approval
+  completed
+  failed
+  blocked
+}
+
+enum WorkflowRunEventType {
+  orchestration
+  a2a_handoff
+  mcp_tool_use
+  memory_access
+  credential_minted
+  approval_requested
+  action_blocked
+  spend_event
+  workflow_completed
+}
+
+enum RuntimeDecision {
+  allowed
+  blocked
+  approval_required
+  approved
+  denied
+  info
+}
+
+enum ApprovalRequestStatus {
+  pending
+  approved
+  denied
+  edited
+  expired
+}
+
+enum ApprovalActionType {
+  resume_draft_review
+  gmail_draft_approval
+  memory_access_request
+  application_submission
+  email_send
+  payment
+  tool_scope_change
+}
+
+enum McpRiskLevel {
+  low
+  medium
+  high
+  restricted
+}
+
+enum McpDefaultPermission {
+  read_only
+  draft_only
+  approval_required
+  blocked
+}
+
 model User {
   id                String              @id @default(uuid()) @db.Uuid
   name              String?
@@ -94,6 +156,11 @@ model User {
   memoryLogs        MemoryAccessLog[]
   policyProfiles    PolicyProfile[]
   scopedCredentials ScopedCredential[]
+  workflowRuns      WorkflowRun[]
+  workflowRunEvents WorkflowRunEvent[]
+  approvalRequests  ApprovalRequest[]
+  activityLogs      ActivityLog[]
+  mcpAccessGrants   McpAccessGrant[]
 
   @@map("users")
 }
@@ -155,6 +222,10 @@ model Agent {
   memoryAccessGrants MemoryAccessGrant[]
   memoryAccessLogs   MemoryAccessLog[]
   scopedCredentials  ScopedCredential[]
+  workflowRunEvents  WorkflowRunEvent[]
+  approvalRequests   ApprovalRequest[]
+  activityLogs       ActivityLog[]
+  mcpAccessGrants    McpAccessGrant[]
 
   @@map("agents")
 }
@@ -177,6 +248,10 @@ model Workflow {
   memoryAccessGrants MemoryAccessGrant[]
   memoryAccessLogs   MemoryAccessLog[]
   scopedCredentials  ScopedCredential[]
+  workflowRuns       WorkflowRun[]
+  activityLogs       ActivityLog[]
+  workflowMcps       WorkflowMcp[]
+  mcpAccessGrants    McpAccessGrant[]
 
   @@index([userId])
   @@map("workflows")
@@ -214,10 +289,196 @@ model MemoryPartition {
   memoryItems         MemoryItem[]
   accessGrants        MemoryAccessGrant[]
   accessLogs          MemoryAccessLog[]
+  workflowRunEvents   WorkflowRunEvent[]
 
   @@index([userId, workflowId])
   @@index([sensitivityLevel])
   @@map("memory_partitions")
+}
+
+model WorkflowRun {
+  id              String              @id @default(uuid()) @db.Uuid
+  userId          String              @map("user_id") @db.Uuid
+  workflowId      String              @map("workflow_id") @db.Uuid
+  status          WorkflowRunStatus   @default(pending)
+  startedAt       DateTime            @default(now()) @map("started_at")
+  completedAt     DateTime?           @map("completed_at")
+  totalCostCents  Int                 @default(0) @map("total_cost_cents")
+  riskLevel       String              @map("risk_level")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflow        Workflow            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  events          WorkflowRunEvent[]
+  approvalRequests ApprovalRequest[]
+  activityLogs    ActivityLog[]
+
+  @@index([userId, createdAt])
+  @@index([workflowId, createdAt])
+  @@map("workflow_runs")
+}
+
+model WorkflowRunEvent {
+  id                String               @id @default(uuid()) @db.Uuid
+  workflowRunId     String               @map("workflow_run_id") @db.Uuid
+  userId            String               @map("user_id") @db.Uuid
+  agentId           String?              @map("agent_id") @db.Uuid
+  eventType         WorkflowRunEventType @map("event_type")
+  title             String
+  description       String
+  decision          RuntimeDecision?
+  mcpTool           String?              @map("mcp_tool")
+  memoryPartitionId String?              @map("memory_partition_id") @db.Uuid
+  costCents         Int                  @default(0) @map("cost_cents")
+  metadata          Json                 @default("{}")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  workflowRun       WorkflowRun          @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent             Agent?               @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  memoryPartition   MemoryPartition?     @relation(fields: [memoryPartitionId], references: [id], onDelete: SetNull)
+
+  @@index([workflowRunId, createdAt])
+  @@index([userId, createdAt])
+  @@index([agentId])
+  @@index([memoryPartitionId])
+  @@map("workflow_run_events")
+}
+
+model ApprovalRequest {
+  id            String                @id @default(uuid()) @db.Uuid
+  userId        String                @map("user_id") @db.Uuid
+  workflowRunId String                @map("workflow_run_id") @db.Uuid
+  agentId       String?               @map("agent_id") @db.Uuid
+  title         String
+  description   String
+  actionType    ApprovalActionType    @map("action_type")
+  riskLevel     String                @map("risk_level")
+  status        ApprovalRequestStatus @default(pending)
+  requestedAt   DateTime              @default(now()) @map("requested_at")
+  resolvedAt    DateTime?             @map("resolved_at")
+  metadata      Json                  @default("{}")
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflowRun   WorkflowRun           @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  agent         Agent?                @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, requestedAt])
+  @@index([workflowRunId])
+  @@index([agentId])
+  @@map("approval_requests")
+}
+
+model ActivityLog {
+  id            String               @id @default(uuid()) @db.Uuid
+  userId        String               @map("user_id") @db.Uuid
+  workflowId    String?              @map("workflow_id") @db.Uuid
+  workflowRunId String?              @map("workflow_run_id") @db.Uuid
+  agentId       String?              @map("agent_id") @db.Uuid
+  eventType     WorkflowRunEventType @map("event_type")
+  title         String
+  description   String
+  decision      RuntimeDecision?
+  costCents     Int                  @default(0) @map("cost_cents")
+  metadata      Json                 @default("{}")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflow      Workflow?            @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  workflowRun   WorkflowRun?         @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  agent         Agent?               @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([workflowId])
+  @@index([workflowRunId])
+  @@index([agentId])
+  @@map("activity_logs")
+}
+
+model McpServer {
+  id              String        @id @default(uuid()) @db.Uuid
+  name            String        @unique
+  displayName     String        @map("display_name")
+  description     String
+  registrySource  String        @map("registry_source")
+  registryId      String?       @unique @map("registry_id")
+  homepageUrl     String?       @map("homepage_url")
+  repositoryUrl   String?       @map("repository_url")
+  packageName     String?       @map("package_name")
+  packageRegistry String?       @map("package_registry")
+  version         String?
+  verified        Boolean       @default(false)
+  riskLevel       McpRiskLevel  @map("risk_level")
+  category        String?
+  installCommand  String?       @map("install_command")
+  metadata        Json          @default("{}")
+  lastSyncedAt    DateTime?     @map("last_synced_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  tools           McpTool[]
+  workflowMcps    WorkflowMcp[]
+  accessGrants    McpAccessGrant[]
+
+  @@index([riskLevel])
+  @@index([category])
+  @@map("mcp_servers")
+}
+
+model McpTool {
+  id          String       @id @default(uuid()) @db.Uuid
+  mcpServerId String       @map("mcp_server_id") @db.Uuid
+  name        String
+  description String?
+  inputSchema Json?        @map("input_schema")
+  riskLevel   McpRiskLevel @map("risk_level")
+  metadata    Json?        @default("{}")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  mcpServer   McpServer    @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@unique([mcpServerId, name])
+  @@index([mcpServerId])
+  @@map("mcp_tools")
+}
+
+model WorkflowMcp {
+  id                String               @id @default(uuid()) @db.Uuid
+  workflowId        String               @map("workflow_id") @db.Uuid
+  mcpServerId       String               @map("mcp_server_id") @db.Uuid
+  purpose           String?
+  defaultPermission McpDefaultPermission @map("default_permission")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  workflow          Workflow             @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  mcpServer         McpServer            @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, mcpServerId])
+  @@index([workflowId])
+  @@index([mcpServerId])
+  @@map("workflow_mcps")
+}
+
+model McpAccessGrant {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  workflowId       String?   @map("workflow_id") @db.Uuid
+  agentId          String?   @map("agent_id") @db.Uuid
+  mcpServerId      String    @map("mcp_server_id") @db.Uuid
+  canRead          Boolean   @default(false) @map("can_read")
+  canWrite         Boolean   @default(false) @map("can_write")
+  canExecute       Boolean   @default(false) @map("can_execute")
+  canDelete        Boolean   @default(false) @map("can_delete")
+  requiresApproval Boolean   @default(true) @map("requires_approval")
+  allowedActions   Json?     @map("allowed_actions")
+  blockedActions   Json?     @map("blocked_actions")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflow         Workflow? @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  agent            Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  mcpServer        McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([workflowId])
+  @@index([agentId])
+  @@index([mcpServerId])
+  @@map("mcp_access_grants")
 }
 
 model MemoryItem {
