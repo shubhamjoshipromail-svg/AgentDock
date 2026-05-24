@@ -1,0 +1,341 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
+}
+
+enum WorkflowStatus {
+  draft
+  active
+  paused
+  completed
+  archived
+}
+
+enum ApprovalMode {
+  manual
+  approval_gated
+  autonomous_with_limits
+}
+
+enum MemoryPartitionType {
+  global
+  workflow
+  domain
+  team
+}
+
+enum SensitivityLevel {
+  low
+  medium
+  high
+  restricted
+}
+
+enum DefaultAccessPolicy {
+  private
+  workflow_scoped
+  approval_required
+  blocked_by_default
+}
+
+enum MemorySourceType {
+  user
+  agent
+  workflow
+  import
+  system
+}
+
+enum MemoryAction {
+  read
+  write
+  edit
+  delete
+  share
+  export
+  request_access
+}
+
+enum AccessDecision {
+  allowed
+  blocked
+  approval_required
+  approved
+  denied
+  revoked
+}
+
+enum CredentialStatus {
+  active
+  expired
+  revoked
+  pending
+}
+
+model User {
+  id                String              @id @default(uuid()) @db.Uuid
+  name              String?
+  email             String?             @unique
+  emailVerified     DateTime?           @map("email_verified")
+  image             String?
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  accounts          Account[]
+  sessions          Session[]
+  workflows         Workflow[]
+  memoryPartitions  MemoryPartition[]
+  memoryItems       MemoryItem[]
+  memoryGrants      MemoryAccessGrant[]
+  memoryLogs        MemoryAccessLog[]
+  policyProfiles    PolicyProfile[]
+  scopedCredentials ScopedCredential[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id") @db.Uuid
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Agent {
+  id                 String              @id @default(uuid()) @db.Uuid
+  name               String              @unique
+  category           String
+  provider           String
+  trustScore         Int                 @map("trust_score")
+  costPerTask        Int                 @map("cost_per_task")
+  tokenEfficiency    Int                 @map("token_efficiency")
+  verified           Boolean             @default(false)
+  description        String
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  workflowAgents     WorkflowAgent[]
+  sourceMemoryItems  MemoryItem[]        @relation("SourceAgentMemoryItems")
+  memoryAccessGrants MemoryAccessGrant[]
+  memoryAccessLogs   MemoryAccessLog[]
+  scopedCredentials  ScopedCredential[]
+
+  @@map("agents")
+}
+
+model Workflow {
+  id                 String              @id @default(uuid()) @db.Uuid
+  userId             String              @map("user_id") @db.Uuid
+  name               String
+  goal               String
+  status             WorkflowStatus      @default(draft)
+  weeklyBudgetCents  Int                 @map("weekly_budget_cents")
+  maxRunBudgetCents  Int                 @map("max_run_budget_cents")
+  approvalMode       ApprovalMode        @map("approval_mode")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflowAgents     WorkflowAgent[]
+  memoryPartitions   MemoryPartition[]
+  sourceMemoryItems  MemoryItem[]        @relation("SourceWorkflowMemoryItems")
+  memoryAccessGrants MemoryAccessGrant[]
+  memoryAccessLogs   MemoryAccessLog[]
+  scopedCredentials  ScopedCredential[]
+
+  @@index([userId])
+  @@map("workflows")
+}
+
+model WorkflowAgent {
+  id             String   @id @default(uuid()) @db.Uuid
+  workflowId     String   @map("workflow_id") @db.Uuid
+  agentId        String   @map("agent_id") @db.Uuid
+  roleInWorkflow String   @map("role_in_workflow")
+  routeOrder     Int      @map("route_order")
+  defaultMode    String   @map("default_mode")
+  createdAt      DateTime @default(now()) @map("created_at")
+  workflow       Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  agent          Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, agentId])
+  @@index([workflowId, routeOrder])
+  @@map("workflow_agents")
+}
+
+model MemoryPartition {
+  id                  String              @id @default(uuid()) @db.Uuid
+  userId              String              @map("user_id") @db.Uuid
+  workflowId          String?             @map("workflow_id") @db.Uuid
+  name                String
+  type                MemoryPartitionType
+  sensitivityLevel    SensitivityLevel    @map("sensitivity_level")
+  description         String
+  defaultAccessPolicy DefaultAccessPolicy @map("default_access_policy")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflow            Workflow?           @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  memoryItems         MemoryItem[]
+  accessGrants        MemoryAccessGrant[]
+  accessLogs          MemoryAccessLog[]
+
+  @@index([userId, workflowId])
+  @@index([sensitivityLevel])
+  @@map("memory_partitions")
+}
+
+model MemoryItem {
+  id               String                   @id @default(uuid()) @db.Uuid
+  partitionId      String                   @map("partition_id") @db.Uuid
+  userId           String                   @map("user_id") @db.Uuid
+  title            String
+  content          String
+  sourceType       MemorySourceType         @map("source_type")
+  sourceAgentId    String?                  @map("source_agent_id") @db.Uuid
+  sourceWorkflowId String?                  @map("source_workflow_id") @db.Uuid
+  sensitivityLevel SensitivityLevel         @map("sensitivity_level")
+  metadata         Json                     @default("{}")
+  embedding        Unsupported("vector(1536)")?
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+  partition        MemoryPartition          @relation(fields: [partitionId], references: [id], onDelete: Cascade)
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceAgent      Agent?                   @relation("SourceAgentMemoryItems", fields: [sourceAgentId], references: [id], onDelete: SetNull)
+  sourceWorkflow   Workflow?                @relation("SourceWorkflowMemoryItems", fields: [sourceWorkflowId], references: [id], onDelete: SetNull)
+  accessLogs       MemoryAccessLog[]
+
+  // TODO: Real embeddings are intentionally not generated in this prototype.
+  // The nullable pgvector column is a future-ready placeholder. Change vector(1536)
+  // if the embedding provider or model dimension changes.
+  @@index([partitionId])
+  @@index([userId])
+  @@map("memory_items")
+}
+
+model MemoryAccessGrant {
+  id               String          @id @default(uuid()) @db.Uuid
+  partitionId      String          @map("partition_id") @db.Uuid
+  agentId          String?         @map("agent_id") @db.Uuid
+  workflowId       String?         @map("workflow_id") @db.Uuid
+  userId           String          @map("user_id") @db.Uuid
+  canRead          Boolean         @default(false) @map("can_read")
+  canWrite         Boolean         @default(false) @map("can_write")
+  canEdit          Boolean         @default(false) @map("can_edit")
+  canDelete        Boolean         @default(false) @map("can_delete")
+  canShare         Boolean         @default(false) @map("can_share")
+  requiresApproval Boolean         @default(false) @map("requires_approval")
+  expiresAt        DateTime?       @map("expires_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  partition        MemoryPartition @relation(fields: [partitionId], references: [id], onDelete: Cascade)
+  agent            Agent?          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workflow         Workflow?       @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([partitionId])
+  @@index([agentId])
+  @@index([workflowId])
+  @@index([userId])
+  @@map("memory_access_grants")
+}
+
+model MemoryAccessLog {
+  id           String          @id @default(uuid()) @db.Uuid
+  userId       String          @map("user_id") @db.Uuid
+  partitionId  String          @map("partition_id") @db.Uuid
+  memoryItemId String?         @map("memory_item_id") @db.Uuid
+  agentId      String?         @map("agent_id") @db.Uuid
+  workflowId   String?         @map("workflow_id") @db.Uuid
+  action       MemoryAction
+  decision     AccessDecision
+  reason       String
+  createdAt    DateTime        @default(now()) @map("created_at")
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partition    MemoryPartition @relation(fields: [partitionId], references: [id], onDelete: Cascade)
+  memoryItem   MemoryItem?     @relation(fields: [memoryItemId], references: [id], onDelete: SetNull)
+  agent        Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  workflow     Workflow?       @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([partitionId])
+  @@map("memory_access_logs")
+}
+
+model PolicyProfile {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  name                String
+  description         String
+  globalEmailPolicy   String   @map("global_email_policy")
+  globalPaymentPolicy String   @map("global_payment_policy")
+  globalMemoryPolicy  String   @map("global_memory_policy")
+  premiumModelPolicy  String   @map("premium_model_policy")
+  dataSharingPolicy   String   @map("data_sharing_policy")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("policy_profiles")
+}
+
+model ScopedCredential {
+  id               String           @id @default(uuid()) @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  workflowId       String?          @map("workflow_id") @db.Uuid
+  agentId          String?          @map("agent_id") @db.Uuid
+  provider         String
+  credentialType   String           @map("credential_type")
+  scopeDescription String           @map("scope_description")
+  status           CredentialStatus @default(pending)
+  expiresAt        DateTime?        @map("expires_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflow         Workflow?        @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  agent            Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  // TODO: This table stores metadata only. Real secret values, OAuth refresh
+  // tokens, provider keys, and MCP credentials must live in a secure vault/KMS,
+  // never as plaintext in Postgres.
+  @@index([userId])
+  @@index([workflowId])
+  @@index([agentId])
+  @@map("scoped_credentials")
+}
