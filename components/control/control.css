@@ -1,0 +1,49 @@
+.activeRunCard {
+  display: grid;
+  gap: 14px;
+}
+
+.activeRunCard > strong {
+  font-size: 1.35rem;
+}
+
+.runMetricGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.compactActions {
+  margin-top: 4px;
+}
+
+.runTimeline {
+  display: grid;
+  gap: 10px;
+}
+
+.runTimelineItem {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 42px minmax(0, 1fr);
+}
+
+.runTimelineItem span {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 780;
+  height: 34px;
+  justify-content: center;
+}
+
+.runTimelineItem p {
+  color: var(--ink);
+  line-height: 1.45;
+  margin: 6px 0 0;
+}

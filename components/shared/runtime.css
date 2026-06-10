@@ -1,0 +1,73 @@
+.runtimeSection {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.compactRuntime {
+  box-shadow: none;
+}
+
+.runtimeCopy {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0;
+  max-width: 920px;
+}
+
+.runtimeGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.runtimeCard {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+}
+
+.runtimeCard.selected {
+  background: #fff;
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.05);
+}
+
+.runtimeTopline {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.runtimeTopline strong {
+  line-height: 1.25;
+}
+
+.runtimeTopline span {
+  background: var(--blue-bg);
+  border-radius: 999px;
+  color: var(--blue);
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 760;
+  padding: 6px 8px;
+}
+
+.runtimeCard p,
+.runtimeCard small {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.runtimeCard small {
+  font-weight: 680;
+}

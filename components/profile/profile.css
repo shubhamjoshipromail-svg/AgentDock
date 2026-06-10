@@ -1,0 +1,204 @@
+.memoryFirewallCard {
+  align-items: center;
+  display: grid;
+  gap: 22px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  margin-top: 22px;
+  padding: 24px;
+}
+
+.memoryFirewallCard h3 {
+  font-size: clamp(1.45rem, 2.4vw, 2.1rem);
+  margin-bottom: 10px;
+}
+
+.memoryFirewallCard p,
+.dbStatus p {
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 0;
+}
+
+.dbStatus {
+  padding: 16px;
+}
+
+.dbStatus span,
+.detailBlock span,
+.permissionList > span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 720;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.dbStatus strong {
+  display: block;
+  line-height: 1.25;
+  margin-bottom: 8px;
+}
+
+.memoryLayout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  margin-top: 16px;
+}
+
+.memoryTable {
+  display: grid;
+  gap: 8px;
+}
+
+.memoryRow {
+  align-items: center;
+  color: var(--muted);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1.2fr) 110px 150px 150px 100px;
+  padding: 12px;
+  text-align: left;
+}
+
+.memoryRow.selected {
+  background: #fff;
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.05);
+}
+
+.memoryRow strong {
+  color: var(--ink);
+  display: block;
+}
+
+.memoryRow div span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.sensitivityBadge,
+.decisionBadge {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 720;
+  justify-content: center;
+  padding: 7px 9px;
+  text-transform: capitalize;
+}
+
+.sensitivityBadge.low,
+.decisionBadge.allowed {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.sensitivityBadge.medium,
+.decisionBadge.approval_required {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.sensitivityBadge.high,
+.decisionBadge.revoked {
+  background: var(--blue-bg);
+  color: var(--blue);
+}
+
+.sensitivityBadge.restricted,
+.decisionBadge.blocked {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.rowActions {
+  color: var(--ink);
+  font-weight: 720;
+}
+
+.memoryDetail {
+  align-self: start;
+  position: sticky;
+  top: 88px;
+}
+
+.detailStack {
+  display: grid;
+  gap: 10px;
+}
+
+.detailBlock {
+  padding: 13px;
+}
+
+.detailBlock strong {
+  display: block;
+  font-size: 0.94rem;
+  line-height: 1.35;
+}
+
+.permissionList {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.permissionList p {
+  color: #34383d;
+  line-height: 1.35;
+  margin: 0;
+  padding: 11px;
+}
+
+.permissionList p strong {
+  color: var(--ink);
+}
+
+.grantEditor {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.grantEditor span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.82rem;
+  margin-top: 3px;
+}
+
+.grantToggleGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grantToggle {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 720;
+  min-height: 32px;
+  padding: 7px 9px;
+  text-transform: capitalize;
+}
+
+.grantToggle.active {
+  background: var(--green-bg);
+  border-color: #bfe8cc;
+  color: var(--green);
+}
+
+.detailActions {
+  justify-content: flex-start;
+}

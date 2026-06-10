@@ -1,0 +1,157 @@
+@media (max-width: 1080px) {
+  .hero,
+  .platformHero,
+  .workspace,
+  .dashboardGrid,
+  .setupIntro,
+  .workflowShell,
+  .memoryFirewallCard,
+  .memoryLayout,
+  .agentGrid,
+  .templateGrid,
+  .profileGrid,
+  .architectureNotes {
+    grid-template-columns: 1fr;
+  }
+
+  .progressRail {
+    display: flex;
+    overflow-x: auto;
+    position: static;
+  }
+
+  .progressStep {
+    min-width: 148px;
+  }
+
+  .memoryDetail {
+    position: static;
+  }
+
+  .memoryRow {
+    grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(110px, 0.4fr));
+  }
+
+  .architectureFlow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .providerGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .builderGrid,
+  .builderPromptBar,
+  .plannerGrid,
+  .plannerSupportGrid,
+  .workflowPlannerLayout,
+  .builderLowerGrid,
+  .controlGrid,
+  .libraryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflowInspectorPanel {
+    position: static;
+  }
+
+  .policyCheckGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memoryZoneGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .runtimeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .auditRow {
+    grid-template-columns: 42px minmax(220px, 1fr) 150px;
+  }
+
+  .storeRow {
+    grid-template-columns: 54px minmax(220px, 1fr) repeat(2, minmax(110px, 0.6fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 14px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .navLinks {
+    flex-wrap: wrap;
+  }
+
+  .hero {
+    padding-top: 42px;
+  }
+
+  .beforeAfterGrid,
+  .goalGrid,
+  .stackLayout,
+  .controlPreview,
+  .flowDiagram,
+  .permissionStats,
+  .capControl,
+  .credentialChecklist,
+  .mcpGrid,
+  .architectureFlow,
+  .activityEvent,
+    .memoryRow,
+    .providerGrid,
+    .detailGrid,
+    .auditRow,
+    .policyCheckGrid,
+    .runtimeGrid,
+    .memoryZoneGrid,
+    .inspectorGrid,
+    .stepDetailsGrid,
+    .runMetricGrid,
+    .compactPolicyChecks,
+    .compactStats,
+    .compactMcpAttachPanel .mcpPaletteGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .builderToast,
+  .canvasHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .flowNodeWrap {
+    flex-direction: column;
+  }
+
+  .connector {
+    flex-basis: 24px;
+    height: 24px;
+    width: 2px;
+  }
+
+  .agentStats,
+  .agentStats.expanded {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboardHeader,
+  .compactItem,
+  .agentFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .storeRow {
+    align-items: start;
+    grid-template-columns: 44px 1fr;
+  }
+}

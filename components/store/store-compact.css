@@ -1,0 +1,15 @@
+.compactStoreGrid {
+  gap: 14px;
+}
+
+.compactAgentCard {
+  padding: 16px;
+}
+
+.compactAgentCard h3 {
+  font-size: 1.1rem;
+}
+
+.compactStats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}

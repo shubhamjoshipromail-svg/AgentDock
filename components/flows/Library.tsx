@@ -1,0 +1,210 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+
+import { listFlows, patchToolGrant, revokeToolGrant, saveFlow } from "../../lib/api/client";
+import { formatCents, jobSearchWorkflowPayload, workflowAgents } from "../../lib/mock-data";
+import type { LibraryTab, PersistedMcpAccessGrant, PersistedWorkflow } from "../../lib/types";
+import { Card, CapabilityBadge, DetailBlock, PageHeader } from "../layout/primitives";
+import { KeysBilling } from "./KeysBilling";
+
+export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab: LibraryTab) => void; spend: number }) {
+  const { data: session } = useSession();
+  const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
+  const [workflowMessage, setWorkflowMessage] = useState("");
+  const [loadingSavedWorkflows, setLoadingSavedWorkflows] = useState(false);
+  const [savingWorkflow, setSavingWorkflow] = useState(false);
+  const [updatingMcpGrantId, setUpdatingMcpGrantId] = useState("");
+
+  const loadSavedWorkflows = async () => {
+    if (!session?.user) {
+      setSavedWorkflows([]);
+      return;
+    }
+
+    setLoadingSavedWorkflows(true);
+    setWorkflowMessage("");
+
+    try {
+      const data = await listFlows("Unable to load saved Flows.");
+      setSavedWorkflows(data.workflows ?? []);
+    } catch (error) {
+      setWorkflowMessage(error instanceof Error ? error.message : "Unable to load saved Flows.");
+    } finally {
+      setLoadingSavedWorkflows(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSavedWorkflows();
+  }, [session?.user?.email]);
+
+  const saveWorkflowToProfile = async () => {
+    if (!session?.user) {
+      setWorkflowMessage("Sign in with Google to save Flows to your AgentDock profile.");
+      return;
+    }
+
+    setSavingWorkflow(true);
+    setWorkflowMessage("");
+
+    try {
+      await saveFlow(jobSearchWorkflowPayload, "Flow save failed.");
+      setWorkflowMessage("Flow saved to your AgentDock profile.");
+      await loadSavedWorkflows();
+    } catch (error) {
+      setWorkflowMessage(error instanceof Error ? error.message : "Flow save failed.");
+    } finally {
+      setSavingWorkflow(false);
+    }
+  };
+
+  const visibleWorkflows = session?.user ? savedWorkflows : [];
+  const selectedWorkflow = visibleWorkflows.find((workflow) => workflow.name === "Job Search Automation") ?? visibleWorkflows[0];
+  const installedAgents = visibleWorkflows.flatMap((workflow) => workflow.workflowAgents.map((workflowAgent) => workflowAgent.agent));
+  const attachedMcps = visibleWorkflows.flatMap((workflow) => workflow.workflowMcps ?? []);
+
+  const updateWorkflowMcpGrant = async (grant: PersistedMcpAccessGrant, field: "canRead" | "canWrite" | "canExecute" | "canDelete" | "requiresApproval") => {
+    setUpdatingMcpGrantId(grant.id);
+    setWorkflowMessage("");
+
+    try {
+      await patchToolGrant(grant.id, { [field]: !grant[field] }, "Unable to update tool access.");
+      setWorkflowMessage("Tool access updated and logged.");
+      await loadSavedWorkflows();
+    } catch (error) {
+      setWorkflowMessage(error instanceof Error ? error.message : "Unable to update tool access.");
+    } finally {
+      setUpdatingMcpGrantId("");
+    }
+  };
+
+  const revokeWorkflowMcpGrant = async (grant: PersistedMcpAccessGrant) => {
+    setUpdatingMcpGrantId(grant.id);
+    setWorkflowMessage("");
+
+    try {
+      await revokeToolGrant(grant.id, "Unable to revoke tool.");
+      setWorkflowMessage("Tool revoked and logged.");
+      await loadSavedWorkflows();
+    } catch (error) {
+      setWorkflowMessage(error instanceof Error ? error.message : "Unable to revoke tool.");
+    } finally {
+      setUpdatingMcpGrantId("");
+    }
+  };
+
+  return (
+    <section className="platformPage libraryPage">
+      <PageHeader eyebrow="Flows" title="Flows" copy="Saved agent systems you can run, edit, or pause." />
+      <div className="truthNotice">
+        <CapabilityBadge kind={session?.user ? "db" : "mock"} />
+        <strong>{session?.user ? "DB-backed mode active." : "You are in demo mode."}</strong>
+        <span>Saved Flows and tool access load from Postgres when signed in. Scoped Access is a preview.</span>
+      </div>
+      {workflowMessage && <div className="profileAuthNotice">{workflowMessage}</div>}
+      <div className="tabRow">
+        {(["My Flows", "My Agents", "My Tools", "Scoped Access"] as LibraryTab[]).map((item) => (
+          <button className={tab === item ? "tabButton active" : "tabButton"} key={item} onClick={() => setTab(item)}>{item}</button>
+        ))}
+      </div>
+
+      {tab === "My Flows" && (
+        <div className="libraryGrid">
+          <Card title="My Flows" meta={session?.user ? `${visibleWorkflows.length} saved` : "Demo"}>
+            {loadingSavedWorkflows && <div className="savedWorkflow"><strong>Loading Flows...</strong><span>Postgres profile</span></div>}
+            {!session?.user && <div className="profileAuthNotice compactNotice">Sign in to save Flows. Mock drafts remain available in Build.</div>}
+            {session?.user && !loadingSavedWorkflows && visibleWorkflows.length === 0 && (
+              <div className="savedWorkflow">
+                <strong>No Flows yet.</strong>
+                <span>Save a Flow from Build to begin.</span>
+              </div>
+            )}
+            {visibleWorkflows.map((workflow) => (
+              <div className="savedWorkflow" key={workflow.id}>
+                <strong>{workflow.name}</strong>
+                <span>{workflow.status} - {workflow.workflowAgents.length} agents - {workflow.workflowMcps?.length ?? 0} tools</span>
+              </div>
+            ))}
+            <div className="heroActions compactActions">
+              <button className="secondaryButton" onClick={saveWorkflowToProfile} disabled={savingWorkflow}>
+                {savingWorkflow ? "Saving..." : "Save Job Search"}
+              </button>
+            </div>
+          </Card>
+          <Card title="Flow detail" meta={selectedWorkflow?.name ?? "Template"}>
+            <div className="detailGrid">
+              <DetailBlock label="Goal" value={selectedWorkflow?.goal ?? "Find high-fit AI platform roles, research each company, tailor the resume, and draft outreach for approval."} />
+              <DetailBlock label="Agents" value={selectedWorkflow?.workflowAgents?.map((workflowAgent) => workflowAgent.agent.name).join(" -> ") || "Discovery -> Research -> Resume -> Outreach"} />
+              <DetailBlock label="Tools" value={selectedWorkflow?.workflowMcps?.length ? selectedWorkflow.workflowMcps.map((mcp) => mcp.mcpServer.displayName).join(", ") : "No DB-backed tools yet"} />
+              <DetailBlock label="Budget" value={`${formatCents(selectedWorkflow?.weeklyBudgetCents ?? 500)} weekly cap`} />
+              <DetailBlock label="Runtime mode" value="AgentDock Sandbox Mode" />
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {tab === "My Agents" && (
+        <div className="agentGrid compactStoreGrid">
+          {(session?.user && installedAgents.length ? installedAgents : workflowAgents).map((agent) => (
+            <article className="agentCard compactAgentCard" key={agent.name}>
+              <div className="agentTopline">
+                <span className="verifiedBadge">Used in Flow</span>
+                <CapabilityBadge kind={session?.user ? "db" : "mock"} />
+              </div>
+              <h3>{agent.name}</h3>
+              <p>{agent.provider} - {agent.category}</p>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {tab === "My Tools" && (
+        <div className="libraryGrid">
+          <Card title="Tools" meta={`${attachedMcps.length} scoped`}>
+            {attachedMcps.length ? attachedMcps.map((workflowMcp) => {
+                const grant = selectedWorkflow?.mcpAccessGrants?.find((item) => item.mcpServer.id === workflowMcp.mcpServer.id);
+                return (
+                  <div className="mcpWorkflowAttachment" key={workflowMcp.id}>
+                    <div>
+                      <strong>{workflowMcp.mcpServer.displayName}</strong>
+                      <span>{workflowMcp.purpose ?? "Flow-scoped tool metadata"}</span>
+                    </div>
+                    <span>{workflowMcp.defaultPermission.replaceAll("_", " ")} - {workflowMcp.mcpServer.riskLevel} risk - {grant?.requiresApproval ? "approval required" : "no approval"}</span>
+                    {grant && (
+                      <>
+                        <div className="grantToggleGrid">
+                          {([
+                            ["canRead", "read"],
+                            ["canWrite", "write"],
+                            ["canExecute", "execute"],
+                            ["canDelete", "delete"],
+                            ["requiresApproval", "approval"]
+                          ] as const).map(([field, label]) => (
+                            <button className={grant[field] ? "grantToggle active" : "grantToggle"} disabled={updatingMcpGrantId === grant.id} key={field} onClick={() => updateWorkflowMcpGrant(grant, field)}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="buttonPair">
+                          <button className="secondaryButton smallButton" disabled={updatingMcpGrantId === grant.id} onClick={() => updateWorkflowMcpGrant(grant, "requiresApproval")}>Edit Access</button>
+                          <button className="revokeButton" disabled={updatingMcpGrantId === grant.id} onClick={() => revokeWorkflowMcpGrant(grant)}>Revoke Tool</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              }) : <div className="approvalItem">No DB-backed tools yet. Add one from Store or Build.</div>}
+          </Card>
+        </div>
+      )}
+
+      {tab === "Scoped Access" && (
+        <div className="libraryGrid">
+          <KeysBilling spend={spend} />
+        </div>
+      )}
+    </section>
+  );
+}

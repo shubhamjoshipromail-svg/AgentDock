@@ -1,0 +1,491 @@
+/* Quiet infrastructure luxury refinement pass */
+:root {
+  --bg: #f7f6f2;
+  --surface: rgba(255, 255, 255, 0.74);
+  --surface-soft: rgba(255, 255, 255, 0.48);
+  --ink: #171614;
+  --muted: #6f6a62;
+  --muted-2: #999286;
+  --line: rgba(23, 22, 20, 0.08);
+  --line-strong: rgba(23, 22, 20, 0.14);
+  --shadow: 0 24px 70px rgba(54, 48, 38, 0.08);
+  --shadow-soft: 0 10px 34px rgba(54, 48, 38, 0.045);
+  --green-bg: rgba(226, 244, 231, 0.74);
+  --amber-bg: rgba(255, 246, 217, 0.74);
+  --red-bg: rgba(255, 237, 235, 0.74);
+  --blue-bg: rgba(237, 243, 255, 0.72);
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% -8%, rgba(255, 255, 255, 0.92), transparent 34rem),
+    radial-gradient(circle at 88% 4%, rgba(232, 225, 211, 0.48), transparent 30rem),
+    linear-gradient(180deg, #faf9f5 0%, var(--bg) 42%, #f3f1ea 100%);
+  color: var(--ink);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+body::before {
+  background-image:
+    linear-gradient(rgba(23, 22, 20, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 22, 20, 0.03) 1px, transparent 1px);
+  background-size: 72px 72px;
+  content: "";
+  inset: 0;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.22), transparent 58%);
+  pointer-events: none;
+  position: fixed;
+  z-index: -1;
+}
+
+.shell {
+  padding: 28px;
+}
+
+.topbar {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(23, 22, 20, 0.08);
+  border-radius: 999px;
+  box-shadow: 0 14px 36px rgba(54, 48, 38, 0.055);
+  max-width: 1260px;
+  padding: 8px 10px;
+}
+
+.brand {
+  font-size: 0.95rem;
+  font-weight: 620;
+}
+
+.brandMark {
+  background: #1b1916;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 680;
+  height: 30px;
+  width: 30px;
+}
+
+.navLinks {
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(23, 22, 20, 0.06);
+  border-radius: 999px;
+  gap: 4px;
+  padding: 4px;
+}
+
+.navButton,
+.tabButton {
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 480;
+  padding: 8px 12px;
+}
+
+.navButton.active,
+.tabButton.active,
+.progressStep.active,
+.goalCard.selected {
+  background: rgba(23, 22, 20, 0.075);
+  color: var(--ink);
+}
+
+.authTrigger,
+.googleSignInButton {
+  background: rgba(255, 255, 255, 0.58);
+  border-color: rgba(23, 22, 20, 0.1);
+  font-weight: 560;
+}
+
+.authPopover,
+.heroPanel,
+.card,
+.agentCard,
+.successScreen,
+.compareCard,
+.mcpCard,
+.storeTable,
+.architectureFlow,
+.builderHeroPrompt,
+.workflowTimelinePanel,
+.workflowInspectorPanel,
+.policySafetyPanel,
+.plannerCard,
+.simulationPanel,
+.truthNotice,
+.builderToast,
+.memoryFirewallCard,
+.profileAuthNotice {
+  backdrop-filter: blur(18px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+}
+
+.platformPage,
+.hero,
+.contrastSection,
+.profileSection,
+.activitySection,
+.architectureSection,
+.mcpSection,
+.storeSection {
+  max-width: 1260px;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ink);
+  font-weight: 590;
+  letter-spacing: -0.018em;
+}
+
+h1 {
+  line-height: 1;
+}
+
+h2 {
+  line-height: 1.05;
+}
+
+h3,
+.stepTitleRow strong,
+.workflowInspectorPanel h3,
+.activeRunCard > strong,
+.builderLibraryStrip strong,
+.emptyWorkflowState strong {
+  font-weight: 560;
+}
+
+p,
+.sectionHeader p,
+.subheadline,
+.agentCard p,
+.heroPolicy p,
+.workflowStepCard p,
+.workflowInspectorPanel p,
+.builderHeroPrompt p {
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.65;
+}
+
+.eyebrow,
+.panelHeader span,
+.builderLibraryStrip > div > span,
+.plannerPromptPanel span,
+.plannerCanvas .canvasHeader span,
+.policyDiffList > span {
+  color: var(--muted-2);
+  font-size: 0.68rem;
+  font-weight: 560;
+  letter-spacing: 0.14em;
+}
+
+.panelHeader strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 560;
+}
+
+.primaryButton,
+.secondaryButton,
+.ghostButton,
+.revokeButton {
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 540;
+  min-height: 36px;
+  padding: 9px 14px;
+}
+
+.primaryButton {
+  background: #1c1a17;
+  box-shadow: 0 8px 22px rgba(28, 26, 23, 0.13);
+}
+
+.secondaryButton,
+.ghostButton {
+  background: rgba(255, 255, 255, 0.54);
+  border-color: rgba(23, 22, 20, 0.11);
+}
+
+.primaryButton:hover,
+.secondaryButton:hover,
+.ghostButton:hover,
+.templateChip:hover {
+  box-shadow: 0 10px 24px rgba(54, 48, 38, 0.07);
+  transform: translateY(-1px);
+}
+
+.comingSoonButton,
+.comingSoonButton:disabled {
+  background: rgba(235, 232, 224, 0.55);
+  border-color: rgba(23, 22, 20, 0.07);
+  color: #9a9388;
+}
+
+.capabilityBadge,
+.trustRow span,
+.verifiedBadge,
+.rankText,
+.credentialChecklist span,
+.successGrid span,
+.statusPill,
+.templateChip,
+.policyCheckGrid span {
+  border-color: rgba(23, 22, 20, 0.08);
+  font-weight: 520;
+}
+
+.builderHeroPrompt {
+  border-radius: 30px;
+  padding: clamp(26px, 5vw, 54px);
+}
+
+.builderHeroPrompt h1 {
+  font-size: clamp(2.55rem, 5.5vw, 5.35rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  max-width: 980px;
+}
+
+.builderHeroPrompt textarea,
+textarea {
+  background: rgba(255, 255, 255, 0.58);
+  border-color: rgba(23, 22, 20, 0.11);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  font-weight: 400;
+}
+
+.builderHeroPrompt textarea:focus,
+textarea:focus,
+input:focus {
+  border-color: rgba(23, 22, 20, 0.26);
+  box-shadow: 0 0 0 4px rgba(92, 81, 61, 0.08);
+}
+
+.templateChip,
+.truthNotice,
+.builderLibraryStrip,
+.emptyWorkflowState,
+.profileAuthNotice,
+.softNote {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.workflowPlannerLayout {
+  gap: 22px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.58fr);
+}
+
+.workflowTimelinePanel,
+.workflowInspectorPanel,
+.policySafetyPanel,
+.plannerCard,
+.simulationPanel {
+  border-radius: 26px;
+  padding: 20px;
+}
+
+.workflowStepCard {
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(23, 22, 20, 0.075);
+  border-radius: 22px;
+  box-shadow: none;
+  gap: 16px;
+  grid-template-columns: 46px minmax(0, 1fr);
+  padding: 18px;
+}
+
+.workflowStepCard:hover,
+.workflowStepCard.selected {
+  border-color: rgba(23, 22, 20, 0.18);
+  box-shadow: 0 16px 38px rgba(54, 48, 38, 0.07);
+}
+
+.stepNumber,
+.runTimelineItem span {
+  background: rgba(250, 249, 245, 0.8);
+  border-color: rgba(23, 22, 20, 0.08);
+  color: var(--muted);
+  font-weight: 560;
+}
+
+.stepTitleRow span,
+.workflowInspectorPanel > p,
+.builderLibraryStrip p,
+.emptyWorkflowState p {
+  color: var(--muted);
+}
+
+.detailBlock,
+.controlPreview div,
+.heroPolicy,
+.setupAgentBox,
+.agentStats span,
+.compactItem,
+.approvalList label,
+.policyStat,
+.dbStatus,
+.memoryRow,
+.permissionList p,
+.activityEvent,
+.architectureNode,
+.storeRow,
+.approvalInboxCard,
+.mcpPaletteItem,
+.mcpWorkflowAttachment,
+.grantEditor,
+.providerCard,
+.savedWorkflow,
+.approvalItem,
+.runHistory,
+.softNote {
+  background: rgba(255, 255, 255, 0.42);
+  border-color: rgba(23, 22, 20, 0.07);
+}
+
+.detailBlock {
+  padding: 12px;
+}
+
+.detailBlock span,
+.metric span,
+.agentStats span,
+.storeRow > span:not(.storeRank),
+.controlPreview span {
+  color: var(--muted-2);
+  font-weight: 480;
+}
+
+.detailBlock strong,
+.metric strong,
+.agentStats strong,
+.storeRow strong,
+.controlPreview strong {
+  color: var(--ink);
+  font-weight: 560;
+}
+
+.policyCheckGrid span {
+  background: rgba(255, 255, 255, 0.42);
+  border-radius: 999px;
+  color: #514b43;
+  padding: 8px 10px;
+}
+
+.policyDiffList {
+  background: rgba(250, 249, 245, 0.54);
+  border-color: rgba(23, 22, 20, 0.07);
+  border-radius: 20px;
+}
+
+.approvalInboxCard,
+.mcpPaletteItem,
+.mcpCard,
+.agentCard,
+.compactAgentCard {
+  box-shadow: none;
+}
+
+.approvalActions {
+  gap: 7px;
+}
+
+.tabRow {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(23, 22, 20, 0.07);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.tabButton {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+}
+
+.tabButton.active {
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 5px 14px rgba(54, 48, 38, 0.05);
+}
+
+.agentGrid,
+.mcpGrid,
+.templateGrid,
+.dashboardGrid,
+.controlGrid,
+.libraryGrid,
+.builderLowerGrid {
+  gap: 20px;
+}
+
+.compactAgentCard,
+.agentCard,
+.mcpCard {
+  border-radius: 24px;
+}
+
+.agentStats.compactStats,
+.compactStats {
+  gap: 8px;
+}
+
+.runTimelineItem p {
+  color: var(--ink);
+  font-weight: 430;
+}
+
+.memoryFirewallCard {
+  border-radius: 28px;
+}
+
+@media (max-width: 1080px) {
+  .workflowPlannerLayout,
+  .builderLowerGrid,
+  .controlGrid,
+  .libraryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflowInspectorPanel {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 14px;
+  }
+
+  .topbar {
+    border-radius: 24px;
+  }
+
+  .navLinks,
+  .tabRow {
+    border-radius: 22px;
+    width: 100%;
+  }
+
+  .builderHeroPrompt {
+    padding: 22px;
+  }
+
+  .workflowStepCard {
+    grid-template-columns: 1fr;
+  }
+
+  .stepDetailsGrid,
+  .runMetricGrid,
+  .runtimeSummary,
+  .compactStats,
+  .compactMcpAttachPanel .mcpPaletteGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,290 @@
+.platformShell {
+  background:
+    linear-gradient(#fff, #fff),
+    radial-gradient(circle at top right, rgba(17, 17, 17, 0.04), transparent 34rem);
+}
+
+.platformTopbar {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.platformNav {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.navButton,
+.tabButton {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted);
+  font-weight: 720;
+  padding: 9px 12px;
+}
+
+.navButton.active,
+.tabButton.active {
+  background: #111;
+  color: #fff;
+}
+
+.platformPage {
+  margin: 0 auto;
+  max-width: 1220px;
+  padding: 54px 0;
+}
+
+.platformHero {
+  display: grid;
+  gap: 42px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.72fr);
+  margin-bottom: 28px;
+}
+
+.pageHeader {
+  margin-bottom: 24px;
+}
+
+.tabRow,
+.filterBar,
+.heroActions,
+.buttonPair {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tabRow,
+.filterBar {
+  margin-bottom: 18px;
+}
+
+.filterBar span {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 720;
+  padding: 8px 10px;
+}
+
+.agentGrid,
+.templateGrid,
+.providerGrid,
+.profileGrid,
+.architectureNotes {
+  display: grid;
+  gap: 16px;
+}
+
+.agentGrid,
+.templateGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.providerGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.profileGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.architectureNotes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.providerCard,
+.savedWorkflow,
+.approvalItem,
+.runHistory,
+.softNote {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.providerCard {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+}
+
+.providerCard span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 720;
+}
+
+.workflowShell {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.savedWorkflowList {
+  display: grid;
+  gap: 10px;
+  align-self: start;
+  position: sticky;
+  top: 90px;
+}
+
+.savedWorkflow {
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 15px;
+  text-align: left;
+}
+
+.savedWorkflow.active {
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.05);
+}
+
+.savedWorkflow span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.workflowDetail {
+  display: grid;
+  gap: 16px;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.platformTable {
+  margin-top: 0;
+}
+
+.platformTable table {
+  min-width: 760px;
+}
+
+.runHistory {
+  padding: 14px;
+}
+
+.runHistory span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 760;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.runHistory p,
+.softNote {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.approvalItem {
+  color: #34383d;
+  font-weight: 680;
+  line-height: 1.4;
+  padding: 12px;
+}
+
+.inlineCost {
+  box-shadow: none;
+  margin-bottom: 12px;
+  min-width: 0;
+  width: 100%;
+}
+
+.softNote {
+  padding: 12px;
+}
+
+.metric {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  padding: 10px;
+}
+
+.metric > span,
+.metric strong {
+  display: block;
+}
+
+.metric strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.25;
+  margin-top: 4px;
+}
+
+.fullTimeline {
+  gap: 10px;
+}
+
+.auditRow {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 42px minmax(220px, 1.2fr) repeat(4, minmax(110px, 0.65fr)) 150px;
+  padding: 12px;
+}
+
+.auditRow > span {
+  color: var(--muted);
+  font-weight: 760;
+}
+
+.auditRow p {
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 4px 0 0;
+}
+
+.decisionBadge.denied {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.decisionBadge.approved {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.decisionBadge.info {
+  background: #f4f4f5;
+  color: #3f3f46;
+}
+
+.memorySection {
+  margin-top: 18px;
+}
+
+.polished {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.polished .architectureNode {
+  min-height: 120px;
+}
