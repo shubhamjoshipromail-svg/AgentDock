@@ -23,3 +23,9 @@ pnpm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+
+# local portable postgres + test env
+.pgbin/
+.pgdata/
+.env.railway.bak
+.env.test

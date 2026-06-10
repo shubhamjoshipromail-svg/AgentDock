@@ -9,7 +9,9 @@
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -29,8 +31,11 @@
     "@types/node": "20.14.10",
     "@types/react": "19.0.8",
     "@types/react-dom": "19.0.3",
+    "@vitest/coverage-v8": "^4.1.8",
+    "dotenv": "^17.4.2",
     "eslint": "^10.3.0",
     "eslint-config-next": "^16.2.6",
-    "typescript": "5.5.3"
+    "typescript": "5.5.3",
+    "vitest": "^4.1.8"
   }
 }

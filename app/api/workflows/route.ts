@@ -1,7 +1,6 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
-import { authOptions } from "../../../auth";
+import { getCurrentUser } from "../../../lib/auth-user";
 import { prisma } from "../../../lib/prisma";
 
 type WorkflowAgentInput = {
@@ -102,25 +101,6 @@ const workflowInclude = {
     orderBy: { createdAt: "desc" }
   }
 } as const;
-
-async function getCurrentUser() {
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id;
-  const email = session?.user?.email;
-
-  if (!userId && !email) {
-    return null;
-  }
-
-  return prisma.user.findFirst({
-    where: {
-      OR: [
-        ...(userId ? [{ id: userId }] : []),
-        ...(email ? [{ email }] : [])
-      ]
-    }
-  });
-}
 
 async function resolveWorkflowAgents(agentInputs: WorkflowAgentInput[]) {
   if (agentInputs.length === 0) {
