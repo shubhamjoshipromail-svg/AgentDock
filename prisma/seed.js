@@ -1,6 +1,8 @@
 const { PrismaClient } = require("@prisma/client");
 const { PrismaPg } = require("@prisma/adapter-pg");
 
+const { agentDefaults } = require("../lib/catalog/agent-defaults");
+
 const connectionString = process.env.DATABASE_URL ?? "postgresql://agentdock:agentdock@localhost:5432/agentdock?schema=public";
 const acceptsInvalidCerts = connectionString.includes("sslaccept=accept_invalid_certs");
 const adapterConnectionString = acceptsInvalidCerts
@@ -24,39 +26,12 @@ async function main() {
     }
   });
 
-  const agentInputs = [
-    ["Job Discovery Agent", "Discovery", "OpenAI", 96, 9, 91, true, "Finds matching AI infrastructure roles and ranks fit."],
-    ["Resume Tailoring Agent", "Documents", "OpenAI", 89, 24, 78, true, "Tailors resume drafts with approval gates."],
-    ["Company Research Agent", "Research", "Claude", 92, 18, 84, true, "Builds company briefs and hiring signal summaries."],
-    ["Outreach Draft Agent", "Communications", "Gemini", 94, 11, 88, true, "Drafts recruiter outreach without sending."],
-    ["Shopping Agent", "Commerce", "Open-source", 81, 7, 82, false, "Compares products and prices with strict memory isolation."],
-    ["Finance Agent", "Finance", "Claude", 86, 16, 80, true, "Summarizes finance tasks with restricted memory defaults."],
-    ["Health Agent", "Health", "OpenAI", 88, 20, 76, true, "Handles health notes with restricted memory defaults."]
-  ];
-
   const agents = {};
-  for (const [name, category, provider, trustScore, costPerTask, tokenEfficiency, verified, description] of agentInputs) {
+  for (const { name, ...defaults } of agentDefaults) {
     agents[name] = await prisma.agent.upsert({
-      where: { name },
-      update: {
-        category,
-        provider,
-        trustScore,
-        costPerTask,
-        tokenEfficiency,
-        verified,
-        description
-      },
-      create: {
-        name,
-        category,
-        provider,
-        trustScore,
-        costPerTask,
-        tokenEfficiency,
-        verified,
-        description
-      }
+      where: { userId_name: { userId: user.id, name } },
+      update: defaults,
+      create: { userId: user.id, name, ...defaults }
     });
   }
 

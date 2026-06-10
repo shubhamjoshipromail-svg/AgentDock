@@ -149,6 +149,7 @@ model User {
   updatedAt         DateTime            @updatedAt @map("updated_at")
   accounts          Account[]
   sessions          Session[]
+  agents            Agent[]
   workflows         Workflow[]
   memoryPartitions  MemoryPartition[]
   memoryItems       MemoryItem[]
@@ -205,9 +206,13 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
+// TODO: split catalog vs install — long-term, a global read-only AgentCatalogEntry
+// backs the Store and Agent becomes a per-user install. For now agents are
+// simply user-scoped so one user's sign-in can never mutate another's rows.
 model Agent {
   id                 String              @id @default(uuid()) @db.Uuid
-  name               String              @unique
+  userId             String              @map("user_id") @db.Uuid
+  name               String
   category           String
   provider           String
   trustScore         Int                 @map("trust_score")
@@ -217,6 +222,7 @@ model Agent {
   description        String
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   workflowAgents     WorkflowAgent[]
   sourceMemoryItems  MemoryItem[]        @relation("SourceAgentMemoryItems")
   memoryAccessGrants MemoryAccessGrant[]
@@ -227,6 +233,8 @@ model Agent {
   activityLogs       ActivityLog[]
   mcpAccessGrants    McpAccessGrant[]
 
+  @@unique([userId, name])
+  @@index([userId])
   @@map("agents")
 }
 

@@ -44,6 +44,14 @@ function jsonInit(method: string, body: unknown): RequestInit {
 export type SaveFlowAgentInput = CreateFlowAgentInput;
 export type SaveFlowInput = CreateFlowInput;
 
+export function bootstrap(fallbackMessage = "Unable to bootstrap workspace.") {
+  return request<{ bootstrapped: boolean; createdWorkflow: boolean; createdPartitions: string[] }>(
+    "/api/bootstrap",
+    fallbackMessage,
+    { method: "POST" }
+  );
+}
+
 export function listFlows(fallbackMessage = "Unable to load saved Flows.") {
   return request<{ workflows: PersistedWorkflow[]; bootstrapped?: boolean }>("/api/workflows", fallbackMessage);
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { SessionProvider } from "next-auth/react";
+import { SessionProvider, useSession } from "next-auth/react";
 
+import { bootstrap } from "../lib/api/client";
 import { Builder } from "../components/build/Builder";
 import { ControlPlane } from "../components/control/ControlPlane";
 import { Library } from "../components/flows/Library";
@@ -23,6 +24,44 @@ import type {
   Section,
   StoreTab
 } from "../lib/types";
+
+// Runs the idempotent server bootstrap once per signed-in session before the
+// sections mount, so their initial loads see the starter data (GET routes are
+// pure reads). Children render immediately when signed out.
+function BootstrapGate({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (status === "loading") {
+      return;
+    }
+
+    if (!session?.user) {
+      setReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    bootstrap()
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session?.user?.email]);
+
+  if (!ready) {
+    return null;
+  }
+
+  return <>{children}</>;
+}
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<Section>("Build");
@@ -141,6 +180,7 @@ export default function Home() {
       <main className="shell platformShell">
       <Nav activeSection={activeSection} onSelectSection={setActiveSection} />
 
+      <BootstrapGate>
       {activeSection === "Control" && (
         <ControlPlane
           events={events}
@@ -192,6 +232,7 @@ export default function Home() {
           defaultAgent={defaultAgent}
         />
       )}
+      </BootstrapGate>
       </main>
     </SessionProvider>
   );

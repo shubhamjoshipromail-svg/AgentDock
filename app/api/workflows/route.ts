@@ -1,73 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../lib/auth-user";
+import { agentDefaultsByName } from "../../../lib/catalog/agent-defaults";
 import { prisma } from "../../../lib/prisma";
 import { parseJsonBody } from "../../../lib/validation/parse";
 import { createFlowSchema, type CreateFlowAgentInput, type CreateFlowInput } from "../../../lib/validation/schemas";
 
 type WorkflowAgentInput = CreateFlowAgentInput;
 type CreateWorkflowInput = CreateFlowInput;
-
-const starterWorkflow: CreateWorkflowInput = {
-  name: "Job Search Automation",
-  goal: "Find high-fit AI platform roles, research each company, tailor the resume, and draft outreach for approval.",
-  weeklyBudgetCents: 500,
-  maxRunBudgetCents: 150,
-  approvalMode: "approval_gated",
-  agents: [
-    { agentName: "Job Discovery Agent", roleInWorkflow: "Discover roles", routeOrder: 1, defaultMode: "Autonomous discovery" },
-    { agentName: "Company Research Agent", roleInWorkflow: "Research targets", routeOrder: 2, defaultMode: "Human-reviewed notes" },
-    { agentName: "Resume Tailoring Agent", roleInWorkflow: "Tailor resume", routeOrder: 3, defaultMode: "Approval before export" },
-    { agentName: "Outreach Draft Agent", roleInWorkflow: "Draft outreach", routeOrder: 4, defaultMode: "Draft-only" }
-  ]
-};
-
-const mockAgentDefaults: Record<string, {
-  category: string;
-  provider: string;
-  trustScore: number;
-  costPerTask: number;
-  tokenEfficiency: number;
-  verified: boolean;
-  description: string;
-}> = {
-  "Job Discovery Agent": {
-    category: "Discovery",
-    provider: "OpenAI",
-    trustScore: 96,
-    costPerTask: 9,
-    tokenEfficiency: 91,
-    verified: true,
-    description: "Finds matching AI infrastructure roles and ranks fit."
-  },
-  "Company Research Agent": {
-    category: "Research",
-    provider: "Claude",
-    trustScore: 92,
-    costPerTask: 18,
-    tokenEfficiency: 84,
-    verified: true,
-    description: "Builds company briefs and hiring signal summaries."
-  },
-  "Resume Tailoring Agent": {
-    category: "Documents",
-    provider: "OpenAI",
-    trustScore: 89,
-    costPerTask: 24,
-    tokenEfficiency: 78,
-    verified: true,
-    description: "Tailors resume drafts with approval gates."
-  },
-  "Outreach Draft Agent": {
-    category: "Communications",
-    provider: "Gemini",
-    trustScore: 94,
-    costPerTask: 11,
-    tokenEfficiency: 88,
-    verified: true,
-    description: "Drafts recruiter outreach without sending."
-  }
-};
 
 const workflowInclude = {
   workflowAgents: {
@@ -89,7 +29,9 @@ const workflowInclude = {
   }
 } as const;
 
-async function resolveWorkflowAgents(agentInputs: WorkflowAgentInput[]) {
+// TODO: split catalog vs install — agent rows are user-scoped for now; the
+// Store should eventually read from a global catalog with per-user installs.
+async function resolveWorkflowAgents(userId: string, agentInputs: WorkflowAgentInput[]) {
   if (agentInputs.length === 0) {
     return { workflowAgents: [], skippedAgents: [] };
   }
@@ -104,6 +46,7 @@ async function resolveWorkflowAgents(agentInputs: WorkflowAgentInput[]) {
 
   let matchedAgents = await prisma.agent.findMany({
     where: {
+      userId,
       OR: [
         ...(agentNames.length ? [{ name: { in: agentNames } }] : []),
         ...(agentIds.length ? [{ id: { in: agentIds } }] : [])
@@ -111,14 +54,14 @@ async function resolveWorkflowAgents(agentInputs: WorkflowAgentInput[]) {
     }
   });
 
-  const missingAgentNames = agentNames.filter((name) => !matchedAgents.some((agent) => agent.name === name) && mockAgentDefaults[name]);
+  const missingAgentNames = agentNames.filter((name) => !matchedAgents.some((agent) => agent.name === name) && agentDefaultsByName[name]);
 
   for (const name of missingAgentNames) {
-    const defaults = mockAgentDefaults[name];
+    const { name: _ignored, ...defaults } = agentDefaultsByName[name]!;
     const agent = await prisma.agent.upsert({
-      where: { name },
+      where: { userId_name: { userId, name } },
       update: defaults,
-      create: { name, ...defaults }
+      create: { userId, name, ...defaults }
     });
     matchedAgents = [...matchedAgents, agent];
   }
@@ -151,7 +94,7 @@ async function resolveWorkflowAgents(agentInputs: WorkflowAgentInput[]) {
 }
 
 async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
-  const { workflowAgents, skippedAgents } = await resolveWorkflowAgents(body.agents ?? []);
+  const { workflowAgents, skippedAgents } = await resolveWorkflowAgents(userId, body.agents ?? []);
   const existingWorkflow = await prisma.workflow.findFirst({
     where: {
       userId,
@@ -212,16 +155,10 @@ export async function GET() {
     return NextResponse.json({ message: "Unauthorized. Sign in with Google to load saved workflows." }, { status: 401 });
   }
 
-  let workflows = await findWorkflowsForUser(user.id);
-  let bootstrapped = false;
+  // Pure read: starter data creation lives in POST /api/bootstrap.
+  const workflows = await findWorkflowsForUser(user.id);
 
-  if (workflows.length === 0) {
-    await saveWorkflowForUser(user.id, starterWorkflow);
-    workflows = await findWorkflowsForUser(user.id);
-    bootstrapped = true;
-  }
-
-  return NextResponse.json({ workflows, bootstrapped });
+  return NextResponse.json({ workflows });
 }
 
 export async function POST(request: Request) {
