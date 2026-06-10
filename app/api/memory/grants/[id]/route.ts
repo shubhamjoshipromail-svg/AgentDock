@@ -2,16 +2,10 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
+import { parseJsonBody } from "../../../../../lib/validation/parse";
+import { memoryGrantPatchSchema, type MemoryGrantPatchInput } from "../../../../../lib/validation/schemas";
 
-type PatchGrantInput = {
-  canRead?: boolean;
-  canWrite?: boolean;
-  canEdit?: boolean;
-  canDelete?: boolean;
-  canShare?: boolean;
-  requiresApproval?: boolean;
-  expiresAt?: string | null;
-};
+type PatchGrantInput = MemoryGrantPatchInput;
 
 const editableFields = ["canRead", "canWrite", "canEdit", "canDelete", "canShare", "requiresApproval"] as const;
 
@@ -23,13 +17,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   }
 
   const { id } = await context.params;
-  let body: PatchGrantInput;
+  const parsed = await parseJsonBody(request, memoryGrantPatchSchema);
 
-  try {
-    body = (await request.json()) as PatchGrantInput;
-  } catch {
-    return NextResponse.json({ message: "Invalid JSON body." }, { status: 400 });
+  if (!parsed.ok) {
+    return parsed.response;
   }
+
+  const body = parsed.data;
 
   try {
     const grant = await prisma.memoryAccessGrant.findFirst({

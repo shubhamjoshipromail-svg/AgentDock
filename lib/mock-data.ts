@@ -341,7 +341,7 @@ export const jobSearchWorkflowPayload = {
   goal: "Find high-fit AI platform roles, research each company, tailor the resume, and draft outreach for approval.",
   weeklyBudgetCents: 500,
   maxRunBudgetCents: 150,
-  approvalMode: "approval_gated",
+  approvalMode: "approval_gated" as const,
   agents: [
     { agentName: "Job Discovery Agent", roleInWorkflow: "Discover roles", routeOrder: 1, defaultMode: "Autonomous discovery" },
     { agentName: "Company Research Agent", roleInWorkflow: "Research targets", routeOrder: 2, defaultMode: "Human-reviewed notes" },

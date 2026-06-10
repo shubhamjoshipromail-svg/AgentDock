@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
-import type { McpRiskLevel } from "@prisma/client";
 
 import { prisma } from "../../../../lib/prisma";
+import { parseQuery } from "../../../../lib/validation/parse";
+import { toolServersQuerySchema } from "../../../../lib/validation/schemas";
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const category = searchParams.get("category") ?? undefined;
-  const riskLevel = searchParams.get("riskLevel") as McpRiskLevel | null;
-  const verified = searchParams.get("verified");
+  const parsed = parseQuery(request.url, toolServersQuerySchema);
+
+  if (!parsed.ok) {
+    return parsed.response;
+  }
+
+  const { category, riskLevel, verified } = parsed.data;
 
   try {
     const servers = await prisma.mcpServer.findMany({

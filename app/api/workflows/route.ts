@@ -2,24 +2,11 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../lib/auth-user";
 import { prisma } from "../../../lib/prisma";
+import { parseJsonBody } from "../../../lib/validation/parse";
+import { createFlowSchema, type CreateFlowAgentInput, type CreateFlowInput } from "../../../lib/validation/schemas";
 
-type WorkflowAgentInput = {
-  agentId?: string;
-  agentName?: string;
-  name?: string;
-  roleInWorkflow: string;
-  routeOrder: number;
-  defaultMode: string;
-};
-
-type CreateWorkflowInput = {
-  name: string;
-  goal: string;
-  weeklyBudgetCents: number;
-  maxRunBudgetCents: number;
-  approvalMode: "manual" | "approval_gated" | "autonomous_with_limits";
-  agents?: WorkflowAgentInput[];
-};
+type WorkflowAgentInput = CreateFlowAgentInput;
+type CreateWorkflowInput = CreateFlowInput;
 
 const starterWorkflow: CreateWorkflowInput = {
   name: "Job Search Automation",
@@ -244,11 +231,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized. Sign in with Google to save workflows." }, { status: 401 });
   }
 
-  const body = (await request.json()) as Partial<CreateWorkflowInput>;
+  const parsed = await parseJsonBody(request, createFlowSchema);
 
-  if (!body.name || !body.goal || !body.weeklyBudgetCents || !body.maxRunBudgetCents || !body.approvalMode) {
-    return NextResponse.json({ message: "Missing required workflow fields." }, { status: 400 });
+  if (!parsed.ok) {
+    return parsed.response;
   }
+
+  const body = parsed.data;
 
   const { workflow, skippedAgents } = await saveWorkflowForUser(user.id, {
     name: body.name,

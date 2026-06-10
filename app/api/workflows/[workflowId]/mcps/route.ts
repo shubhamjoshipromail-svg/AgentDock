@@ -4,12 +4,8 @@ import type { McpDefaultPermission } from "@prisma/client";
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { defaultPermissionForRisk, grantTemplateForPermission } from "../../../../../lib/mcp-catalog";
 import { prisma } from "../../../../../lib/prisma";
-
-type AttachMcpInput = {
-  mcpServerId?: string;
-  purpose?: string;
-  defaultPermission?: McpDefaultPermission;
-};
+import { parseJsonBody } from "../../../../../lib/validation/parse";
+import { toolAttachSchema } from "../../../../../lib/validation/schemas";
 
 const workflowMcpInclude = {
   mcpServer: {
@@ -85,17 +81,13 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
   }
 
   const { workflowId } = await context.params;
-  let body: AttachMcpInput;
+  const parsed = await parseJsonBody(request, toolAttachSchema);
 
-  try {
-    body = (await request.json()) as AttachMcpInput;
-  } catch {
-    return NextResponse.json({ message: "Invalid JSON body." }, { status: 400 });
+  if (!parsed.ok) {
+    return parsed.response;
   }
 
-  if (!body.mcpServerId) {
-    return NextResponse.json({ message: "Missing mcpServerId." }, { status: 400 });
-  }
+  const body = parsed.data;
 
   try {
     const workflow = await prisma.workflow.findFirst({

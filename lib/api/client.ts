@@ -12,6 +12,14 @@ import type {
   PersistedWorkflowMcp,
   PersistedWorkflowRun
 } from "../types";
+import type {
+  ApprovalResolveInput,
+  CreateFlowAgentInput,
+  CreateFlowInput,
+  MemoryGrantPatchInput,
+  ToolAttachInput as ToolAttachRequestInput,
+  ToolGrantPatchInput
+} from "../validation/schemas";
 
 async function request<T>(path: string, fallbackMessage: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -32,23 +40,9 @@ function jsonInit(method: string, body: unknown): RequestInit {
   };
 }
 
-export type SaveFlowAgentInput = {
-  agentId?: string;
-  agentName?: string;
-  name?: string;
-  roleInWorkflow: string;
-  routeOrder: number;
-  defaultMode: string;
-};
-
-export type SaveFlowInput = {
-  name: string;
-  goal: string;
-  weeklyBudgetCents: number;
-  maxRunBudgetCents: number;
-  approvalMode: string;
-  agents?: SaveFlowAgentInput[];
-};
+// Request shapes are single-sourced from the Zod schemas the routes validate with.
+export type SaveFlowAgentInput = CreateFlowAgentInput;
+export type SaveFlowInput = CreateFlowInput;
 
 export function listFlows(fallbackMessage = "Unable to load saved Flows.") {
   return request<{ workflows: PersistedWorkflow[]; bootstrapped?: boolean }>("/api/workflows", fallbackMessage);
@@ -76,7 +70,7 @@ export function simulateRun(workflowId: string, fallbackMessage = "Run preview f
 
 export function resolveApproval(
   approvalId: string,
-  status: "approved" | "denied" | "edited",
+  status: ApprovalResolveInput["status"],
   fallbackMessage = "Unable to resolve approval."
 ) {
   return request<{ approvalRequest: PersistedApprovalRequest }>(
@@ -98,11 +92,7 @@ export function syncToolCatalog(fallbackMessage = "Tool sync failed.") {
   return request<{ imported: number; source: string }>("/api/mcp/sync-registry", fallbackMessage, { method: "POST" });
 }
 
-export type AttachToolInput = {
-  mcpServerId: string;
-  purpose?: string;
-  defaultPermission?: string;
-};
+export type AttachToolInput = ToolAttachRequestInput;
 
 export function attachToolToFlow(workflowId: string, payload: AttachToolInput, fallbackMessage = "Unable to add tool to Flow.") {
   return request<{ workflowMcp: PersistedWorkflowMcp; accessGrant: PersistedMcpAccessGrant }>(
@@ -114,7 +104,7 @@ export function attachToolToFlow(workflowId: string, payload: AttachToolInput, f
 
 export function patchToolGrant(
   grantId: string,
-  payload: Partial<Pick<PersistedMcpAccessGrant, "canRead" | "canWrite" | "canExecute" | "canDelete" | "requiresApproval">>,
+  payload: ToolGrantPatchInput,
   fallbackMessage = "Unable to update tool access."
 ) {
   return request<{ grant: PersistedMcpAccessGrant }>(`/api/mcp/grants/${grantId}`, fallbackMessage, jsonInit("PATCH", payload));
@@ -130,7 +120,7 @@ export function loadMemory(fallbackMessage = "Unable to load memory policy.") {
 
 export function patchMemoryGrant(
   grantId: string,
-  payload: Partial<Pick<PersistedMemoryGrant, "canRead" | "canWrite" | "canEdit" | "canDelete" | "canShare" | "requiresApproval">>,
+  payload: MemoryGrantPatchInput,
   fallbackMessage = "Unable to update memory grant."
 ) {
   return request<{ grant: PersistedMemoryGrant }>(`/api/memory/grants/${grantId}`, fallbackMessage, jsonInit("PATCH", payload));

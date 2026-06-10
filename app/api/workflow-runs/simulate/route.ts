@@ -3,10 +3,8 @@ import type { ApprovalActionType, RuntimeDecision, WorkflowRunEventType } from "
 
 import { getCurrentUser } from "../../../../lib/auth-user";
 import { prisma } from "../../../../lib/prisma";
-
-type SimulateInput = {
-  workflowId?: string;
-};
+import { parseJsonBody } from "../../../../lib/validation/parse";
+import { simulateRunSchema } from "../../../../lib/validation/schemas";
 
 type SimulatedEventInput = {
   eventType: WorkflowRunEventType;
@@ -49,17 +47,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Unauthorized. Sign in with Google to run database-backed workflow simulations." }, { status: 401 });
   }
 
-  let body: SimulateInput;
+  const parsed = await parseJsonBody(request, simulateRunSchema);
 
-  try {
-    body = (await request.json()) as SimulateInput;
-  } catch {
-    return NextResponse.json({ message: "Invalid JSON body." }, { status: 400 });
+  if (!parsed.ok) {
+    return parsed.response;
   }
 
-  if (!body.workflowId) {
-    return NextResponse.json({ message: "Missing workflowId. Save this workflow before running a database-backed simulation." }, { status: 400 });
-  }
+  const body = parsed.data;
 
   try {
     const workflow = await prisma.workflow.findFirst({

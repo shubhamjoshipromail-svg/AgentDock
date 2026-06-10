@@ -2,16 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
-
-type PatchMcpGrantInput = {
-  canRead?: boolean;
-  canWrite?: boolean;
-  canExecute?: boolean;
-  canDelete?: boolean;
-  requiresApproval?: boolean;
-  allowedActions?: string[];
-  blockedActions?: string[];
-};
+import { parseJsonBody } from "../../../../../lib/validation/parse";
+import { toolGrantPatchSchema } from "../../../../../lib/validation/schemas";
 
 const grantInclude = {
   mcpServer: true,
@@ -27,13 +19,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   }
 
   const { id } = await context.params;
-  let body: PatchMcpGrantInput;
+  const parsed = await parseJsonBody(request, toolGrantPatchSchema);
 
-  try {
-    body = (await request.json()) as PatchMcpGrantInput;
-  } catch {
-    return NextResponse.json({ message: "Invalid JSON body." }, { status: 400 });
+  if (!parsed.ok) {
+    return parsed.response;
   }
+
+  const body = parsed.data;
 
   try {
     const grant = await prisma.mcpAccessGrant.findFirst({

@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
-
-type ResolveInput = {
-  status?: "approved" | "denied" | "edited";
-};
+import { parseJsonBody } from "../../../../../lib/validation/parse";
+import { approvalResolveSchema } from "../../../../../lib/validation/schemas";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -15,17 +13,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const { id } = await context.params;
-  let body: ResolveInput;
+  const parsed = await parseJsonBody(request, approvalResolveSchema);
 
-  try {
-    body = (await request.json()) as ResolveInput;
-  } catch {
-    return NextResponse.json({ message: "Invalid JSON body." }, { status: 400 });
+  if (!parsed.ok) {
+    return parsed.response;
   }
 
-  if (!body.status || !["approved", "denied", "edited"].includes(body.status)) {
-    return NextResponse.json({ message: "Status must be approved, denied, or edited." }, { status: 400 });
-  }
+  const body = parsed.data;
 
   try {
     const approval = await prisma.approvalRequest.findFirst({
