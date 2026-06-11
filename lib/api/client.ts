@@ -20,6 +20,7 @@ import type {
   ToolAttachInput as ToolAttachRequestInput,
   ToolGrantPatchInput
 } from "../validation/schemas";
+import type { PlannedFlowResponse } from "../orchestrator/schema";
 
 // TODO: response keys still mirror the DB (workflow/mcp). The domain verbs here
 // already say Flow/Tool; once the Prisma models are renamed (@@map), drop the
@@ -53,6 +54,12 @@ export function bootstrap(fallbackMessage = "Unable to bootstrap workspace.") {
     fallbackMessage,
     { method: "POST" }
   );
+}
+
+// Calls the orchestrator. The server returns the clamped plan, warnings, and real
+// token/cost meta — the throw carries the route's message (503/429/422/502 etc.).
+export function planFlow(goal: string, fallbackMessage = "Unable to plan this Flow.") {
+  return request<PlannedFlowResponse>("/api/flows/plan", fallbackMessage, jsonInit("POST", { goal }));
 }
 
 export function listFlows(fallbackMessage = "Unable to load saved Flows.") {

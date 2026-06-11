@@ -35,6 +35,10 @@ export const createFlowSchema = z.object({
   layout: z.record(z.string(), z.unknown()).optional()
 });
 
+export const planFlowSchema = z.object({
+  goal: z.string().min(3).max(500)
+});
+
 export const simulateRunSchema = z.object({
   workflowId: z.string().uuid({ message: "workflowId must be a UUID of a saved workflow." })
 });
@@ -83,6 +87,7 @@ export type CreateFlowInput = z.infer<typeof createFlowSchema>;
 export type CreateFlowAgentInput = z.infer<typeof createFlowAgentSchema>;
 export type CreateFlowToolInput = z.infer<typeof createFlowToolSchema>;
 export type CreateFlowMemoryInput = z.infer<typeof createFlowMemorySchema>;
+export type PlanFlowInput = z.infer<typeof planFlowSchema>;
 export type SimulateRunInput = z.infer<typeof simulateRunSchema>;
 export type ApprovalResolveInput = z.infer<typeof approvalResolveSchema>;
 export type ToolGrantPatchInput = z.infer<typeof toolGrantPatchSchema>;
