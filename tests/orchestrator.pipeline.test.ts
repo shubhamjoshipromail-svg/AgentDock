@@ -191,4 +191,25 @@ describe("planToSaveInput", () => {
     expect(payload.tools?.[0].defaultPermission).toBe("approval_required");
     expect(payload.approvalMode).toBe("approval_gated");
   });
+
+  it("a user-edited plan (tightened permission) still round-trips through the schema", () => {
+    const { plan } = clampPermissions(
+      resolvePlan(
+        {
+          name: "Edited plan", goal: "Edit a permission and save it.",
+          agents: [{ agentName: "Outreach Draft Agent", role: "Draft", order: 1, rationale: "Drafts." }],
+          tools: [{ serverName: "Gmail Draft MCP", requestedPermission: "draft_only", rationale: "Drafts email." }],
+          memoryAttachments: [], approvalGates: [], estimatedBudgetCents: 400, risks: []
+        },
+        snapshot
+      ).plan
+    );
+
+    // The UI tightens the tool below the ceiling (draft_only -> blocked).
+    const edited = { ...plan, tools: plan.tools.map((t) => ({ ...t, effectivePermission: "blocked" as const })) };
+    const payload = planToSaveInput(edited);
+
+    expect(createFlowSchema.safeParse(payload).success).toBe(true);
+    expect(payload.tools?.[0].defaultPermission).toBe("blocked");
+  });
 });
