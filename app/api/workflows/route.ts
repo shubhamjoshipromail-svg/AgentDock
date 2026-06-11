@@ -69,9 +69,6 @@ async function resolveWorkflowAgents(userId: string, agentInputs: WorkflowAgentI
       : {
           category: "Custom",
           provider: "Custom",
-          trustScore: 50,
-          costPerTask: 5,
-          tokenEfficiency: 50,
           verified: false,
           description: `${name} (user-defined agent)`
         };

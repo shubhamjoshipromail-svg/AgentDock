@@ -13,9 +13,6 @@ export type Agent = {
   name: string;
   category: string;
   provider: string;
-  trustScore: number;
-  costPerTask: string;
-  tokenEfficiency: string;
   requiredAccess: string;
   defaultMode: string;
   verified: boolean;
@@ -268,7 +265,6 @@ export type BuilderNode = {
   type: BuilderNodeType;
   provider?: string;
   category?: string;
-  trustScore?: number;
   riskLevel?: string;
   permissions: string;
   memoryAccess: string;

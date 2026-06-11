@@ -118,17 +118,15 @@ export async function POST(request: Request) {
       costCents: 0
     });
 
-    // One event per agent, in route order, with the agent's deterministic per-task cost.
+    // One event per agent, in route order. Cost is $0 in simulation (no model call).
     for (const workflowAgent of workflow.workflowAgents) {
-      const cost = workflowAgent.agent.costPerTask;
-      totalCostCents += cost;
       eventInputs.push({
         eventType: "a2a_handoff",
         title: `${workflowAgent.agent.name} ran step ${workflowAgent.routeOrder} (${workflowAgent.roleInWorkflow})`,
-        description: `Simulated ${workflowAgent.agent.name} in mode "${workflowAgent.defaultMode}". Deterministic mock cost only; no model call was made.`,
+        description: `Simulated ${workflowAgent.agent.name} in mode "${workflowAgent.defaultMode}". Metadata-only simulation; no model call was made.`,
         decision: "allowed",
         agentId: workflowAgent.agentId,
-        costCents: cost
+        costCents: 0
       });
     }
 

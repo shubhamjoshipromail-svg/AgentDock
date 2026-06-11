@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { attachToolToFlow, listFlows, listToolServers, syncToolCatalog } from "../../lib/api/client";
+import type { SyncSummary } from "../../lib/api/client";
 import { agents, mcpTools, workflowTemplates } from "../mock-data";
-import type { PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
+import type { McpVerificationStatus, PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
 import { CapabilityBadge, ComingSoonButton, Metric, PageHeader } from "../layout/primitives";
 import { WorkflowTemplateCard } from "./WorkflowTemplateCard";
 
@@ -27,19 +28,41 @@ export function Store({
   const [syncingMcp, setSyncingMcp] = useState(false);
   const [attachingMcpId, setAttachingMcpId] = useState("");
   const [selectedFlowId, setSelectedFlowId] = useState("");
+  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [totalServers, setTotalServers] = useState<number>(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
-  const loadMcpServers = async () => {
+  // Search & filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterVerification, setFilterVerification] = useState<McpVerificationStatus | "">("");
+  const [filterRisk, setFilterRisk] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadMcpServers = async (opts: { append?: boolean; cursor?: string | null; q?: string; verification?: string; riskLevel?: string } = {}) => {
     if (!session?.user) {
       setMcpServers([]);
       return;
     }
 
     try {
-      const data = await listToolServers("Unable to load MCP catalog.");
-      setMcpServers(data.servers ?? []);
+      const params: Record<string, string | number> = { limit: 24 };
+      if (opts.q) params.q = opts.q;
+      if (opts.cursor) params.cursor = opts.cursor;
+      if (opts.verification) params.verification = opts.verification;
+      if (opts.riskLevel) params.riskLevel = opts.riskLevel;
+
+      const data = await listToolServers(params, "Unable to load MCP catalog.");
+      if (opts.append) {
+        setMcpServers((prev) => [...prev, ...(data.servers ?? [])]);
+      } else {
+        setMcpServers(data.servers ?? []);
+      }
+      setNextCursor(data.nextCursor ?? null);
+      setTotalServers(data.total ?? 0);
     } catch (error) {
-      setMcpMessage(error instanceof Error ? error.message : "Unable to load MCP catalog. Showing mock fallback.");
-      setMcpServers([]);
+      setMcpMessage(error instanceof Error ? error.message : "Unable to load MCP catalog.");
+      if (!opts.append) setMcpServers([]);
     }
   };
 
@@ -59,10 +82,30 @@ export function Store({
 
   useEffect(() => {
     if (tab === "Tools") {
-      loadMcpServers();
+      loadMcpServers({ q: searchQuery, verification: filterVerification, riskLevel: filterRisk });
       loadSavedWorkflows();
     }
   }, [tab, session?.user?.email]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      loadMcpServers({ q: value, verification: filterVerification, riskLevel: filterRisk });
+    }, 350);
+  };
+
+  const handleFilterChange = (verification: McpVerificationStatus | "", risk: string) => {
+    setFilterVerification(verification);
+    setFilterRisk(risk);
+    loadMcpServers({ q: searchQuery, verification, riskLevel: risk });
+  };
+
+  const loadMore = () => {
+    if (nextCursor) {
+      loadMcpServers({ append: true, cursor: nextCursor, q: searchQuery, verification: filterVerification, riskLevel: filterRisk });
+    }
+  };
 
   const syncMcpRegistry = async () => {
     if (!session?.user) {
@@ -75,8 +118,10 @@ export function Store({
 
     try {
       const data = await syncToolCatalog("Tool sync failed.");
+      setSyncSummary(data);
+      setLastSyncedAt(new Date().toLocaleTimeString());
       setMcpMessage(`Synced ${data.upserted} servers · ${data.skipped} skipped · ${data.failed} failed (${data.durationMs}ms)`);
-      await loadMcpServers();
+      await loadMcpServers({ q: searchQuery, verification: filterVerification, riskLevel: filterRisk });
     } catch (error) {
       setMcpMessage(error instanceof Error ? error.message : "Tool sync failed.");
     } finally {
@@ -95,8 +140,6 @@ export function Store({
       return;
     }
 
-    // Target the user-selected Flow. With a single Flow, use it; with several,
-    // require an explicit choice rather than guessing by name.
     const workflow = selectedFlowId
       ? savedWorkflows.find((item) => item.id === selectedFlowId)
       : savedWorkflows.length === 1
@@ -161,8 +204,7 @@ export function Store({
               <p>{agent.description}</p>
               <div className="agentStats compactStats">
                 <Metric label="Provider" value={agent.provider} />
-                <Metric label="Trust" value={`${agent.trustScore}`} />
-                <Metric label="Cost/task" value={agent.costPerTask} />
+                <Metric label="Mode" value={agent.defaultMode} />
               </div>
             </article>
           ))}
@@ -187,11 +229,52 @@ export function Store({
                 </select>
               )}
               <button className="primaryButton" onClick={syncMcpRegistry} disabled={syncingMcp}>
-                {syncingMcp ? "Syncing..." : "Sync Tools"}
+                {syncingMcp ? "Syncing..." : "Sync catalog"}
               </button>
               <CapabilityBadge kind={session?.user ? "db" : "mock"} />
             </div>
+            {lastSyncedAt && (
+              <p className="rankText">Last synced: {lastSyncedAt}{syncSummary ? ` · ${syncSummary.upserted} servers · ${syncSummary.skipped} skipped` : ""}</p>
+            )}
           </div>
+          {session?.user && (
+            <div className="mcpSearchBar" style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "8px 0" }}>
+              <input
+                type="search"
+                placeholder="Search tools…"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="secondaryButton smallButton"
+                style={{ minWidth: "180px" }}
+              />
+              <select
+                className="secondaryButton smallButton"
+                value={filterVerification}
+                onChange={(e) => handleFilterChange(e.target.value as McpVerificationStatus | "", filterRisk)}
+                aria-label="Filter by verification"
+              >
+                <option value="">All verifications</option>
+                <option value="verified">Verified</option>
+                <option value="community">Community</option>
+                <option value="unverified">Unverified</option>
+              </select>
+              <select
+                className="secondaryButton smallButton"
+                value={filterRisk}
+                onChange={(e) => handleFilterChange(filterVerification, e.target.value)}
+                aria-label="Filter by risk"
+              >
+                <option value="">All risk levels</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="restricted">Restricted</option>
+              </select>
+              {totalServers > 0 && (
+                <span className="rankText" style={{ alignSelf: "center" }}>{totalServers} result{totalServers !== 1 ? "s" : ""}</span>
+              )}
+            </div>
+          )}
           {mcpMessage && <div className="profileAuthNotice">{mcpMessage}</div>}
           {!session?.user && <div className="profileAuthNotice">Signed-out demo mode: showing mock tool cards. Sign in to sync the tool catalog.</div>}
           <div className="mcpGrid compactStoreGrid">
@@ -216,6 +299,9 @@ export function Store({
                   <p>{server.description}</p>
                   <Metric label="Access" value={defaultPermission.replaceAll("_", " ")} />
                   <Metric label="Tools" value={server.tools?.length ? `${server.tools.length} metadata records` : "No tool metadata"} />
+                  {server.repositoryUrl && (
+                    <Metric label="Repo" value={server.repositoryUrl.replace("https://github.com/", "github/")} />
+                  )}
                   <div className="buttonPair">
                     <button
                       className="secondaryButton smallButton"
@@ -246,6 +332,11 @@ export function Store({
               </article>
             ))}
           </div>
+          {dbMcpAvailable && nextCursor && (
+            <div style={{ textAlign: "center", margin: "16px 0" }}>
+              <button className="secondaryButton" onClick={loadMore}>Load more</button>
+            </div>
+          )}
         </>
       )}
       {tab === "Templates" && (

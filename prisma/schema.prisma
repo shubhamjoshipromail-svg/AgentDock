@@ -221,9 +221,6 @@ model Agent {
   name               String
   category           String
   provider           String
-  trustScore         Int                 @map("trust_score")
-  costPerTask        Int                 @map("cost_per_task")
-  tokenEfficiency    Int                 @map("token_efficiency")
   verified           Boolean             @default(false)
   description        String
   createdAt          DateTime            @default(now()) @map("created_at")
