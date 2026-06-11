@@ -22,6 +22,11 @@ function intEnv(name: string, fallback: number): number {
 
 const ACTIVITY_SOURCE = "orchestrator_plan";
 
+// Defense-in-depth: reject any raw model response larger than this before parsing.
+const MAX_RAW_RESPONSE_BYTES = 100_000;
+
+class TimeoutError extends Error {}
+
 // Strip accidental markdown fences before parsing model output.
 function stripFences(text: string): string {
   const trimmed = text.trim();
@@ -32,9 +37,14 @@ function stripFences(text: string): string {
 }
 
 type PlanIssue = { message: string; path?: readonly PropertyKey[] };
-type ParseAttempt = { ok: true; data: FlowPlan } | { ok: false; issues: PlanIssue[] };
+type ParseAttempt =
+  | { ok: true; data: FlowPlan }
+  | { ok: false; issues: PlanIssue[]; oversize?: boolean };
 
-function tryParsePlan(text: string): ParseAttempt {
+function checkAndParse(text: string): ParseAttempt {
+  if (text.length > MAX_RAW_RESPONSE_BYTES) {
+    return { ok: false, oversize: true, issues: [{ message: "Model response exceeded the size limit." }] };
+  }
   let json: unknown;
   try {
     json = JSON.parse(stripFences(text));
@@ -70,6 +80,7 @@ export async function POST(request: Request) {
   const maxOutputTokens = intEnv("ORCHESTRATOR_MAX_OUTPUT_TOKENS", 4000);
   const maxCostPerCall = intEnv("ORCHESTRATOR_MAX_COST_CENTS_PER_CALL", 10);
   const dailyCap = intEnv("ORCHESTRATOR_DAILY_USER_COST_CAP_CENTS", 100);
+  const timeoutMs = intEnv("ORCHESTRATOR_TIMEOUT_MS", 60000);
 
   // --- Daily cost cap: checked BEFORE any provider call ---
   const startOfDay = new Date();
@@ -111,7 +122,7 @@ export async function POST(request: Request) {
   const started = Date.now();
 
   // Helper: log every call (success or failure) — never the goal or raw output.
-  async function logPlan(title: string, description: string) {
+  async function logPlan(title: string, description: string, extra: Record<string, unknown> = {}) {
     await prisma.activityLog.create({
       data: {
         userId: user!.id,
@@ -128,19 +139,44 @@ export async function POST(request: Request) {
           outputTokens,
           durationMs: Date.now() - started,
           retried,
-          goalLength: goal.length
+          goalLength: goal.length,
+          ...extra
         }
       }
     });
   }
 
+  // Wraps a provider call with a hard timeout. On abort we surface a TimeoutError
+  // so the route can return 504; no usage is available on abort.
+  async function callProvider(userText: string) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await provider!.completeJson({ system, user: userText, maxOutputTokens, signal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) throw new TimeoutError();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   let attempt: ParseAttempt;
   try {
-    const first = await provider.completeJson({ system, user: userPrompt, maxOutputTokens });
+    const first = await callProvider(userPrompt);
     totalCostCents += first.costCents;
     inputTokens += first.usage.inputTokens;
     outputTokens += first.usage.outputTokens;
-    attempt = tryParsePlan(first.text);
+    attempt = checkAndParse(first.text);
+
+    // Oversize first response: reject without spending a retry.
+    if (!attempt.ok && attempt.oversize) {
+      await logPlan("Flow plan failed", "Model response exceeded the size limit.");
+      return NextResponse.json(
+        { message: "The model's response was too large to process. Try a simpler goal." },
+        { status: 422 }
+      );
+    }
 
     if (!attempt.ok) {
       if (first.costCents > maxCostPerCall) {
@@ -149,14 +185,22 @@ export async function POST(request: Request) {
       } else {
         retried = true;
         const retryPrompt = `${userPrompt}\n\nYour previous response failed validation: ${summarizeIssues(attempt.issues)}. Respond again with ONLY corrected JSON.`;
-        const second = await provider.completeJson({ system, user: retryPrompt, maxOutputTokens });
+        const second = await callProvider(retryPrompt);
         totalCostCents += second.costCents;
         inputTokens += second.usage.inputTokens;
         outputTokens += second.usage.outputTokens;
-        attempt = tryParsePlan(second.text);
+        attempt = checkAndParse(second.text);
       }
     }
   } catch (error) {
+    if (error instanceof TimeoutError) {
+      // No usage is returned on abort, so cost is logged as 0.
+      await logPlan("Flow plan timed out", "Model provider call exceeded the timeout.", { timedOut: true });
+      return NextResponse.json(
+        { message: "The model took too long to respond. Try again or simplify your goal." },
+        { status: 504 }
+      );
+    }
     await logPlan("Flow plan failed", "Model provider request failed.");
     return NextResponse.json(
       { message: `Model provider error: ${error instanceof Error ? error.message : "unknown"}.` },

@@ -159,6 +159,51 @@ describe("POST /api/flows/plan", () => {
     expect(logs[0].costCents).toBe(2);
   });
 
+  it("rejects an oversize response with 422 and no retry", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    llmState.queue = [{ text: "x".repeat(100_001), costCents: 2 }];
+
+    const res = await planFlow(planRequest("Plan a flow with a huge response."));
+    expect(res.status).toBe(422);
+    expect(llmState.calls).toBe(1); // no retry
+    const logs = await prisma.activityLog.findMany({ where: { userId: user.id } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].costCents).toBe(2);
+  });
+
+  it("returns 504 and logs cost 0 + timedOut when the provider exceeds the timeout", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    vi.stubEnv("ORCHESTRATOR_TIMEOUT_MS", "10");
+
+    // Provider honors the abort signal but never resolves in time.
+    llmState.provider = {
+      name: "anthropic",
+      model: "claude-sonnet-4-6",
+      completeJson: vi.fn((params: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const timer = setTimeout(() => _resolve({ text: "{}", usage: { inputTokens: 0, outputTokens: 0 }, costCents: 5 }), 1000);
+          params.signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new Error("aborted"));
+          });
+        })
+      )
+    };
+
+    const res = await planFlow(planRequest("Plan a flow that times out."));
+    expect(res.status).toBe(504);
+    const logs = await prisma.activityLog.findMany({ where: { userId: user.id } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].costCents).toBe(0);
+    expect((logs[0].metadata as { timedOut?: boolean }).timedOut).toBe(true);
+
+    vi.unstubAllEnvs();
+  });
+
   it("429 over the daily cap makes zero provider calls", async () => {
     const user = await createTestUser();
     setCurrentUser(user);
