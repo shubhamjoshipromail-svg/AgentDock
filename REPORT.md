@@ -163,3 +163,100 @@ grep -ri "trustScore\|costPerTask\|tokenEfficiency" app components lib
 - All external entries land as unverified with approval_required permission
 - `grep -ri "trustScore\|costPerTask\|tokenEfficiency" app components lib` returns nothing
 - `npm run build` and `npm test` (32/32) pass
+
+---
+
+# Chunk 2 — The Orchestrator (first real model call)
+
+`POST /api/flows/plan` is AgentDock's first real LLM call. It takes a goal plus the user's
+real catalog, calls ONE model (plus at most one schema-failure retry), and returns a
+Zod-validated, server-clamped plan that renders as editable Builder cards and saves through
+the existing `POST /api/workflows`. It plans only — nothing executes, no tool/MCP runs, no
+per-agent call, no streaming.
+
+## What changed per phase
+
+| Phase | Commit | Summary |
+|-------|--------|---------|
+| 0 | `94add51` | `CHUNK2_PLAN.md`: provider approach (fetch, with reasoning), prompt structure, FlowPlan schema sketch, clamping table, snapshot strategy, cost-calc approach, risks. |
+| A | `71b222b` | Provider abstraction `lib/llm/{types,anthropic,openai,pricing,index}.ts`. `LlmProvider.completeJson` interface; plain-`fetch` Anthropic + OpenAI adapters; price table with source date; `getProvider()` env selection returning `null` when no key. `.env.example` entries. Keys server-side only, never logged/returned. |
+| B | `d81edee` | FlowPlan contract `lib/orchestrator/schema.ts`: `flowPlanSchema` (validated verbatim), `PlannedFlowResponse`, `CatalogSnapshot`, shared `PERMISSION_STRICTNESS`/`permissionRank`. Single source for prompt, validation, clamp, UI, save. |
+| C | `37bb7a3` | Pure pipeline (zero network): `snapshot.ts` (verified + ≤30 keyword-relevant external + user agents/memory), `prompt.ts`, `resolve.ts` (drop unresolvable refs, renormalize order, re-point gates), `clamp.ts` (mirrors `normalize.ts` via shared `EXTERNAL_PERMISSION`), `convert.ts` (→ existing create-workflow payload). |
+| D | `13f81cb` | `POST /api/flows/plan`: auth, body validation, daily-cap 429 (before any call), 503 no-provider, one call + one retry on schema failure, 422 on second failure (cost still logged), resolve→clamp→convert, every call logged to `ActivityLog`. `planFlow()` client fn. |
+| E | `5aaaaec` | Builder: "Generate Flow" calls the orchestrator; renders agent/tool/memory/gate/budget/risk cards; tool permission select restricted to values no looser than the clamped ceiling; warnings strip; real provider·model·tokens·cost meta line; Save persists exactly what's shown. Manual canvas + Load Template unchanged; signed-out prompts sign-in. |
+| F | `3aa20a1` | Hardening: provider timeout → 504 (cost 0, `timedOut: true`); reject >100KB raw response with 422 (no retry); injection posture (system rule + a pipeline test proving the code, not the model, enforces the floor); `docs/orchestrator.md`. |
+
+## Provider + model chosen, and why
+
+Plain `fetch` to both providers' REST APIs rather than SDKs: keeps the dependency surface at
+zero (honors the no-new-deps constraint), both calls are a single non-streaming POST, and the
+test seam is the `lib/llm` `getProvider()` boundary so the suite never touches the network.
+Default models: **Anthropic `claude-sonnet-4-6`** (preferred when both keys present) and
+**OpenAI `gpt-4.1`**; both overridable via `ANTHROPIC_MODEL`/`OPENAI_MODEL`. Temperature ≤ 0.3.
+
+## Price table source date
+
+`lib/llm/pricing.ts`, **prices as of 2026-06-11**, cents per million tokens; unknown model ids
+fall back to a conservative price; cost rounds up to whole cents (integer column; never
+under-bills a cap).
+
+## Clamping rule table
+
+Strictness order `read_only < draft_only < approval_required < blocked`. Effective = strictest
+of: requested, `recommendedPermission` (baseline), `approval_required` if not verified
+(shared `EXTERNAL_PERMISSION`), `blocked` if restricted. The user may tighten below the ceiling,
+never loosen. Each change adds a warning `"<server>: <requested> → <effective> (reason)"`.
+
+## Catalog snapshot strategy + caps
+
+All verified servers (~6) with tool names; up to **30** external servers by keyword token
+overlap on the goal (no embeddings); user agents + memory partitions in full. Internal ids and
+policy ceilings are never serialized into the prompt.
+
+## Cost governance
+
+`ORCHESTRATOR_MAX_OUTPUT_TOKENS` (4000), `ORCHESTRATOR_MAX_COST_CENTS_PER_CALL` (10, skips the
+retry if the first call exceeds it), `ORCHESTRATOR_DAILY_USER_COST_CAP_CENTS` (100, checked
+before any provider call → 429), `ORCHESTRATOR_TIMEOUT_MS` (60000 → 504). Every call writes one
+`ActivityLog` row: `eventType = orchestration`, real `costCents`, metadata
+`{ source: "orchestrator_plan", provider, model, inputTokens, outputTokens, durationMs, retried, goalLength }`.
+The goal text and raw model output are never logged.
+
+## Manual verification script + observed results
+
+Script (with a provider key set):
+1. Build tab → type a non-job-search goal → **Generate Flow**.
+2. Loading shows "Planning your Flow"; on success plan cards render with the real
+   provider·model·tokens·**cost in cents** meta line.
+3. Tighten one tool's permission in its select (cannot loosen past the ceiling) → **Save Flow**.
+4. Flows tab: the saved flow exists with those agents/tools.
+5. Run Preview → simulation events reflect the saved structure.
+6. Control timeline shows BOTH the plan event (with cost) and the run events.
+7. Three different goals produce structurally different plans.
+
+Observed on this machine: **no provider key is configured here**, so a live cost figure cannot
+be produced honestly. The no-key path was exercised end-to-end and returns **503** ("No model
+provider configured…") with the Builder showing that message and the rest of the app
+unaffected. The full happy path — clamped plan, warnings, and the real cost figure in
+`planMeta.costCents` — is proven by `tests/orchestrator.route.test.ts` against a mocked
+provider (e.g. a 1-agent/1-tool plan returns `costCents: 3`, the unverified tool clamped from
+`read_only` → `approval_required` with a matching warning). A live example requires setting
+`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
+
+## Deferred (with rationale)
+
+- **Live cost example** — needs a real API key; intentionally not committed. The mocked
+  integration test demonstrates the cost path.
+- **No per-user policy table** — the snapshot shows safe policy defaults; a real policy/budget
+  model is future work (arrives with the policy engine).
+- **`eventType` reuse** — planning logs reuse the existing `orchestration` enum value rather
+  than adding a `model_call` value + migration; it fits and avoids a schema change.
+
+## Confirmation
+
+- `npm run build` green; `npm test` green (**69 tests, 10 files**) with **no API keys set**
+  (the provider is always mocked at the `lib/llm` boundary).
+- No key, goal text, or raw model output is logged or returned to the client (asserted in
+  `tests/orchestrator.route.test.ts`; `.env` remains gitignored).
+- No execution surface added: exactly one planning call (+1 retry max), no tool/MCP/agent
+  invocation, no streaming. Still plan + simulate only.
