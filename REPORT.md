@@ -70,5 +70,96 @@ npm test           # integration tests (against agentdock_test)
 > `.pgbin/` + `.pgdata/`, using the same connection string as `docker-compose.yml`.
 > `docker compose up` works identically where Docker is available.
 
-Stopping here. Registry ingestion, the model orchestrator, and real execution are
-separate future tasks and were intentionally not started.
+---
+
+# Chunk 1 — Real Tool Catalog (MCP Registry Ingestion + Store Search)
+
+## What changed per phase
+
+| Phase | Commit | Summary |
+|-------|--------|---------|
+| 0 | `726097e` | `CHUNK1_PLAN.md`: registry shape observed empirically, field mapping table, schema changes needed, pagination strategy. |
+| A | `9e7a7c5` | Schema separates registry facts from curation judgments: add `McpVerificationStatus` enum + `verificationStatus` column replacing `verified Boolean`; add `recommendedPermission` (promoted from metadata JSON), `registryRaw Json?`, `packageInfo Json?`; `@@unique([registrySource, registryId])` replacing solo `registryId @unique`; curated servers migrated to `registrySource: "agentdock-curated"`. |
+| B | `072782d` | Real MCP registry ingestion: `lib/registry/{officialMcp,normalize,curated,types}.ts`; sync route rewritten with real fetch, deny-by-default curation, curated-wins merge, 502 on total failure; fix partial index → proper UNIQUE constraint. 24 tests pass. |
+| C | `4aa8ee8` | Search/filter/paginate catalog API: `GET /api/mcp/servers` extended with `q`, `verification`, `source`, `cursor`/`limit`; returns `{servers, nextCursor, total}`; attach route defaults to `mcpServer.recommendedPermission`. 32 tests pass. |
+| D | `8c421a8` | Store UI with real catalog and honest signals: debounced search, verification/risk filters, Load more, sync summary + lastSyncedAt; unverified servers show approval-required affordance; `trustScore`/`costPerTask`/`tokenEfficiency` removed from DB, Prisma schema, types, agent defaults, mock data, UI everywhere. |
+
+## Registry response shape observed
+
+```
+GET https://registry.modelcontextprotocol.io/v0/servers?limit=100&isLatest=true
+
+{ servers: [{ server: { name, title?, description?, version?, repository?: {url, source},
+                         packages?: [{registryType, identifier, version, transport}],
+                         remotes?: [{type, url}] },
+              _meta: { "io.modelcontextprotocol.registry/official": { status, isLatest, updatedAt } } }],
+  metadata: { nextCursor, count } }
+```
+
+See `CHUNK1_PLAN.md` for full field-mapping table.
+
+## Ingestion cap
+
+Capped at **5 pages × 100 = 500 servers** (`MAX_PAGES = 5` in `lib/registry/officialMcp.ts`).
+The registry has 1,000+ total servers; 500 is enough to demonstrate the real catalog without
+unbounded runtime. Increase `MAX_PAGES` when sync is moved to a background job.
+
+## Curation / deny-by-default enforcement
+
+**Where:** `lib/registry/normalize.ts:normalizeExternal()` — called by `lib/registry/officialMcp.ts`
+for every registry entry before it reaches the sync route.
+
+**Rules:**
+- `verificationStatus: "unverified"` — always, regardless of registry metadata
+- `riskLevel: "medium"` — conservative default for all external servers
+- `recommendedPermission: "approval_required"` — no write/execute/delete
+- Inactive entries (status ≠ "active") are skipped
+- Curated entries (same package/repo) override external — `lib/registry/normalize.ts:curatedWins()`
+
+The sync route never re-trusts or re-normalizes output from `fetchOfficialRegistry`;
+the normalizer is the single enforcement gate.
+
+## Deferred items
+
+| Item | Rationale |
+|------|-----------|
+| External servers' tool lists | Registry metadata does not include tool lists; executing servers to discover tools is out of scope (no execution). External servers show 0 tools. |
+| Scheduled/background sync | Manual-only (`POST /api/mcp/sync-registry`). Scheduled jobs are a later chunk. |
+| Full registry pagination (1000+ servers) | Capped at 500. Increase `MAX_PAGES` in `lib/registry/officialMcp.ts`. |
+| Category inference for external servers | Registry has no category field. External servers land with `category: null` ("Uncategorized" in UI). |
+
+## Verification
+
+```bash
+# From a fresh clone (after DB setup per instructions above):
+
+# Apply new migrations (chunk1 adds 3 new migrations)
+npx prisma migrate deploy
+DATABASE_URL="postgresql://agentdock:agentdock@localhost:5432/agentdock_test" npx prisma migrate deploy
+
+# Run all tests (32 tests, 6 files)
+npm test
+
+# Production build
+npm run build
+
+# Manually sync the catalog (requires signed-in session):
+# 1. Start dev server: npm run dev
+# 2. Open http://localhost:3000 → sign in → Store → Tools tab → "Sync catalog"
+# Expected: sync summary shows upserted count from official registry + 6 curated
+
+# Confirm fake metrics are gone:
+grep -ri "trustScore\|costPerTask\|tokenEfficiency" app components lib
+# Expected: no output
+```
+
+## Constraints satisfied
+
+- No execution, installation, or connection to any MCP server
+- No LLM/model API calls
+- No new auth added
+- Sync is manual only (button), never on page load
+- 502 on registry fetch failure; existing catalog unchanged
+- All external entries land as unverified with approval_required permission
+- `grep -ri "trustScore\|costPerTask\|tokenEfficiency" app components lib` returns nothing
+- `npm run build` and `npm test` (32/32) pass
