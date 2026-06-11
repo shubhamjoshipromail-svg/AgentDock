@@ -72,7 +72,11 @@ export const toolAttachSchema = z.object({
 export const toolServersQuerySchema = z.object({
   category: z.string().optional(),
   riskLevel: z.enum(["low", "medium", "high", "restricted"]).optional(),
-  verified: z.enum(["true", "false"]).optional()
+  verification: z.enum(["verified", "community", "unverified"]).optional(),
+  source: z.string().optional(),
+  q: z.string().optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional()
 });
 
 export type CreateFlowInput = z.infer<typeof createFlowSchema>;

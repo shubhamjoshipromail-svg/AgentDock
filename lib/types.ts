@@ -215,6 +215,7 @@ export type PersistedMemoryPayload = {
 
 export type McpRiskLevel = "low" | "medium" | "high" | "restricted";
 export type McpDefaultPermission = "read_only" | "draft_only" | "approval_required" | "blocked";
+export type McpVerificationStatus = "verified" | "community" | "unverified";
 
 export type PersistedMcpServer = {
   id: string;
@@ -228,14 +229,12 @@ export type PersistedMcpServer = {
   packageName?: string | null;
   packageRegistry?: string | null;
   version?: string | null;
-  verified: boolean;
+  verificationStatus: McpVerificationStatus;
   riskLevel: McpRiskLevel;
+  recommendedPermission: McpDefaultPermission;
   category?: string | null;
   installCommand?: string | null;
-  metadata?: {
-    recommendedPermission?: McpDefaultPermission;
-    [key: string]: unknown;
-  };
+  metadata?: Record<string, unknown>;
   tools?: {
     id: string;
     name: string;

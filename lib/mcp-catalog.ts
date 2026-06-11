@@ -1,4 +1,4 @@
-import type { McpDefaultPermission, McpRiskLevel } from "@prisma/client";
+import type { McpDefaultPermission, McpRiskLevel, McpVerificationStatus } from "@prisma/client";
 
 export type CuratedMcpServer = {
   name: string;
@@ -8,7 +8,7 @@ export type CuratedMcpServer = {
   registryId: string;
   category: string;
   riskLevel: McpRiskLevel;
-  verified: boolean;
+  verificationStatus: McpVerificationStatus;
   packageName?: string;
   packageRegistry?: string;
   repositoryUrl?: string;
@@ -28,11 +28,11 @@ export const curatedMcpServers: CuratedMcpServer[] = [
     name: "search-mcp",
     displayName: "Search MCP",
     description: "Public web discovery for research and market monitoring workflows.",
-    registrySource: "agentdock-curated-fallback",
+    registrySource: "agentdock-curated",
     registryId: "agentdock:search-mcp",
     category: "Public info",
     riskLevel: "low",
-    verified: true,
+    verificationStatus: "verified",
     recommendedPermission: "read_only",
     tools: [
       { name: "search_web", description: "Search public web results.", riskLevel: "low" },
@@ -43,11 +43,11 @@ export const curatedMcpServers: CuratedMcpServer[] = [
     name: "github-mcp",
     displayName: "GitHub MCP",
     description: "Repository metadata and draft-only code review workflows. Writes require approval.",
-    registrySource: "agentdock-curated-fallback",
+    registrySource: "agentdock-curated",
     registryId: "agentdock:github-mcp",
     category: "Developer tools",
     riskLevel: "medium",
-    verified: true,
+    verificationStatus: "verified",
     recommendedPermission: "approval_required",
     tools: [
       { name: "read_repository", description: "Read repository files and metadata.", riskLevel: "medium" },
@@ -58,11 +58,11 @@ export const curatedMcpServers: CuratedMcpServer[] = [
     name: "gmail-draft-mcp",
     displayName: "Gmail Draft MCP",
     description: "Creates email drafts only. Sending email is blocked unless explicitly approved later.",
-    registrySource: "agentdock-curated-fallback",
+    registrySource: "agentdock-curated",
     registryId: "agentdock:gmail-draft-mcp",
     category: "Communications",
     riskLevel: "high",
-    verified: true,
+    verificationStatus: "verified",
     recommendedPermission: "draft_only",
     tools: [
       { name: "create_draft", description: "Create a draft email for human review.", riskLevel: "high" },
@@ -73,11 +73,11 @@ export const curatedMcpServers: CuratedMcpServer[] = [
     name: "google-calendar-mcp",
     displayName: "Google Calendar MCP",
     description: "Calendar availability metadata. Creating or changing events requires approval.",
-    registrySource: "agentdock-curated-fallback",
+    registrySource: "agentdock-curated",
     registryId: "agentdock:google-calendar-mcp",
     category: "Scheduling",
     riskLevel: "medium",
-    verified: true,
+    verificationStatus: "verified",
     recommendedPermission: "approval_required",
     tools: [
       { name: "read_availability", description: "Read calendar availability metadata.", riskLevel: "medium" },
@@ -88,11 +88,11 @@ export const curatedMcpServers: CuratedMcpServer[] = [
     name: "docs-notion-mcp",
     displayName: "Docs / Notion MCP",
     description: "Draft documents, notes, and research briefs in workspace-scoped surfaces.",
-    registrySource: "agentdock-curated-fallback",
+    registrySource: "agentdock-curated",
     registryId: "agentdock:docs-notion-mcp",
     category: "Documents",
     riskLevel: "medium",
-    verified: true,
+    verificationStatus: "verified",
     recommendedPermission: "approval_required",
     tools: [
       { name: "create_note", description: "Create draft notes.", riskLevel: "medium" },
@@ -103,11 +103,11 @@ export const curatedMcpServers: CuratedMcpServer[] = [
     name: "stripe-mcp-later",
     displayName: "Stripe MCP later",
     description: "Planned billing and payment metadata. Payment actions stay restricted.",
-    registrySource: "agentdock-curated-fallback",
+    registrySource: "agentdock-curated",
     registryId: "agentdock:stripe-mcp-later",
     category: "Payments",
     riskLevel: "restricted",
-    verified: false,
+    verificationStatus: "unverified",
     recommendedPermission: "blocked",
     tools: [
       { name: "read_usage", description: "Read billing usage metadata.", riskLevel: "high" },

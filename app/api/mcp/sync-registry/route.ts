@@ -17,26 +17,27 @@ export async function POST() {
 
     for (const server of curatedMcpServers) {
       const mcpServer = await prisma.mcpServer.upsert({
-        where: { registryId: server.registryId },
+        where: {
+          registrySource_registryId: {
+            registrySource: server.registrySource,
+            registryId: server.registryId
+          }
+        },
         update: {
           name: server.name,
           displayName: server.displayName,
           description: server.description,
-          registrySource: server.registrySource,
           homepageUrl: server.homepageUrl,
           repositoryUrl: server.repositoryUrl,
           packageName: server.packageName,
           packageRegistry: server.packageRegistry,
           version: server.version,
-          verified: server.verified,
+          verificationStatus: server.verificationStatus,
           riskLevel: server.riskLevel,
+          recommendedPermission: server.recommendedPermission,
           category: server.category,
           installCommand: server.installCommand,
-          metadata: {
-            source: "curated_fallback",
-            recommendedPermission: server.recommendedPermission,
-            safety: "metadata_only_no_execution"
-          },
+          metadata: { source: "agentdock-curated", safety: "metadata_only_no_execution" },
           lastSyncedAt: now
         },
         create: {
@@ -50,15 +51,12 @@ export async function POST() {
           packageName: server.packageName,
           packageRegistry: server.packageRegistry,
           version: server.version,
-          verified: server.verified,
+          verificationStatus: server.verificationStatus,
           riskLevel: server.riskLevel,
+          recommendedPermission: server.recommendedPermission,
           category: server.category,
           installCommand: server.installCommand,
-          metadata: {
-            source: "curated_fallback",
-            recommendedPermission: server.recommendedPermission,
-            safety: "metadata_only_no_execution"
-          },
+          metadata: { source: "agentdock-curated", safety: "metadata_only_no_execution" },
           lastSyncedAt: now
         }
       });

@@ -46,7 +46,7 @@ async function saveWorkflowWithApprovalTool() {
       description: "Draft-only email tool for tests.",
       registrySource: "test",
       riskLevel: "high",
-      verified: true
+      verificationStatus: "verified"
     }
   });
 

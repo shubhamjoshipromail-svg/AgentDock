@@ -24,7 +24,7 @@ async function createServer(name: string, displayName: string, riskLevel: "low" 
       description: `${displayName} for tests`,
       registrySource: "test",
       riskLevel,
-      verified: true
+      verificationStatus: "verified"
     }
   });
 }

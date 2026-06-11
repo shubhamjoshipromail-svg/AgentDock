@@ -75,7 +75,7 @@ export function Store({
 
     try {
       const data = await syncToolCatalog("Tool sync failed.");
-      setMcpMessage(`Tools synced. Imported or updated ${data.imported} records.`);
+      setMcpMessage(`Synced ${data.upserted} servers · ${data.skipped} skipped · ${data.failed} failed (${data.durationMs}ms)`);
       await loadMcpServers();
     } catch (error) {
       setMcpMessage(error instanceof Error ? error.message : "Tool sync failed.");
@@ -108,7 +108,7 @@ export function Store({
       return;
     }
 
-    const defaultPermission = server.metadata?.recommendedPermission ?? (server.riskLevel === "low" ? "read_only" : server.riskLevel === "high" ? "draft_only" : server.riskLevel === "restricted" ? "blocked" : "approval_required");
+    const defaultPermission = server.recommendedPermission;
     setAttachingMcpId(server.id);
     setMcpMessage("");
 
@@ -196,26 +196,36 @@ export function Store({
           {!session?.user && <div className="profileAuthNotice">Signed-out demo mode: showing mock tool cards. Sign in to sync the tool catalog.</div>}
           <div className="mcpGrid compactStoreGrid">
             {dbMcpAvailable ? mcpServers.map((server) => {
-              const defaultPermission = server.metadata?.recommendedPermission ?? (server.riskLevel === "low" ? "read_only" : server.riskLevel === "high" ? "draft_only" : server.riskLevel === "restricted" ? "blocked" : "approval_required");
+              const defaultPermission = server.recommendedPermission;
+              const isVerified = server.verificationStatus === "verified";
+              const isCommunity = server.verificationStatus === "community";
+              const isUnverified = server.verificationStatus === "unverified";
               return (
                 <article className="mcpCard compactAgentCard" key={server.id}>
                   <div className="panelHeader">
-                    <span>{server.registrySource}</span>
+                    <span>{isVerified ? "AgentDock verified" : isCommunity ? "Community" : "Official MCP Registry"}</span>
                     <strong>{server.riskLevel} risk</strong>
                   </div>
                   <div className="badgeGroup">
-                    {server.verified && <span className="verifiedBadge">Verified</span>}
+                    {isVerified && <span className="verifiedBadge">Verified</span>}
+                    {isCommunity && <span className="rankText">Community</span>}
+                    {isUnverified && <span className="rankText">Unverified</span>}
                     <span className="rankText">{server.category ?? "Uncategorized"}</span>
                   </div>
                   <h3>{server.displayName}</h3>
                   <p>{server.description}</p>
                   <Metric label="Access" value={defaultPermission.replaceAll("_", " ")} />
-                  <Metric label="Tools" value={`${server.tools?.length ?? 0} metadata records`} />
+                  <Metric label="Tools" value={server.tools?.length ? `${server.tools.length} metadata records` : "No tool metadata"} />
                   <div className="buttonPair">
-                    <button className="secondaryButton smallButton" disabled={attachingMcpId === server.id} onClick={() => attachMcpToWorkflow(server)}>
-                      {attachingMcpId === server.id ? "Adding..." : "Add Tool"}
+                    <button
+                      className="secondaryButton smallButton"
+                      disabled={attachingMcpId === server.id}
+                      onClick={() => attachMcpToWorkflow(server)}
+                      title={isUnverified ? "Approval required · read-only grant" : undefined}
+                    >
+                      {attachingMcpId === server.id ? "Adding..." : isUnverified ? "Add (approval required)" : "Add Tool"}
                     </button>
-                    <button className="secondaryButton smallButton localPreviewButton" onClick={() => setMcpMessage(`${server.displayName}: ${server.description} Source: ${server.registrySource}. Execution is off.`)}>Preview details</button>
+                    <button className="secondaryButton smallButton localPreviewButton" onClick={() => setMcpMessage(`${server.displayName}: ${server.description} Source: ${server.registrySource}. Execution is off.`)}>Details</button>
                   </div>
                 </article>
               );

@@ -11,39 +11,46 @@ export async function GET(request: Request) {
     return parsed.response;
   }
 
-  const { category, riskLevel, verified } = parsed.data;
+  const { category, riskLevel, verification, source, q, cursor, limit: rawLimit } = parsed.data;
+  const pageSize = rawLimit ?? 24;
 
   try {
-    const servers = await prisma.mcpServer.findMany({
-      where: {
-        ...(category ? { category } : {}),
-        ...(riskLevel ? { riskLevel } : {}),
-        ...(verified ? { verified: verified === "true" } : {})
-      },
-      include: {
-        tools: {
-          orderBy: { name: "asc" }
-        },
-        workflowMcps: {
-          include: { workflow: true },
-          orderBy: { createdAt: "desc" }
-        },
-        accessGrants: {
-          include: {
-            workflow: true,
-            agent: true
-          },
-          orderBy: { createdAt: "desc" }
-        }
-      },
-      orderBy: [
-        { verified: "desc" },
-        { riskLevel: "asc" },
-        { displayName: "asc" }
-      ]
-    });
+    const where = {
+      ...(category ? { category } : {}),
+      ...(riskLevel ? { riskLevel } : {}),
+      ...(verification ? { verificationStatus: verification } : {}),
+      ...(source ? { registrySource: source } : {}),
+      ...(q
+        ? {
+            OR: [
+              { displayName: { contains: q, mode: "insensitive" as const } },
+              { description: { contains: q, mode: "insensitive" as const } }
+            ]
+          }
+        : {})
+    };
 
-    return NextResponse.json({ servers });
+    const [total, servers] = await Promise.all([
+      prisma.mcpServer.count({ where }),
+      prisma.mcpServer.findMany({
+        where,
+        include: {
+          tools: { orderBy: { name: "asc" } }
+        },
+        orderBy: [
+          { verificationStatus: "asc" },
+          { displayName: "asc" }
+        ],
+        take: pageSize + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+      })
+    ]);
+
+    const hasMore = servers.length > pageSize;
+    const page = hasMore ? servers.slice(0, pageSize) : servers;
+    const nextCursor = hasMore ? page[page.length - 1].id : null;
+
+    return NextResponse.json({ servers: page, nextCursor, total });
   } catch (error) {
     console.error("MCP server load failed", error);
     return NextResponse.json({ message: "Unable to load MCP servers." }, { status: 500 });

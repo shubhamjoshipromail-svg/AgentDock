@@ -95,12 +95,52 @@ export function listActivity(fallbackMessage = "Unable to load Timeline.") {
   return request<{ activityLogs: PersistedActivityLog[] }>("/api/activity", fallbackMessage);
 }
 
-export function listToolServers(fallbackMessage = "Unable to load MCP catalog.") {
-  return request<{ servers: PersistedMcpServer[] }>("/api/mcp/servers", fallbackMessage);
+export type ListToolServersParams = {
+  q?: string;
+  category?: string;
+  riskLevel?: "low" | "medium" | "high" | "restricted";
+  verification?: "verified" | "community" | "unverified";
+  source?: string;
+  cursor?: string;
+  limit?: number;
+};
+
+export function listToolServers(
+  params: ListToolServersParams | string = {},
+  fallbackMessage = "Unable to load MCP catalog."
+) {
+  if (typeof params === "string") {
+    return request<{ servers: PersistedMcpServer[]; nextCursor?: string | null; total?: number }>(
+      "/api/mcp/servers",
+      params
+    );
+  }
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.category) qs.set("category", params.category);
+  if (params.riskLevel) qs.set("riskLevel", params.riskLevel);
+  if (params.verification) qs.set("verification", params.verification);
+  if (params.source) qs.set("source", params.source);
+  if (params.cursor) qs.set("cursor", params.cursor);
+  if (params.limit) qs.set("limit", String(params.limit));
+  const path = qs.toString() ? `/api/mcp/servers?${qs.toString()}` : "/api/mcp/servers";
+  return request<{ servers: PersistedMcpServer[]; nextCursor?: string | null; total?: number }>(
+    path,
+    fallbackMessage
+  );
 }
 
+export type SyncSummary = {
+  fetched: number;
+  upserted: number;
+  skipped: number;
+  failed: number;
+  source: string;
+  durationMs: number;
+};
+
 export function syncToolCatalog(fallbackMessage = "Tool sync failed.") {
-  return request<{ imported: number; source: string }>("/api/mcp/sync-registry", fallbackMessage, { method: "POST" });
+  return request<SyncSummary>("/api/mcp/sync-registry", fallbackMessage, { method: "POST" });
 }
 
 export type AttachToolInput = ToolAttachRequestInput;

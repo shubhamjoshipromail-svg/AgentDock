@@ -139,6 +139,12 @@ enum McpDefaultPermission {
   blocked
 }
 
+enum McpVerificationStatus {
+  verified
+  community
+  unverified
+}
+
 model User {
   id                String              @id @default(uuid()) @db.Uuid
   name              String?
@@ -406,29 +412,34 @@ model ActivityLog {
 }
 
 model McpServer {
-  id              String        @id @default(uuid()) @db.Uuid
-  name            String        @unique
-  displayName     String        @map("display_name")
-  description     String
-  registrySource  String        @map("registry_source")
-  registryId      String?       @unique @map("registry_id")
-  homepageUrl     String?       @map("homepage_url")
-  repositoryUrl   String?       @map("repository_url")
-  packageName     String?       @map("package_name")
-  packageRegistry String?       @map("package_registry")
-  version         String?
-  verified        Boolean       @default(false)
-  riskLevel       McpRiskLevel  @map("risk_level")
-  category        String?
-  installCommand  String?       @map("install_command")
-  metadata        Json          @default("{}")
-  lastSyncedAt    DateTime?     @map("last_synced_at")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  tools           McpTool[]
-  workflowMcps    WorkflowMcp[]
-  accessGrants    McpAccessGrant[]
+  id                   String                @id @default(uuid()) @db.Uuid
+  name                 String                @unique
+  displayName          String                @map("display_name")
+  description          String
+  registrySource       String                @map("registry_source")
+  registryId           String?               @map("registry_id")
+  homepageUrl          String?               @map("homepage_url")
+  repositoryUrl        String?               @map("repository_url")
+  packageName          String?               @map("package_name")
+  packageRegistry      String?               @map("package_registry")
+  packageInfo          Json?                 @map("package_info")
+  version              String?
+  verificationStatus   McpVerificationStatus @default(unverified) @map("verification_status")
+  riskLevel            McpRiskLevel          @map("risk_level")
+  recommendedPermission McpDefaultPermission @default(approval_required) @map("recommended_permission")
+  category             String?
+  installCommand       String?               @map("install_command")
+  registryRaw          Json?                 @map("registry_raw")
+  metadata             Json                  @default("{}")
+  lastSyncedAt         DateTime?             @map("last_synced_at")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  tools                McpTool[]
+  workflowMcps         WorkflowMcp[]
+  accessGrants         McpAccessGrant[]
 
+  @@unique([registrySource, registryId])
+  @@index([verificationStatus])
   @@index([riskLevel])
   @@index([category])
   @@map("mcp_servers")
