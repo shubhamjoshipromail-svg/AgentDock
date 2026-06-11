@@ -5,8 +5,10 @@ import type { NormalizedMcpServer } from "./types";
 // External servers get conservative defaults because AgentDock has not verified them.
 // These values are never copied from registry metadata — they are AgentDock's judgment.
 
-const EXTERNAL_RISK_LEVEL: McpRiskLevel = "medium";
-const EXTERNAL_PERMISSION: McpDefaultPermission = "approval_required";
+// Exported so the orchestrator's clamp step mirrors this judgment instead of
+// duplicating it divergently: any non-verified server's permission floor.
+export const EXTERNAL_RISK_LEVEL: McpRiskLevel = "medium";
+export const EXTERNAL_PERMISSION: McpDefaultPermission = "approval_required";
 
 // Sanitize a registry name like "ac.inference.sh/mcp" into a valid DB slug.
 // The registry name is already unique per source, so we use it as-is (namespaced).
