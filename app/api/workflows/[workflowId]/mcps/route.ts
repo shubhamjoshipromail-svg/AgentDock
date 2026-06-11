@@ -109,7 +109,7 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
       return NextResponse.json({ message: "MCP server metadata not found. Sync the MCP registry first." }, { status: 404 });
     }
 
-    const defaultPermission = body.defaultPermission ?? defaultPermissionForRisk(mcpServer.riskLevel);
+    const defaultPermission = body.defaultPermission ?? mcpServer.recommendedPermission;
     const grantTemplate = grantTemplateForPermission(defaultPermission, mcpServer.riskLevel);
 
     const result = await prisma.$transaction(async (tx) => {
