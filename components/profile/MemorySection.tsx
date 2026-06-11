@@ -144,7 +144,7 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
                 {activeDbPartition.accessGrants.length ? activeDbPartition.accessGrants.map((grant) => (
                   <div className="grantEditor" key={grant.id}>
                     <div>
-                      <strong>{grant.agent?.name ?? grant.workflow?.name ?? "Workflow grant"}</strong>
+                      <strong>{grant.agent?.name ?? grant.workflow?.name ?? "Flow grant"}</strong>
                       <span>{grant.workflow?.name ?? "No Flow scope"}</span>
                     </div>
                     <div className="grantToggleGrid">

@@ -21,6 +21,9 @@ import type {
   ToolGrantPatchInput
 } from "../validation/schemas";
 
+// TODO: response keys still mirror the DB (workflow/mcp). The domain verbs here
+// already say Flow/Tool; once the Prisma models are renamed (@@map), drop the
+// internal workflow/mcp wording from the Persisted* types too.
 async function request<T>(path: string, fallbackMessage: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   const data = await response.json();

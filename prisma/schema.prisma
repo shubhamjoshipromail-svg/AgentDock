@@ -238,6 +238,9 @@ model Agent {
   @@map("agents")
 }
 
+// TODO: rename DB models to Flow/Tool with @@map (Workflow -> Flow, Mcp* ->
+// Tool*) to match the UI/TS naming. Deferred: high-churn rename, out of scope
+// for the light naming pass. The UI + api/client.ts boundary already say Flow/Tool.
 model Workflow {
   id                 String              @id @default(uuid()) @db.Uuid
   userId             String              @map("user_id") @db.Uuid
