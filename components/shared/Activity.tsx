@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { listActivity } from "../../lib/api/client";
-import { activityLogToAuditEvent } from "../../lib/mock-data";
+import { activityLogToAuditEvent } from "../mock-data";
 import type { AuditEvent, PersistedActivityLog } from "../../lib/types";
 import { Metric, PageHeader } from "../layout/primitives";
 

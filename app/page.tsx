@@ -15,7 +15,7 @@ import {
   baseAuditEvents,
   recommendedBuilderNodes,
   simulatedRunEvents
-} from "../lib/mock-data";
+} from "../components/mock-data";
 import type {
   AuditEvent,
   BuilderNode,

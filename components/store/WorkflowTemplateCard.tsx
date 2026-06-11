@@ -1,6 +1,6 @@
 "use client";
 
-import { workflowTemplates } from "../../lib/mock-data";
+import { workflowTemplates } from "../mock-data";
 import { ComingSoonButton, Metric } from "../layout/primitives";
 
 export function WorkflowTemplateCard({ workflow }: { workflow: typeof workflowTemplates[number] }) {

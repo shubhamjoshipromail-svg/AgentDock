@@ -54,6 +54,8 @@ export type PersistedWorkflow = {
   weeklyBudgetCents: number;
   maxRunBudgetCents: number;
   approvalMode: string;
+  userId?: string;
+  layout?: unknown;
   workflowAgents: {
     id: string;
     roleInWorkflow: string;

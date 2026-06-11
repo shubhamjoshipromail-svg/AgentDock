@@ -1,6 +1,6 @@
 "use client";
 
-import { credentials, providerUsage } from "../../lib/mock-data";
+import { credentials, providerUsage } from "../mock-data";
 import { Card, CapabilityBadge, PageHeader, WorkflowMini } from "../layout/primitives";
 
 export function KeysBilling({ spend }: { spend: number }) {

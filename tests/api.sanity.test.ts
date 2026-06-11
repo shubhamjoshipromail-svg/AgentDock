@@ -36,6 +36,29 @@ async function saveWorkflow() {
   return data.workflow as { id: string };
 }
 
+// Generic simulate only emits an approval when an approval-gated tool is attached;
+// this helper saves a flow with one so the approval-path assertions hold.
+async function saveWorkflowWithApprovalTool() {
+  const server = await prisma.mcpServer.create({
+    data: {
+      name: "gmail-draft-test",
+      displayName: "Gmail Draft MCP",
+      description: "Draft-only email tool for tests.",
+      registrySource: "test",
+      riskLevel: "high",
+      verified: true
+    }
+  });
+
+  const response = await createWorkflow(jsonRequest("http://localhost/api/workflows", {
+    ...workflowPayload,
+    tools: [{ mcpServerId: server.id, defaultPermission: "draft_only" }]
+  }));
+  expect(response.status).toBe(201);
+  const data = await response.json();
+  return data.workflow as { id: string };
+}
+
 describe("API sanity (regression net)", () => {
   beforeEach(async () => {
     await resetDatabase();
@@ -60,7 +83,7 @@ describe("API sanity (regression net)", () => {
   });
 
   it("POST /api/workflow-runs/simulate creates a run with events and approvals", async () => {
-    const workflow = await saveWorkflow();
+    const workflow = await saveWorkflowWithApprovalTool();
 
     const response = await simulateRun(jsonRequest("http://localhost/api/workflow-runs/simulate", { workflowId: workflow.id }));
     expect(response.status).toBe(201);
@@ -76,7 +99,7 @@ describe("API sanity (regression net)", () => {
   });
 
   it("POST /api/approvals/[id]/resolve updates approval status", async () => {
-    const workflow = await saveWorkflow();
+    const workflow = await saveWorkflowWithApprovalTool();
     const simulateResponse = await simulateRun(jsonRequest("http://localhost/api/workflow-runs/simulate", { workflowId: workflow.id }));
     const simulateData = await simulateResponse.json();
     const approval = simulateData.workflowRun.approvalRequests[0] as { id: string };

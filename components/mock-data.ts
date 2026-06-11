@@ -9,7 +9,7 @@ import type {
   PersistedActivityLog,
   RuntimeMode,
   Section
-} from "./types";
+} from "../lib/types";
 
 export const sections: Section[] = ["Build", "Store", "Flows", "Control", "Profile"];
 export const flow = ["Discovery", "Research", "Resume", "Outreach"];
@@ -335,20 +335,6 @@ export const builderSimulateEvents: AuditEvent[] = [
   { event: "Memory Firewall blocked unrelated Finance Memory access", type: "memory access", agent: "Outreach Draft Agent", workflow: "Job Search Automation", tool: "Memory Firewall", permission: "read", memory: "Finance Memory", cost: "$0.00", decision: "blocked" },
   { event: "Access Gateway minted temporary scoped access", type: "credential minting", agent: "AgentDock Orchestration Agent", workflow: "Job Search Automation", tool: "Access Gateway", permission: "temporary model/tool access", memory: "None", cost: "$0.00", decision: "approved" }
 ];
-
-export const jobSearchWorkflowPayload = {
-  name: "Job Search Automation",
-  goal: "Find high-fit AI platform roles, research each company, tailor the resume, and draft outreach for approval.",
-  weeklyBudgetCents: 500,
-  maxRunBudgetCents: 150,
-  approvalMode: "approval_gated" as const,
-  agents: [
-    { agentName: "Job Discovery Agent", roleInWorkflow: "Discover roles", routeOrder: 1, defaultMode: "Autonomous discovery" },
-    { agentName: "Company Research Agent", roleInWorkflow: "Research targets", routeOrder: 2, defaultMode: "Human-reviewed notes" },
-    { agentName: "Resume Tailoring Agent", roleInWorkflow: "Tailor resume", routeOrder: 3, defaultMode: "Approval before export" },
-    { agentName: "Outreach Draft Agent", roleInWorkflow: "Draft outreach", routeOrder: 4, defaultMode: "Draft-only" }
-  ]
-};
 
 export const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 

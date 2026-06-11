@@ -1,6 +1,6 @@
 "use client";
 
-import { flow } from "../../lib/mock-data";
+import { flow } from "../mock-data";
 
 export function RouteView() {
   return (

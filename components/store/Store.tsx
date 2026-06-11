@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { attachToolToFlow, listFlows, listToolServers, syncToolCatalog } from "../../lib/api/client";
-import { agents, mcpTools, workflowTemplates } from "../../lib/mock-data";
+import { agents, mcpTools, workflowTemplates } from "../mock-data";
 import type { PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
 import { CapabilityBadge, ComingSoonButton, Metric, PageHeader } from "../layout/primitives";
 import { WorkflowTemplateCard } from "./WorkflowTemplateCard";
@@ -26,6 +26,7 @@ export function Store({
   const [mcpMessage, setMcpMessage] = useState("");
   const [syncingMcp, setSyncingMcp] = useState(false);
   const [attachingMcpId, setAttachingMcpId] = useState("");
+  const [selectedFlowId, setSelectedFlowId] = useState("");
 
   const loadMcpServers = async () => {
     if (!session?.user) {
@@ -89,10 +90,21 @@ export function Store({
       return;
     }
 
-    const workflow = savedWorkflows.find((item) => item.name === "Job Search Automation") ?? savedWorkflows[0];
+    if (savedWorkflows.length === 0) {
+      setMcpMessage("Save a Flow from Build first, then add tools to it.");
+      return;
+    }
+
+    // Target the user-selected Flow. With a single Flow, use it; with several,
+    // require an explicit choice rather than guessing by name.
+    const workflow = selectedFlowId
+      ? savedWorkflows.find((item) => item.id === selectedFlowId)
+      : savedWorkflows.length === 1
+        ? savedWorkflows[0]
+        : undefined;
 
     if (!workflow?.id) {
-      setMcpMessage("Save Job Search Automation first, then add tools to the Flow.");
+      setMcpMessage("Select which Flow to add this tool to.");
       return;
     }
 
@@ -161,6 +173,19 @@ export function Store({
           <div className="mcpStoreIntro">
             <p>Listed does not mean trusted. AgentDock adds risk, access, Flow scope, logs, and revocation first.</p>
             <div className="buttonPair">
+              {savedWorkflows.length > 1 && (
+                <select
+                  className="secondaryButton smallButton"
+                  aria-label="Target Flow for Add Tool"
+                  value={selectedFlowId}
+                  onChange={(event) => setSelectedFlowId(event.target.value)}
+                >
+                  <option value="">Select a Flow…</option>
+                  {savedWorkflows.map((workflow) => (
+                    <option key={workflow.id} value={workflow.id}>{workflow.name}</option>
+                  ))}
+                </select>
+              )}
               <button className="primaryButton" onClick={syncMcpRegistry} disabled={syncingMcp}>
                 {syncingMcp ? "Syncing..." : "Sync Tools"}
               </button>

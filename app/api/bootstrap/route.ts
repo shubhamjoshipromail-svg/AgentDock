@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
+import type { DefaultAccessPolicy, MemoryAction, AccessDecision, MemoryPartitionType, MemorySourceType, SensitivityLevel } from "@prisma/client";
 
 import { getCurrentUser } from "../../../lib/auth-user";
 import { agentDefaults } from "../../../lib/catalog/agent-defaults";
+import {
+  starterFlowTemplate,
+  starterMemoryGrants,
+  starterMemoryItems,
+  starterMemoryLogs,
+  starterMemoryPartitions
+} from "../../../lib/catalog/templates";
 import { prisma } from "../../../lib/prisma";
 
 // Idempotent per-user bootstrap. Called once from the client after sign-in;
 // safe to call repeatedly. All starter data creation lives here so GET routes
-// stay pure reads.
+// stay pure reads. The starter content itself is defined in
+// lib/catalog/templates.ts.
 export async function POST() {
   const user = await getCurrentUser();
 
@@ -27,7 +36,7 @@ export async function POST() {
     }
 
     let workflow = await prisma.workflow.findFirst({
-      where: { userId, name: "Job Search Automation" }
+      where: { userId, name: starterFlowTemplate.name }
     });
     let createdWorkflow = false;
 
@@ -35,139 +44,89 @@ export async function POST() {
       workflow = await prisma.workflow.create({
         data: {
           userId,
-          name: "Job Search Automation",
-          goal: "Find high-fit AI platform roles, research each company, tailor the resume, and draft outreach for approval.",
+          name: starterFlowTemplate.name,
+          goal: starterFlowTemplate.goal,
           status: "active",
-          weeklyBudgetCents: 500,
-          maxRunBudgetCents: 150,
-          approvalMode: "approval_gated"
+          weeklyBudgetCents: starterFlowTemplate.weeklyBudgetCents,
+          maxRunBudgetCents: starterFlowTemplate.maxRunBudgetCents,
+          approvalMode: starterFlowTemplate.approvalMode
         }
       });
       createdWorkflow = true;
-    }
 
-    const starterWorkflowAgents = [
-      ["Job Discovery Agent", "Discover roles", 1, "Autonomous discovery"],
-      ["Company Research Agent", "Research targets", 2, "Human-reviewed notes"],
-      ["Resume Tailoring Agent", "Tailor resume", 3, "Approval before export"],
-      ["Outreach Draft Agent", "Draft outreach", 4, "Draft-only"]
-    ] as const;
-
-    if (createdWorkflow) {
-      for (const [agentName, roleInWorkflow, routeOrder, defaultMode] of starterWorkflowAgents) {
+      for (const templateAgent of starterFlowTemplate.agents) {
         await prisma.workflowAgent.upsert({
           where: {
             workflowId_agentId: {
               workflowId: workflow.id,
-              agentId: agents[agentName].id
+              agentId: agents[templateAgent.agentName].id
             }
           },
           update: {},
           create: {
             workflowId: workflow.id,
-            agentId: agents[agentName].id,
-            roleInWorkflow,
-            routeOrder,
-            defaultMode
+            agentId: agents[templateAgent.agentName].id,
+            roleInWorkflow: templateAgent.roleInWorkflow,
+            routeOrder: templateAgent.routeOrder,
+            defaultMode: templateAgent.defaultMode
           }
         });
       }
     }
 
-    const partitionInputs = [
-      ["Global Profile", "global", "medium", "User-level preferences and durable profile facts.", "approval_required", false],
-      ["Job Search Memory", "workflow", "medium", "Roles, target companies, search criteria, and job-search preferences.", "workflow_scoped", true],
-      ["Resume Memory", "workflow", "high", "Resume source, approved bullets, and work-history context.", "approval_required", true],
-      ["Research Memory", "workflow", "medium", "Company briefs, recruiter notes, and opportunity research.", "workflow_scoped", true],
-      ["Finance Memory", "domain", "restricted", "Finance preferences and sensitive financial context.", "blocked_by_default", false],
-      ["Health Memory", "domain", "restricted", "Health-related context that agents cannot access by default.", "blocked_by_default", false],
-      ["Travel Memory", "domain", "high", "Location, itinerary, and travel preference context.", "approval_required", false]
-    ] as const;
-
     const partitions: Record<string, { id: string }> = {};
     const createdPartitions = new Set<string>();
 
-    for (const [name, type, sensitivityLevel, description, defaultAccessPolicy, scopedToWorkflow] of partitionInputs) {
-      const existing = await prisma.memoryPartition.findFirst({ where: { userId, name } });
+    for (const partition of starterMemoryPartitions) {
+      const existing = await prisma.memoryPartition.findFirst({ where: { userId, name: partition.name } });
 
       if (existing) {
-        partitions[name] = existing;
+        partitions[partition.name] = existing;
         continue;
       }
 
-      partitions[name] = await prisma.memoryPartition.create({
+      partitions[partition.name] = await prisma.memoryPartition.create({
         data: {
           userId,
-          workflowId: scopedToWorkflow ? workflow.id : null,
-          name,
-          type,
-          sensitivityLevel,
-          description,
-          defaultAccessPolicy
+          workflowId: partition.scopedToStarterFlow ? workflow.id : null,
+          name: partition.name,
+          type: partition.type as MemoryPartitionType,
+          sensitivityLevel: partition.sensitivityLevel as SensitivityLevel,
+          description: partition.description,
+          defaultAccessPolicy: partition.defaultAccessPolicy as DefaultAccessPolicy
         }
       });
-      createdPartitions.add(name);
+      createdPartitions.add(partition.name);
     }
 
-    if (createdPartitions.has("Job Search Memory") || createdPartitions.has("Resume Memory") || createdPartitions.has("Research Memory")) {
+    const newItems = starterMemoryItems.filter((item) => createdPartitions.has(item.partitionName));
+
+    if (newItems.length) {
       await prisma.memoryItem.createMany({
-        data: [
-          ...(createdPartitions.has("Job Search Memory") ? [{
-            partitionId: partitions["Job Search Memory"].id,
-            userId,
-            title: "Target role pattern",
-            content: "Prioritize AI agent infrastructure, control plane, and platform engineering roles.",
-            sourceType: "user" as const,
-            sourceWorkflowId: workflow.id,
-            sensitivityLevel: "medium" as const,
-            metadata: { tags: ["job-search", "preferences"], source: "bootstrap" }
-          }] : []),
-          ...(createdPartitions.has("Resume Memory") ? [{
-            partitionId: partitions["Resume Memory"].id,
-            userId,
-            title: "Approved resume positioning",
-            content: "Position around agent platforms, orchestration, safety, and high-trust product systems.",
-            sourceType: "workflow" as const,
-            sourceWorkflowId: workflow.id,
-            sensitivityLevel: "high" as const,
-            metadata: { tags: ["resume", "approved"], source: "bootstrap" }
-          }] : []),
-          ...(createdPartitions.has("Research Memory") ? [{
-            partitionId: partitions["Research Memory"].id,
-            userId,
-            title: "Company research preference",
-            content: "Summaries should include product surface, hiring signals, leadership, and recent funding.",
-            sourceType: "agent" as const,
-            sourceAgentId: agents["Company Research Agent"].id,
-            sourceWorkflowId: workflow.id,
-            sensitivityLevel: "medium" as const,
-            metadata: { tags: ["research"], source: "bootstrap" }
-          }] : [])
-        ]
+        data: newItems.map((item) => ({
+          partitionId: partitions[item.partitionName].id,
+          userId,
+          title: item.title,
+          content: item.content,
+          sourceType: item.sourceType as MemorySourceType,
+          sourceAgentId: item.sourceAgentName ? agents[item.sourceAgentName]?.id : undefined,
+          sourceWorkflowId: workflow.id,
+          sensitivityLevel: item.sensitivityLevel as SensitivityLevel,
+          metadata: item.metadata
+        }))
       });
     }
 
-    const grantInputs: [string, string, { read?: boolean; write?: boolean; edit?: boolean; delete?: boolean; share?: boolean; approval?: boolean }][] = [
-      ["Job Search Memory", "Job Discovery Agent", { read: true, write: true }],
-      ["Job Search Memory", "Resume Tailoring Agent", { read: true, write: true }],
-      ["Job Search Memory", "Company Research Agent", { read: true, write: true }],
-      ["Job Search Memory", "Outreach Draft Agent", { read: true, write: true, approval: true }],
-      ["Resume Memory", "Resume Tailoring Agent", { read: true, write: true, edit: true, approval: true }],
-      ["Research Memory", "Company Research Agent", { read: true, write: true }],
-      ["Research Memory", "Outreach Draft Agent", { read: true }],
-      ["Finance Memory", "Finance Agent", { approval: true }],
-      ["Health Memory", "Health Agent", { approval: true }]
-    ];
-
-    for (const [partitionName, agentName, flags] of grantInputs) {
-      if (!createdPartitions.has(partitionName)) {
+    for (const grant of starterMemoryGrants) {
+      if (!createdPartitions.has(grant.partitionName)) {
         continue;
       }
 
+      const flags = grant.flags as { read?: boolean; write?: boolean; edit?: boolean; delete?: boolean; share?: boolean; approval?: boolean };
       await prisma.memoryAccessGrant.create({
         data: {
-          partitionId: partitions[partitionName].id,
-          agentId: agents[agentName].id,
+          partitionId: partitions[grant.partitionName].id,
+          agentId: agents[grant.agentName].id,
           workflowId: workflow.id,
           userId,
           canRead: Boolean(flags.read),
@@ -180,27 +139,19 @@ export async function POST() {
       });
     }
 
-    if (createdPartitions.has("Job Search Memory") || createdPartitions.has("Health Memory")) {
+    const newLogs = starterMemoryLogs.filter((log) => createdPartitions.has(log.partitionName));
+
+    if (newLogs.length) {
       await prisma.memoryAccessLog.createMany({
-        data: [
-          ...(createdPartitions.has("Job Search Memory") ? [{
-            userId,
-            partitionId: partitions["Job Search Memory"].id,
-            agentId: agents["Resume Tailoring Agent"].id,
-            workflowId: workflow.id,
-            action: "read" as const,
-            decision: "allowed" as const,
-            reason: "Resume Tailoring Agent read Job Search Memory within workflow grant."
-          }] : []),
-          ...(createdPartitions.has("Health Memory") ? [{
-            userId,
-            partitionId: partitions["Health Memory"].id,
-            agentId: agents["Shopping Agent"].id,
-            action: "read" as const,
-            decision: "blocked" as const,
-            reason: "Shopping Agent attempted to read Health Memory."
-          }] : [])
-        ]
+        data: newLogs.map((log) => ({
+          userId,
+          partitionId: partitions[log.partitionName].id,
+          agentId: agents[log.agentName]?.id,
+          workflowId: log.scopedToStarterFlow ? workflow.id : undefined,
+          action: log.action as MemoryAction,
+          decision: log.decision as AccessDecision,
+          reason: log.reason
+        }))
       });
     }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { sections } from "../../lib/mock-data";
+import { sections } from "../mock-data";
 import type { Section } from "../../lib/types";
 import { AuthStatus } from "./AuthMenu";
 

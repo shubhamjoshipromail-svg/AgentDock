@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { listFlows, patchToolGrant, revokeToolGrant, saveFlow } from "../../lib/api/client";
-import { formatCents, jobSearchWorkflowPayload, workflowAgents } from "../../lib/mock-data";
+import { starterFlowTemplate } from "../../lib/catalog/templates";
+import { formatCents, workflowAgents } from "../mock-data";
 import type { LibraryTab, PersistedMcpAccessGrant, PersistedWorkflow } from "../../lib/types";
 import { Card, CapabilityBadge, DetailBlock, PageHeader } from "../layout/primitives";
 import { KeysBilling } from "./KeysBilling";
@@ -50,7 +51,7 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
     setWorkflowMessage("");
 
     try {
-      await saveFlow(jobSearchWorkflowPayload, "Flow save failed.");
+      await saveFlow(starterFlowTemplate, "Flow save failed.");
       setWorkflowMessage("Flow saved to your AgentDock profile.");
       await loadSavedWorkflows();
     } catch (error) {
@@ -61,7 +62,7 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
   };
 
   const visibleWorkflows = session?.user ? savedWorkflows : [];
-  const selectedWorkflow = visibleWorkflows.find((workflow) => workflow.name === "Job Search Automation") ?? visibleWorkflows[0];
+  const selectedWorkflow = visibleWorkflows[0];
   const installedAgents = visibleWorkflows.flatMap((workflow) => workflow.workflowAgents.map((workflowAgent) => workflowAgent.agent));
   const attachedMcps = visibleWorkflows.flatMap((workflow) => workflow.workflowMcps ?? []);
 
@@ -129,7 +130,7 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
             ))}
             <div className="heroActions compactActions">
               <button className="secondaryButton" onClick={saveWorkflowToProfile} disabled={savingWorkflow}>
-                {savingWorkflow ? "Saving..." : "Save Job Search"}
+                {savingWorkflow ? "Saving..." : "Load starter template"}
               </button>
             </div>
           </Card>

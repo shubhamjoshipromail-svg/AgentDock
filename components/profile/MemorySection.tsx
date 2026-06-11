@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { loadMemory, patchMemoryGrant, revokeMemoryGrant } from "../../lib/api/client";
-import { memoryPartitions } from "../../lib/mock-data";
+import { memoryPartitions } from "../mock-data";
 import type { PersistedMemoryGrant, PersistedMemoryPartition, PersistedMemoryPayload } from "../../lib/types";
 import { ComingSoonButton, DetailBlock } from "../layout/primitives";
 

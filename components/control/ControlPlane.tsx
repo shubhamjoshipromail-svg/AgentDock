@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { listFlows, listRuns, resolveApproval, simulateRun } from "../../lib/api/client";
-import { formatCents } from "../../lib/mock-data";
+import { formatCents } from "../mock-data";
 import type {
   AuditEvent,
   PersistedApprovalRequest,

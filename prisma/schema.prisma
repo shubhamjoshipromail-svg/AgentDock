@@ -247,6 +247,8 @@ model Workflow {
   weeklyBudgetCents  Int                 @map("weekly_budget_cents")
   maxRunBudgetCents  Int                 @map("max_run_budget_cents")
   approvalMode       ApprovalMode        @map("approval_mode")
+  // Serialized builder canvas (nodes/positions/edges) for the future visual builder.
+  layout             Json?
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)

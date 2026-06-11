@@ -27,7 +27,7 @@ export const curatedMcpServers: CuratedMcpServer[] = [
   {
     name: "search-mcp",
     displayName: "Search MCP",
-    description: "Public web discovery for research, job search, and market monitoring workflows.",
+    description: "Public web discovery for research and market monitoring workflows.",
     registrySource: "agentdock-curated-fallback",
     registryId: "agentdock:search-mcp",
     category: "Public info",

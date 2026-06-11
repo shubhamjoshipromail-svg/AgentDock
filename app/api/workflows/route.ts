@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
+import type { Prisma } from "@prisma/client";
+
 import { getCurrentUser } from "../../../lib/auth-user";
 import { agentDefaultsByName } from "../../../lib/catalog/agent-defaults";
+import { defaultPermissionForRisk, grantTemplateForPermission } from "../../../lib/mcp-catalog";
 import { prisma } from "../../../lib/prisma";
 import { parseJsonBody } from "../../../lib/validation/parse";
 import { createFlowSchema, type CreateFlowAgentInput, type CreateFlowInput } from "../../../lib/validation/schemas";
@@ -54,10 +57,24 @@ async function resolveWorkflowAgents(userId: string, agentInputs: WorkflowAgentI
     }
   });
 
-  const missingAgentNames = agentNames.filter((name) => !matchedAgents.some((agent) => agent.name === name) && agentDefaultsByName[name]);
+  // Create any agent the user references that doesn't already exist for them.
+  // Known catalog names use their rich defaults; arbitrary user-defined agents
+  // get sane placeholder metadata so the built flow persists honestly.
+  const missingAgentNames = agentNames.filter((name) => !matchedAgents.some((agent) => agent.name === name));
 
   for (const name of missingAgentNames) {
-    const { name: _ignored, ...defaults } = agentDefaultsByName[name]!;
+    const catalog = agentDefaultsByName[name];
+    const defaults = catalog
+      ? (({ name: _ignored, ...rest }) => rest)(catalog)
+      : {
+          category: "Custom",
+          provider: "Custom",
+          trustScore: 50,
+          costPerTask: 5,
+          tokenEfficiency: 50,
+          verified: false,
+          description: `${name} (user-defined agent)`
+        };
     const agent = await prisma.agent.upsert({
       where: { userId_name: { userId, name } },
       update: defaults,
@@ -93,6 +110,77 @@ async function resolveWorkflowAgents(userId: string, agentInputs: WorkflowAgentI
   };
 }
 
+// Resolve tool attachments to workflowMcp rows + per-tool access grants. Unknown
+// mcpServerIds are skipped (reported back) rather than failing the whole save.
+async function resolveWorkflowTools(workflowId: string, userId: string, tools: NonNullable<CreateWorkflowInput["tools"]>, tx: Prisma.TransactionClient) {
+  const skippedTools: string[] = [];
+
+  for (const tool of tools) {
+    const mcpServer = await tx.mcpServer.findUnique({ where: { id: tool.mcpServerId } });
+
+    if (!mcpServer) {
+      skippedTools.push(tool.mcpServerId);
+      continue;
+    }
+
+    const permission = tool.defaultPermission ?? defaultPermissionForRisk(mcpServer.riskLevel);
+    const grantTemplate = grantTemplateForPermission(permission, mcpServer.riskLevel);
+
+    await tx.workflowMcp.upsert({
+      where: { workflowId_mcpServerId: { workflowId, mcpServerId: mcpServer.id } },
+      update: { purpose: tool.purpose, defaultPermission: permission },
+      create: { workflowId, mcpServerId: mcpServer.id, purpose: tool.purpose, defaultPermission: permission }
+    });
+
+    const existingGrant = await tx.mcpAccessGrant.findFirst({
+      where: { userId, workflowId, mcpServerId: mcpServer.id }
+    });
+
+    if (existingGrant) {
+      await tx.mcpAccessGrant.update({
+        where: { id: existingGrant.id },
+        data: { ...grantTemplate, allowedActions: grantTemplate.allowedActions, blockedActions: grantTemplate.blockedActions }
+      });
+    } else {
+      await tx.mcpAccessGrant.create({
+        data: {
+          userId,
+          workflowId,
+          mcpServerId: mcpServer.id,
+          ...grantTemplate,
+          allowedActions: grantTemplate.allowedActions,
+          blockedActions: grantTemplate.blockedActions
+        }
+      });
+    }
+  }
+
+  return { skippedTools };
+}
+
+// Memory attachments scope an existing user partition to this flow by name.
+async function attachWorkflowMemory(workflowId: string, userId: string, memory: NonNullable<CreateWorkflowInput["memory"]>, tx: Prisma.TransactionClient) {
+  const skippedMemory: string[] = [];
+
+  for (const attachment of memory) {
+    const partition = await tx.memoryPartition.findFirst({
+      where: { userId, name: attachment.partitionName }
+    });
+
+    if (!partition) {
+      skippedMemory.push(attachment.partitionName);
+      continue;
+    }
+
+    await tx.memoryPartition.update({
+      where: { id: partition.id },
+      data: { workflowId }
+    });
+  }
+
+  return { skippedMemory };
+}
+
 async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
   const { workflowAgents, skippedAgents } = await resolveWorkflowAgents(userId, body.agents ?? []);
   const existingWorkflow = await prisma.workflow.findFirst({
@@ -102,42 +190,51 @@ async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
     }
   });
 
-  const workflow = existingWorkflow
-    ? await prisma.$transaction(async (tx) => {
-        await tx.workflowAgent.deleteMany({ where: { workflowId: existingWorkflow.id } });
+  const layout = (body.layout ?? undefined) as Prisma.InputJsonValue | undefined;
 
-        return tx.workflow.update({
-          where: { id: existingWorkflow.id },
+  const result = await prisma.$transaction(async (tx) => {
+    const saved = existingWorkflow
+      ? await (async () => {
+          await tx.workflowAgent.deleteMany({ where: { workflowId: existingWorkflow.id } });
+          return tx.workflow.update({
+            where: { id: existingWorkflow.id },
+            data: {
+              goal: body.goal,
+              status: "active",
+              weeklyBudgetCents: body.weeklyBudgetCents,
+              maxRunBudgetCents: body.maxRunBudgetCents,
+              approvalMode: body.approvalMode,
+              ...(layout !== undefined ? { layout } : {}),
+              workflowAgents: { create: workflowAgents }
+            }
+          });
+        })()
+      : await tx.workflow.create({
           data: {
+            userId,
+            name: body.name,
             goal: body.goal,
             status: "active",
             weeklyBudgetCents: body.weeklyBudgetCents,
             maxRunBudgetCents: body.maxRunBudgetCents,
             approvalMode: body.approvalMode,
-            workflowAgents: {
-              create: workflowAgents
-            }
-          },
-          include: workflowInclude
-        });
-      })
-    : await prisma.workflow.create({
-        data: {
-          userId,
-          name: body.name,
-          goal: body.goal,
-          status: "active",
-          weeklyBudgetCents: body.weeklyBudgetCents,
-          maxRunBudgetCents: body.maxRunBudgetCents,
-          approvalMode: body.approvalMode,
-          workflowAgents: {
-            create: workflowAgents
+            ...(layout !== undefined ? { layout } : {}),
+            workflowAgents: { create: workflowAgents }
           }
-        },
-        include: workflowInclude
-      });
+        });
 
-  return { workflow, skippedAgents };
+    const { skippedTools } = await resolveWorkflowTools(saved.id, userId, body.tools ?? [], tx);
+    const { skippedMemory } = await attachWorkflowMemory(saved.id, userId, body.memory ?? [], tx);
+
+    const workflow = await tx.workflow.findUniqueOrThrow({
+      where: { id: saved.id },
+      include: workflowInclude
+    });
+
+    return { workflow, skippedTools, skippedMemory };
+  });
+
+  return { workflow: result.workflow, skippedAgents, skippedTools: result.skippedTools, skippedMemory: result.skippedMemory };
 }
 
 async function findWorkflowsForUser(userId: string) {
@@ -176,14 +273,7 @@ export async function POST(request: Request) {
 
   const body = parsed.data;
 
-  const { workflow, skippedAgents } = await saveWorkflowForUser(user.id, {
-    name: body.name,
-    goal: body.goal,
-    weeklyBudgetCents: body.weeklyBudgetCents,
-    maxRunBudgetCents: body.maxRunBudgetCents,
-    approvalMode: body.approvalMode,
-    agents: body.agents ?? []
-  });
+  const { workflow, skippedAgents, skippedTools, skippedMemory } = await saveWorkflowForUser(user.id, body);
 
-  return NextResponse.json({ workflow, skippedAgents }, { status: 201 });
+  return NextResponse.json({ workflow, skippedAgents, skippedTools, skippedMemory }, { status: 201 });
 }

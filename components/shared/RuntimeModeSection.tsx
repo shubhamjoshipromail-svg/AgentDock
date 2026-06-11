@@ -1,6 +1,6 @@
 "use client";
 
-import { runtimeModes } from "../../lib/mock-data";
+import { runtimeModes } from "../mock-data";
 
 export function RuntimeModeSection({ context }: { context: "builder" | "workflow" }) {
   return (

@@ -12,13 +12,27 @@ export const createFlowAgentSchema = z.object({
   defaultMode: z.string()
 });
 
+export const createFlowToolSchema = z.object({
+  mcpServerId: z.string().uuid(),
+  purpose: z.string().optional(),
+  defaultPermission: z.enum(["read_only", "draft_only", "approval_required", "blocked"]).optional()
+});
+
+export const createFlowMemorySchema = z.object({
+  partitionName: z.string().min(1)
+});
+
 export const createFlowSchema = z.object({
   name: z.string().min(1),
   goal: z.string().min(1),
   weeklyBudgetCents: z.number().int().positive(),
   maxRunBudgetCents: z.number().int().positive(),
   approvalMode: z.enum(["manual", "approval_gated", "autonomous_with_limits"]),
-  agents: z.array(createFlowAgentSchema).optional()
+  agents: z.array(createFlowAgentSchema).optional(),
+  tools: z.array(createFlowToolSchema).optional(),
+  memory: z.array(createFlowMemorySchema).optional(),
+  // Serialized builder canvas (nodes, gates, positions) stored on Workflow.layout.
+  layout: z.record(z.string(), z.unknown()).optional()
 });
 
 export const simulateRunSchema = z.object({
@@ -63,6 +77,8 @@ export const toolServersQuerySchema = z.object({
 
 export type CreateFlowInput = z.infer<typeof createFlowSchema>;
 export type CreateFlowAgentInput = z.infer<typeof createFlowAgentSchema>;
+export type CreateFlowToolInput = z.infer<typeof createFlowToolSchema>;
+export type CreateFlowMemoryInput = z.infer<typeof createFlowMemorySchema>;
 export type SimulateRunInput = z.infer<typeof simulateRunSchema>;
 export type ApprovalResolveInput = z.infer<typeof approvalResolveSchema>;
 export type ToolGrantPatchInput = z.infer<typeof toolGrantPatchSchema>;
