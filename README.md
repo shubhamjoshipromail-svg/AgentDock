@@ -120,3 +120,36 @@ To test:
 - Do not store real provider keys, OAuth tokens, MCP credentials, or agent secrets in Postgres.
 - Real secrets should live in a secure vault/KMS, with only references and policy metadata stored in the database.
 - Embeddings are not implemented. The schema includes an optional pgvector column as a future-ready placeholder.
+
+## The control-tower UI
+
+AgentDock's interface is a dark "control tower" operations room: high-signal,
+telemetry-rich, monospace for every machine-true value (costs, tokens, timestamps,
+IDs, event types). Risk and decision colors are consistent everywhere — color is
+meaning. The signature surface is the **Flow Graph** (goal → agent spine → tools/
+memory/approval gates) and the **A2UI feed** in Control, where every agent event
+reaches you through one card grammar: who · what · on what · authority · decision · cost.
+
+### Screenshots
+
+_Add screenshots here:_
+- `docs/screenshots/build-graph.png` — Build: goal → plan meta → warnings strip → flow graph
+- `docs/screenshots/control-a2ui.png` — Control: A2UI timeline + approval inbox + spend panel
+- `docs/screenshots/flows.png` — Flows: flow-card grid + read-only graph detail
+- `docs/screenshots/store.png` — Store: tool catalog with risk/verification badges
+
+### 90-second demo script
+
+1. **Build** — type a goal (or click an example chip). Click **Generate Flow**.
+2. The **plan meta** line (provider · model · tokens · cost · duration) appears under the goal in mono.
+3. A **warnings strip** ("N permissions adjusted by policy") and the **flow graph** render.
+4. Tighten one tool's permission select (you can only go stricter than the policy ceiling).
+5. Click **Save Flow**.
+6. Open **Flows** — the saved flow shows in the card grid; its detail renders the same graph read-only.
+7. **Run preview** — a supervised run executes (simulated).
+8. Open **Control** — events stream in as A2UI grammar cards, color-coded by decision.
+9. One **approval** is pending in the inbox. Click **Approve** — it resolves and re-files.
+10. The **spend panel** shows the real cost in mono against the weekly cap.
+11. In Flows → My Tools (or Profile → Memory), **Revoke access** with an inline confirm.
+
+Runs scroll-free at 1440×900.

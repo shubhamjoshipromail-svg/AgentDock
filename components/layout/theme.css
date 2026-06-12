@@ -342,6 +342,8 @@ select:focus {
   padding: var(--sp-2) var(--sp-3);
 }
 
+.templateChipLabel { color: var(--text-faint); font-size: var(--fs-12); margin-right: var(--sp-1); }
+
 /* ---- Store toolbar ---- */
 .storeToolbar {
   align-items: center;

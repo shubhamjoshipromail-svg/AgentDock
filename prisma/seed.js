@@ -245,6 +245,82 @@ async function main() {
     ]
   });
 
+  // ---- A completed run so Control + Flows look alive on first load ----
+  const now = Date.now();
+  const run = await prisma.workflowRun.create({
+    data: {
+      userId: user.id,
+      workflowId: workflow.id,
+      status: "completed",
+      startedAt: new Date(now - 1000 * 60 * 12),
+      completedAt: new Date(now - 1000 * 60 * 8),
+      totalCostCents: 64,
+      riskLevel: "medium"
+    }
+  });
+
+  const runEvents = [
+    ["Job Discovery Agent", "mcp_tool_use", "Job Discovery Agent searched 12 roles", "Public job search across target companies.", "allowed", "Search MCP", "Job Search Memory", 9],
+    ["Company Research Agent", "a2a_handoff", "Company Research Agent summarized 3 companies", "Handed structured briefs to the resume step.", "allowed", "Search MCP", "Research Memory", 18],
+    ["Resume Tailoring Agent", "memory_access", "Resume Tailoring Agent read Resume Memory", "Read approved positioning within grant.", "allowed", null, "Resume Memory", 2],
+    ["Resume Tailoring Agent", "approval_requested", "Resume draft created and awaiting approval", "Tailored resume draft queued for review.", "approval_required", "Docs MCP", "Resume Memory", 24],
+    ["Outreach Draft Agent", "approval_requested", "Outreach Draft Agent created 3 Gmail drafts", "Drafts queued; sending blocked by policy.", "approval_required", "Gmail draft-only MCP", "Research Memory", 11],
+    ["Job Discovery Agent", "action_blocked", "Policy engine blocked direct application", "Apply action requires explicit approval.", "blocked", "Policy Engine", "Job Search Memory", 0]
+  ];
+
+  for (let i = 0; i < runEvents.length; i++) {
+    const [agentName, eventType, title, description, decision, mcpTool, partitionName, costCents] = runEvents[i];
+    await prisma.workflowRunEvent.create({
+      data: {
+        workflowRunId: run.id,
+        userId: user.id,
+        agentId: agents[agentName] ? agents[agentName].id : null,
+        eventType,
+        title,
+        description,
+        decision,
+        mcpTool,
+        memoryPartitionId: partitionName && partitions[partitionName] ? partitions[partitionName].id : null,
+        costCents,
+        createdAt: new Date(now - 1000 * 60 * (12 - i))
+      }
+    });
+  }
+
+  await prisma.approvalRequest.create({
+    data: {
+      userId: user.id,
+      workflowRunId: run.id,
+      agentId: agents["Outreach Draft Agent"].id,
+      title: "Approve 3 Gmail drafts",
+      description: "Outreach Draft Agent prepared 3 recruiter messages. Review before anything sends.",
+      actionType: "gmail_draft_approval",
+      riskLevel: "high",
+      status: "pending"
+    }
+  });
+
+  await prisma.activityLog.createMany({
+    data: [
+      {
+        userId: user.id, workflowId: workflow.id, workflowRunId: run.id,
+        eventType: "workflow_completed", title: "Run completed", description: "Job Search Automation finished one supervised run.",
+        decision: "allowed", costCents: 64, createdAt: new Date(now - 1000 * 60 * 8)
+      },
+      {
+        userId: user.id, workflowId: workflow.id, workflowRunId: run.id, agentId: agents["Outreach Draft Agent"].id,
+        eventType: "approval_requested", title: "Approval requested: Gmail drafts", description: "3 drafts queued for review.",
+        decision: "approval_required", costCents: 11, createdAt: new Date(now - 1000 * 60 * 9)
+      },
+      {
+        userId: user.id, workflowId: workflow.id,
+        eventType: "orchestration", title: "Flow planned", description: "AgentDock planned a flow from a goal.",
+        decision: "info", costCents: 3, metadata: { source: "orchestrator_plan", provider: "anthropic", model: "claude-sonnet-4-6" },
+        createdAt: new Date(now - 1000 * 60 * 20)
+      }
+    ]
+  });
+
   console.log("Seeded AgentDock mock database.");
 }
 

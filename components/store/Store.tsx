@@ -52,7 +52,7 @@ export function Store({
       if (opts.verification) params.verification = opts.verification;
       if (opts.riskLevel) params.riskLevel = opts.riskLevel;
 
-      const data = await listToolServers(params, "Unable to load MCP catalog.");
+      const data = await listToolServers(params, "Unable to load tool catalog.");
       if (opts.append) {
         setMcpServers((prev) => [...prev, ...(data.servers ?? [])]);
       } else {
@@ -61,7 +61,7 @@ export function Store({
       setNextCursor(data.nextCursor ?? null);
       setTotalServers(data.total ?? 0);
     } catch (error) {
-      setMcpMessage(error instanceof Error ? error.message : "Unable to load MCP catalog.");
+      setMcpMessage(error instanceof Error ? error.message : "Unable to load tool catalog.");
       if (!opts.append) setMcpServers([]);
     }
   };
