@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useToast } from "../layout/Toast";
 
 import { listFlows, listRuns, resolveApproval, simulateRun } from "../../lib/api/client";
 import type {
@@ -40,10 +41,10 @@ export function ControlPlane({
   onOpenSection: (section: Section) => void;
 }) {
   const { data: session } = useSession();
+  const toast = useToast();
   const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<PersistedWorkflowRun[]>([]);
   const [dbApprovals, setDbApprovals] = useState<PersistedApprovalRequest[]>([]);
-  const [controlMessage, setControlMessage] = useState("");
   const [runningControlSimulation, setRunningControlSimulation] = useState(false);
   const [resolvingApprovalId, setResolvingApprovalId] = useState("");
   const [decisionFilter, setDecisionFilter] = useState<Decision | "all">("all");
@@ -67,7 +68,7 @@ export function ControlPlane({
       setWorkflowRuns(runs);
       setDbApprovals(runs.flatMap((run) => run.approvalRequests).filter((approval) => approval.status === "pending"));
     } catch (error) {
-      setControlMessage(error instanceof Error ? error.message : "Unable to load Control data.");
+toast(error instanceof Error ? error.message : "Unable to load Control data.", "danger");
     }
   };
 
@@ -83,18 +84,17 @@ export function ControlPlane({
 
     const workflow = savedWorkflows.find((item) => item.name === "Job Search Automation") ?? savedWorkflows[0];
     if (!workflow?.id) {
-      setControlMessage("Save a Flow first to run a preview.");
+toast("Save a Flow first to run a preview.", "warn");
       return;
     }
 
     setRunningControlSimulation(true);
-    setControlMessage("");
     try {
       const data = await simulateRun(workflow.id, "Run preview failed.");
-      setControlMessage(`Run created: ${data.workflowRun.events.length} events, ${data.workflowRun.approvalRequests.length} approvals.`);
+toast(`Run created: ${data.workflowRun.events.length} events, ${data.workflowRun.approvalRequests.length} approvals.`, "ok");
       await loadControlPlaneData();
     } catch (error) {
-      setControlMessage(error instanceof Error ? error.message : "Run preview failed.");
+toast(error instanceof Error ? error.message : "Run preview failed.", "danger");
     } finally {
       setRunningControlSimulation(false);
     }
@@ -102,13 +102,12 @@ export function ControlPlane({
 
   const resolveControlApproval = async (approvalId: string, status: "approved" | "denied" | "edited") => {
     setResolvingApprovalId(approvalId);
-    setControlMessage("");
     try {
       await resolveApproval(approvalId, status, "Unable to resolve approval.");
-      setControlMessage(`Approval ${status} and written to timeline.`);
+toast(`Approval ${status} and written to timeline.`, "ok");
       await loadControlPlaneData();
     } catch (error) {
-      setControlMessage(error instanceof Error ? error.message : "Unable to resolve approval.");
+toast(error instanceof Error ? error.message : "Unable to resolve approval.", "danger");
     } finally {
       setResolvingApprovalId("");
     }
@@ -134,7 +133,6 @@ export function ControlPlane({
   return (
     <section className="platformPage controlPlanePage">
       <PageHeader eyebrow="Control" title="Control" copy="Approvals, blocks, spend, and timeline." />
-      {controlMessage && <div className="profileAuthNotice compactNotice">{controlMessage}</div>}
 
       <div className="opsRoom">
         <div className="opsFeed">

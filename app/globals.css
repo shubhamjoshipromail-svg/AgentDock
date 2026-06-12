@@ -17,4 +17,5 @@
 @import "../components/store/store-compact.css";
 @import "../components/layout/responsive.css";
 @import "../components/layout/theme.css";
+@import "../components/layout/shell.css";
 @import "../components/layout/motion.css";

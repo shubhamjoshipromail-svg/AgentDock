@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { SessionProvider, useSession } from "next-auth/react";
 
 import { bootstrap } from "../lib/api/client";
 import { Builder } from "../components/build/Builder";
 import { ControlPlane } from "../components/control/ControlPlane";
 import { Library } from "../components/flows/Library";
-import { Nav } from "../components/layout/Nav";
+import { Shell } from "../components/layout/Shell";
 import { Profile } from "../components/profile/Profile";
 import { Store } from "../components/store/Store";
+import { CommandPalette, type Command } from "../components/layout/CommandPalette";
+import { ToastProvider } from "../components/layout/Toast";
 import {
   builderSimulateEvents,
   baseAuditEvents,
@@ -24,6 +26,7 @@ import type {
   Section,
   StoreTab
 } from "../lib/types";
+import { useEffect } from "react";
 
 // Runs the idempotent server bootstrap once per signed-in session before the
 // sections mount, so their initial loads see the starter data (GET routes are
@@ -57,13 +60,13 @@ function BootstrapGate({ children }: { children: React.ReactNode }) {
   }, [status, session?.user?.email]);
 
   if (!ready) {
-    return null;
+    return <div className="sectionLoading" aria-busy="true">Loading workspace…</div>;
   }
 
   return <>{children}</>;
 }
 
-export default function Home() {
+function AppInner() {
   const [activeSection, setActiveSection] = useState<Section>("Build");
   const [storeTab, setStoreTab] = useState<StoreTab>("Agents");
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("My Flows");
@@ -77,6 +80,7 @@ export default function Home() {
   const [events, setEvents] = useState<AuditEvent[]>(baseAuditEvents);
   const [spend, setSpend] = useState(2.15);
   const [runCount, setRunCount] = useState(0);
+  const [cmdkOpen, setCmdkOpen] = useState(false);
   const [runHistory, setRunHistory] = useState<string[]>([
     "Initial demo run: 12 roles searched, 3 companies summarized, 2 approval gates opened."
   ]);
@@ -85,10 +89,6 @@ export default function Home() {
     () => events.filter((event) => event.decision === "approval_required").length + 3,
     [events]
   );
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [activeSection]);
 
   const runDemoWorkflow = () => {
     setRunCount((count) => count + 1);
@@ -175,65 +175,98 @@ export default function Home() {
     ]);
   };
 
+  const commands: Command[] = useMemo(() => {
+    const go = (section: Section): Command => ({
+      id: `go-${section}`,
+      label: `Go to ${section}`,
+      group: "Navigation",
+      hint: "Navigate",
+      run: () => setActiveSection(section)
+    });
+    return [
+      go("Build"),
+      go("Store"),
+      go("Flows"),
+      go("Control"),
+      go("Profile"),
+      { id: "new-flow", label: "New flow", group: "Actions", hint: "Build", run: () => setActiveSection("Build") },
+      { id: "sync-catalog", label: "Sync catalog", group: "Actions", hint: "Store", run: () => { setActiveSection("Store"); setStoreTab("Tools"); } },
+      { id: "focus-search", label: "Focus search", group: "Actions", hint: "Store", run: () => { setActiveSection("Store"); setStoreTab("Tools"); } }
+    ];
+  }, []);
+
+  return (
+    <>
+      <Shell
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+        onOpenCommand={() => setCmdkOpen(true)}
+      >
+        <BootstrapGate>
+          {activeSection === "Control" && (
+            <ControlPlane
+              events={events}
+              spend={spend}
+              pendingApprovals={pendingApprovals}
+              defaultAgent={defaultAgent}
+              runHistory={runHistory}
+              onRun={runDemoWorkflow}
+              onOpenSection={setActiveSection}
+            />
+          )}
+          {activeSection === "Build" && (
+            <Builder
+              prompt={builderPrompt}
+              setPrompt={setBuilderPrompt}
+              nodes={builderNodes}
+              selectedNodeId={selectedBuilderNodeId}
+              setSelectedNodeId={setSelectedBuilderNodeId}
+              saved={builderSaved}
+              onRecommend={recommendBuilderStack}
+              onAddNode={addBuilderNode}
+              onRemoveNode={removeBuilderNode}
+              onSave={saveBuilderWorkflow}
+              onSimulate={simulateBuilderRun}
+              onUnsafeSimulate={simulateUnsafeAction}
+              onViewLogs={() => setActiveSection("Control")}
+              onSetDefault={setDefaultAgent}
+            />
+          )}
+          {activeSection === "Store" && (
+            <Store
+              tab={storeTab}
+              setTab={setStoreTab}
+              defaultAgent={defaultAgent}
+              setDefaultAgent={setDefaultAgent}
+            />
+          )}
+          {activeSection === "Flows" && (
+            <Library
+              tab={libraryTab}
+              setTab={setLibraryTab}
+              spend={spend}
+            />
+          )}
+          {activeSection === "Profile" && (
+            <Profile
+              selectedMemory={selectedMemory}
+              onSelectMemory={setSelectedMemory}
+              defaultAgent={defaultAgent}
+            />
+          )}
+        </BootstrapGate>
+      </Shell>
+      <CommandPalette open={cmdkOpen} onOpenChange={setCmdkOpen} commands={commands} />
+    </>
+  );
+}
+
+export default function Home() {
   return (
     <SessionProvider>
-      <main className="shell platformShell">
-      <Nav activeSection={activeSection} onSelectSection={setActiveSection} />
-
-      <BootstrapGate>
-      {activeSection === "Control" && (
-        <ControlPlane
-          events={events}
-          spend={spend}
-          pendingApprovals={pendingApprovals}
-          defaultAgent={defaultAgent}
-          runHistory={runHistory}
-          onRun={runDemoWorkflow}
-          onOpenSection={setActiveSection}
-        />
-      )}
-      {activeSection === "Build" && (
-        <Builder
-          prompt={builderPrompt}
-          setPrompt={setBuilderPrompt}
-          nodes={builderNodes}
-          selectedNodeId={selectedBuilderNodeId}
-          setSelectedNodeId={setSelectedBuilderNodeId}
-          saved={builderSaved}
-          onRecommend={recommendBuilderStack}
-          onAddNode={addBuilderNode}
-          onRemoveNode={removeBuilderNode}
-          onSave={saveBuilderWorkflow}
-          onSimulate={simulateBuilderRun}
-          onUnsafeSimulate={simulateUnsafeAction}
-          onViewLogs={() => setActiveSection("Control")}
-          onSetDefault={setDefaultAgent}
-        />
-      )}
-      {activeSection === "Store" && (
-        <Store
-          tab={storeTab}
-          setTab={setStoreTab}
-          defaultAgent={defaultAgent}
-          setDefaultAgent={setDefaultAgent}
-        />
-      )}
-      {activeSection === "Flows" && (
-        <Library
-          tab={libraryTab}
-          setTab={setLibraryTab}
-          spend={spend}
-        />
-      )}
-      {activeSection === "Profile" && (
-        <Profile
-          selectedMemory={selectedMemory}
-          onSelectMemory={setSelectedMemory}
-          defaultAgent={defaultAgent}
-        />
-      )}
-      </BootstrapGate>
-      </main>
+      <ToastProvider>
+        <AppInner />
+      </ToastProvider>
     </SessionProvider>
   );
 }

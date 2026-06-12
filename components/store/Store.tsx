@@ -8,6 +8,7 @@ import type { SyncSummary } from "../../lib/api/client";
 import { agents, mcpTools, workflowTemplates } from "../mock-data";
 import type { McpVerificationStatus, PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
 import { Badge, Button, CapabilityBadge, ComingSoonButton, Metric, PageHeader, SearchInput, Select } from "../layout/primitives";
+import { useToast } from "../layout/Toast";
 import { WorkflowTemplateCard } from "./WorkflowTemplateCard";
 
 export function Store({
@@ -22,9 +23,9 @@ export function Store({
   setDefaultAgent: (agent: string) => void;
 }) {
   const { data: session } = useSession();
+  const toast = useToast();
   const [mcpServers, setMcpServers] = useState<PersistedMcpServer[]>([]);
   const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
-  const [mcpMessage, setMcpMessage] = useState("");
   const [syncingMcp, setSyncingMcp] = useState(false);
   const [attachingMcpId, setAttachingMcpId] = useState("");
   const [selectedFlowId, setSelectedFlowId] = useState("");
@@ -61,7 +62,7 @@ export function Store({
       setNextCursor(data.nextCursor ?? null);
       setTotalServers(data.total ?? 0);
     } catch (error) {
-      setMcpMessage(error instanceof Error ? error.message : "Unable to load tool catalog.");
+toast(error instanceof Error ? error.message : "Unable to load tool catalog.", "danger");
       if (!opts.append) setMcpServers([]);
     }
   };
@@ -109,21 +110,20 @@ export function Store({
 
   const syncMcpRegistry = async () => {
     if (!session?.user) {
-      setMcpMessage("Sign in with Google to sync tool metadata into AgentDock.");
+toast("Sign in with Google to sync tool metadata into AgentDock.", "warn");
       return;
     }
 
     setSyncingMcp(true);
-    setMcpMessage("");
 
     try {
       const data = await syncToolCatalog("Tool sync failed.");
       setSyncSummary(data);
       setLastSyncedAt(new Date().toLocaleTimeString());
-      setMcpMessage(`Synced ${data.upserted} servers · ${data.skipped} skipped · ${data.failed} failed (${data.durationMs}ms)`);
+toast(`Synced ${data.upserted} servers · ${data.skipped} skipped · ${data.failed} failed (${data.durationMs}ms)`, "ok");
       await loadMcpServers({ q: searchQuery, verification: filterVerification, riskLevel: filterRisk });
     } catch (error) {
-      setMcpMessage(error instanceof Error ? error.message : "Tool sync failed.");
+toast(error instanceof Error ? error.message : "Tool sync failed.", "danger");
     } finally {
       setSyncingMcp(false);
     }
@@ -131,12 +131,12 @@ export function Store({
 
   const attachMcpToWorkflow = async (server: PersistedMcpServer) => {
     if (!session?.user) {
-      setMcpMessage("Sign in with Google to add tools to a saved Flow.");
+toast("Sign in with Google to add tools to a saved Flow.", "warn");
       return;
     }
 
     if (savedWorkflows.length === 0) {
-      setMcpMessage("Save a Flow from Build first, then add tools to it.");
+toast("Save a Flow from Build first, then add tools to it.", "warn");
       return;
     }
 
@@ -147,13 +147,12 @@ export function Store({
         : undefined;
 
     if (!workflow?.id) {
-      setMcpMessage("Select which Flow to add this tool to.");
+toast("Select which Flow to add this tool to.", "warn");
       return;
     }
 
     const defaultPermission = server.recommendedPermission;
     setAttachingMcpId(server.id);
-    setMcpMessage("");
 
     try {
       await attachToolToFlow(workflow.id, {
@@ -162,10 +161,10 @@ export function Store({
         defaultPermission
       }, "Unable to add tool to Flow.");
 
-      setMcpMessage(`${server.displayName} added to ${workflow.name} with ${defaultPermission.replaceAll("_", " ")} access.`);
+toast(`${server.displayName} added to ${workflow.name} with ${defaultPermission.replaceAll("_", " ")} access.`, "ok");
       await loadSavedWorkflows();
     } catch (error) {
-      setMcpMessage(error instanceof Error ? error.message : "Unable to add tool to Flow.");
+toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "danger");
     } finally {
       setAttachingMcpId("");
     }
@@ -265,8 +264,6 @@ export function Store({
               )}
             </div>
           )}
-          {mcpMessage && <div className="profileAuthNotice">{mcpMessage}</div>}
-          {!session?.user && <div className="profileAuthNotice">Signed-out demo mode: showing mock tool cards. Sign in to sync the tool catalog.</div>}
           <div className="mcpGrid compactStoreGrid">
             {dbMcpAvailable ? mcpServers.map((server) => {
               const defaultPermission = server.recommendedPermission;
@@ -298,7 +295,7 @@ export function Store({
                     >
                       {attachingMcpId === server.id ? "Adding..." : isUnverified ? "Add (approval required)" : "Add Tool"}
                     </button>
-                    <button className="secondaryButton smallButton" onClick={() => setMcpMessage(`${server.displayName}: ${server.description} Source: ${server.registrySource}. Execution is off.`)}>Details</button>
+                    <button className="secondaryButton smallButton" onClick={() => toast(`${server.displayName}: ${server.description}`, "info")}>Details</button>
                   </div>
                 </article>
               );
@@ -314,7 +311,7 @@ export function Store({
                 <Metric label="Works with" value={tool.workflows} />
                 <div className="buttonPair">
                   <ComingSoonButton>Add Tool</ComingSoonButton>
-                  <button className="secondaryButton smallButton" onClick={() => setMcpMessage(`${tool.name}: mock metadata preview. Sign in to sync DB-backed details.`)}>Preview details</button>
+                  <button className="secondaryButton smallButton" onClick={() => toast(`${tool.name}: mock metadata preview. Sign in to sync DB-backed details.`, "info")}>Preview details</button>
                 </div>
               </article>
             ))}

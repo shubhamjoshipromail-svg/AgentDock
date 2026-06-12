@@ -1,0 +1,329 @@
+/* Workstation shell: fixed full-height app frame. The page never scrolls;
+   only .workContent scrolls. Rail + top bar + content area. */
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.appFrame {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  height: 100dvh;
+  background: var(--bg-base);
+}
+
+/* ---- Left rail ---- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border-right: 1px solid var(--line);
+  background: var(--bg-raised);
+  padding: var(--sp-4) var(--sp-3);
+  min-height: 0;
+}
+
+.railBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-3);
+}
+
+.railBrand .brandMark {
+  align-items: center;
+  background: var(--accent);
+  border-radius: var(--r-control);
+  color: var(--bg-base);
+  display: inline-flex;
+  font-family: var(--font-display);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.railNav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.railLink {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-14);
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+  width: 100%;
+}
+
+.railLink svg {
+  color: var(--text-faint);
+  flex: 0 0 auto;
+  transition: color var(--dur) var(--ease);
+}
+
+.railLink:hover {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+}
+
+.railLink:hover svg {
+  color: var(--text-secondary);
+}
+
+.railLink.active {
+  background: var(--accent-bg);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.railLink.active svg {
+  color: var(--accent);
+}
+
+.railFoot {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+}
+
+/* ---- Work area ---- */
+.workMain {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+  min-width: 0;
+}
+
+.topBar {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: var(--sp-4);
+  justify-content: space-between;
+  padding: var(--sp-4) var(--sp-6);
+}
+
+.topBarTitle {
+  font-family: var(--font-display);
+  font-size: var(--fs-20);
+  font-weight: 600;
+  margin: 0;
+}
+
+.topBarActions {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.cmdkHint {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-13);
+  gap: var(--sp-2);
+  padding: 6px var(--sp-2) 6px var(--sp-3);
+  transition: border-color var(--dur) var(--ease);
+}
+
+.cmdkHint:hover {
+  border-color: var(--line-strong);
+}
+
+.cmdkHint kbd {
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  padding: 1px 5px;
+}
+
+.workContent {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-6);
+}
+
+/* Sections no longer center themselves — the shell owns layout. */
+.workContent .platformPage {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+
+.sectionLoading {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  height: 100%;
+  justify-content: center;
+}
+
+/* ---- Command palette ---- */
+.cmdkOverlay {
+  align-items: flex-start;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding-top: 12vh;
+  position: fixed;
+  z-index: 80;
+}
+
+.cmdkPanel {
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+  width: min(560px, 92vw);
+}
+
+.cmdkInput {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-primary);
+  font-size: var(--fs-16);
+  padding: var(--sp-4);
+  width: 100%;
+}
+
+.cmdkInput:focus {
+  outline: none;
+}
+
+.cmdkList {
+  list-style: none;
+  margin: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: var(--sp-2);
+}
+
+.cmdkItem {
+  align-items: center;
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.cmdkItem.active {
+  background: var(--accent-bg);
+  color: var(--text-primary);
+}
+
+.cmdkLabel {
+  font-size: var(--fs-14);
+}
+
+.cmdkHint .cmdkLabel,
+.cmdkItem .cmdkHint {
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}
+
+.cmdkEmpty {
+  color: var(--text-faint);
+  font-size: var(--fs-13);
+  padding: var(--sp-3);
+}
+
+/* ---- Toasts ---- */
+.toastViewport {
+  align-items: flex-end;
+  bottom: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  position: fixed;
+  right: var(--sp-6);
+  z-index: 90;
+}
+
+.toast {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-control);
+  box-shadow: var(--shadow-overlay);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  gap: var(--sp-2);
+  max-width: 360px;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+}
+
+.toastDot {
+  background: var(--text-faint);
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 8px;
+  width: 8px;
+}
+
+.toast-ok .toastDot { background: var(--ok); }
+.toast-warn .toastDot { background: var(--warn); }
+.toast-danger .toastDot { background: var(--danger); }
+.toast-info .toastDot { background: var(--accent); }
+
+.toastBody {
+  font-size: var(--fs-13);
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: toastIn 200ms var(--ease) both;
+  }
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive floor: rail collapses to icons under 1100px. */
+@media (max-width: 1100px) {
+  .appFrame {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .railLink span,
+  .railBrand span:not(.brandMark) {
+    display: none;
+  }
+  .railLink {
+    justify-content: center;
+  }
+  .railFoot {
+    align-items: center;
+  }
+}

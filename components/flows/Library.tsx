@@ -8,14 +8,15 @@ import { starterFlowTemplate } from "../../lib/catalog/templates";
 import { formatCents, workflowAgents } from "../mock-data";
 import type { LibraryTab, PersistedMcpAccessGrant, PersistedWorkflow } from "../../lib/types";
 import { Button, Card, CapabilityBadge, Data, DetailBlock, EmptyState, PageHeader, Pill } from "../layout/primitives";
+import { useToast } from "../layout/Toast";
 import { FlowGraph } from "../build/FlowGraph";
 import { savedWorkflowToGraph } from "../build/flow-graph";
 import { KeysBilling } from "./KeysBilling";
 
 export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab: LibraryTab) => void; spend: number }) {
   const { data: session } = useSession();
+  const toast = useToast();
   const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
-  const [workflowMessage, setWorkflowMessage] = useState("");
   const [loadingSavedWorkflows, setLoadingSavedWorkflows] = useState(false);
   const [savingWorkflow, setSavingWorkflow] = useState(false);
   const [updatingMcpGrantId, setUpdatingMcpGrantId] = useState("");
@@ -29,13 +30,12 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
     }
 
     setLoadingSavedWorkflows(true);
-    setWorkflowMessage("");
 
     try {
       const data = await listFlows("Unable to load saved Flows.");
       setSavedWorkflows(data.workflows ?? []);
     } catch (error) {
-      setWorkflowMessage(error instanceof Error ? error.message : "Unable to load saved Flows.");
+      toast(error instanceof Error ? error.message : "Unable to load saved Flows.", "danger");
     } finally {
       setLoadingSavedWorkflows(false);
     }
@@ -47,19 +47,18 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
 
   const saveWorkflowToProfile = async () => {
     if (!session?.user) {
-      setWorkflowMessage("Sign in with Google to save Flows to your AgentDock profile.");
+      toast("Sign in with Google to save Flows to your AgentDock profile.", "warn");
       return;
     }
 
     setSavingWorkflow(true);
-    setWorkflowMessage("");
 
     try {
       await saveFlow(starterFlowTemplate, "Flow save failed.");
-      setWorkflowMessage("Flow saved to your AgentDock profile.");
+      toast("Flow saved to your AgentDock profile.", "ok");
       await loadSavedWorkflows();
     } catch (error) {
-      setWorkflowMessage(error instanceof Error ? error.message : "Flow save failed.");
+      toast(error instanceof Error ? error.message : "Flow save failed.", "danger");
     } finally {
       setSavingWorkflow(false);
     }
@@ -72,14 +71,13 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
 
   const updateWorkflowMcpGrant = async (grant: PersistedMcpAccessGrant, field: "canRead" | "canWrite" | "canExecute" | "canDelete" | "requiresApproval") => {
     setUpdatingMcpGrantId(grant.id);
-    setWorkflowMessage("");
 
     try {
       await patchToolGrant(grant.id, { [field]: !grant[field] }, "Unable to update tool access.");
-      setWorkflowMessage("Tool access updated and logged.");
+      toast("Tool access updated and logged.", "ok");
       await loadSavedWorkflows();
     } catch (error) {
-      setWorkflowMessage(error instanceof Error ? error.message : "Unable to update tool access.");
+      toast(error instanceof Error ? error.message : "Unable to update tool access.", "danger");
     } finally {
       setUpdatingMcpGrantId("");
     }
@@ -87,14 +85,13 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
 
   const revokeWorkflowMcpGrant = async (grant: PersistedMcpAccessGrant) => {
     setUpdatingMcpGrantId(grant.id);
-    setWorkflowMessage("");
 
     try {
       await revokeToolGrant(grant.id, "Unable to revoke tool.");
-      setWorkflowMessage("Tool revoked and logged.");
+      toast("Tool revoked and logged.", "ok");
       await loadSavedWorkflows();
     } catch (error) {
-      setWorkflowMessage(error instanceof Error ? error.message : "Unable to revoke tool.");
+      toast(error instanceof Error ? error.message : "Unable to revoke tool.", "danger");
     } finally {
       setUpdatingMcpGrantId("");
     }
@@ -103,7 +100,6 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
   return (
     <section className="platformPage libraryPage">
       <PageHeader eyebrow="Flows" title="Flows" copy="Saved agent systems you can run, edit, or pause." />
-      {workflowMessage && <div className="profileAuthNotice">{workflowMessage}</div>}
       <div className="tabRow">
         {(["My Flows", "My Agents", "My Tools", "Scoped Access"] as LibraryTab[]).map((item) => (
           <button className={tab === item ? "tabButton active" : "tabButton"} key={item} onClick={() => setTab(item)}>{item}</button>

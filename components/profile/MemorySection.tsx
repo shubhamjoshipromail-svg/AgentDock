@@ -7,11 +7,12 @@ import { loadMemory, patchMemoryGrant, revokeMemoryGrant } from "../../lib/api/c
 import { memoryPartitions } from "../mock-data";
 import type { PersistedMemoryGrant, PersistedMemoryPartition, PersistedMemoryPayload } from "../../lib/types";
 import { Button, ComingSoonButton, DetailBlock } from "../layout/primitives";
+import { useToast } from "../layout/Toast";
 
 export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemory: string; onSelectMemory: (name: string) => void }) {
   const { data: session } = useSession();
+  const toast = useToast();
   const [memoryData, setMemoryData] = useState<PersistedMemoryPayload | null>(null);
-  const [memoryMessage, setMemoryMessage] = useState("");
   const [loadingMemory, setLoadingMemory] = useState(false);
   const [updatingGrantId, setUpdatingGrantId] = useState("");
   const [confirmRevokeId, setConfirmRevokeId] = useState("");
@@ -26,7 +27,6 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
     }
 
     setLoadingMemory(true);
-    setMemoryMessage("");
 
     try {
       const data = await loadMemory("Unable to load memory policy.");
@@ -35,10 +35,10 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
         onSelectMemory(data.partitions[0].name);
       }
       if (data.bootstrapped) {
-        setMemoryMessage("Created starter DB-backed Memory Zones for this profile.");
+toast("Created starter DB-backed Memory Zones for this profile.", "ok");
       }
     } catch (error) {
-      setMemoryMessage(error instanceof Error ? error.message : "Unable to load memory policy. Showing mock fallback.");
+toast(error instanceof Error ? error.message : "Unable to load memory policy. Showing mock fallback.", "danger");
       setMemoryData(null);
     } finally {
       setLoadingMemory(false);
@@ -51,14 +51,13 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
 
   const patchGrant = async (grant: PersistedMemoryGrant, field: keyof Pick<PersistedMemoryGrant, "canRead" | "canWrite" | "canEdit" | "canDelete" | "canShare" | "requiresApproval">) => {
     setUpdatingGrantId(grant.id);
-    setMemoryMessage("");
 
     try {
       await patchMemoryGrant(grant.id, { [field]: !grant[field] }, "Unable to update memory grant.");
-      setMemoryMessage("Memory access updated and logged.");
+toast("Memory access updated and logged.", "ok");
       await loadMemoryData();
     } catch (error) {
-      setMemoryMessage(error instanceof Error ? error.message : "Unable to update memory grant.");
+toast(error instanceof Error ? error.message : "Unable to update memory grant.", "danger");
     } finally {
       setUpdatingGrantId("");
     }
@@ -66,14 +65,13 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
 
   const revokeGrant = async (grantId: string) => {
     setUpdatingGrantId(grantId);
-    setMemoryMessage("");
 
     try {
       await revokeMemoryGrant(grantId, "Unable to revoke memory grant.");
-      setMemoryMessage("Access revoked and written to Timeline.");
+toast("Access revoked and written to Timeline.", "ok");
       await loadMemoryData();
     } catch (error) {
-      setMemoryMessage(error instanceof Error ? error.message : "Unable to revoke memory grant.");
+toast(error instanceof Error ? error.message : "Unable to revoke memory grant.", "danger");
     } finally {
       setUpdatingGrantId("");
     }
@@ -93,8 +91,7 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
           <p>{dbBacked ? "Access, items, and memory logs are loaded for the signed-in user." : "Sign in to load zones, access, items, and logs from Postgres."}</p>
         </div>
       </div>
-      {loadingMemory && <div className="profileAuthNotice">Loading Memory Zones from Postgres...</div>}
-      {memoryMessage && <div className="profileAuthNotice">{memoryMessage}</div>}
+      {loadingMemory && <div className="sectionLoading">Loading Memory Zones…</div>}
       <div className="memoryLayout">
         <div className="card">
           <div className="panelHeader">
