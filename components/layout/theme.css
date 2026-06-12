@@ -125,19 +125,7 @@ p {
 }
 
 /* ---- Surfaces ---- */
-.authPopover,
-.card,
-.agentCard,
-.mcpCard,
-.builderHeroPrompt,
-.workflowTimelinePanel,
-.workflowInspectorPanel,
-.policySafetyPanel,
-.plannerCard,
-.simulationPanel,
-.memoryFirewallCard,
-.providerCard,
-.heroPanel {
+.authPopover, .card, .agentCard, .mcpCard, .builderHeroPrompt, .workflowTimelinePanel, .workflowInspectorPanel, .policySafetyPanel, .plannerCard, .simulationPanel, .memoryFirewallCard, .providerCard {
   backdrop-filter: none;
   background: var(--bg-raised);
   border: 1px solid var(--line);
@@ -151,14 +139,7 @@ p {
 }
 
 /* ---- Legacy buttons (kept working until callers move to <Button>) ---- */
-.primaryButton,
-.secondaryButton,
-.ghostButton,
-.revokeButton,
-.googleSignInButton,
-.authTrigger,
-.templateChip,
-.tabButton {
+.primaryButton, .secondaryButton, .revokeButton, .googleSignInButton, .authTrigger, .templateChip, .tabButton {
   border-radius: var(--r-control);
   font-size: var(--fs-13);
   font-weight: 500;
@@ -179,20 +160,13 @@ p {
   transform: none;
 }
 
-.secondaryButton,
-.ghostButton,
-.authTrigger,
-.googleSignInButton,
-.templateChip {
+.secondaryButton, .authTrigger, .googleSignInButton, .templateChip {
   background: var(--bg-overlay);
   border: 1px solid var(--line);
   color: var(--text-primary);
 }
 
-.secondaryButton:hover,
-.ghostButton:hover,
-.authTrigger:hover,
-.templateChip:hover {
+.secondaryButton:hover, .authTrigger:hover, .templateChip:hover {
   border-color: var(--line-strong);
   box-shadow: none;
   transform: none;
@@ -202,14 +176,6 @@ p {
   background: var(--danger-bg);
   border: 1px solid var(--danger);
   color: var(--danger);
-}
-
-.comingSoonButton,
-.comingSoonButton:disabled {
-  background: var(--bg-overlay);
-  border: 1px solid var(--line);
-  color: var(--text-faint);
-  opacity: 0.7;
 }
 
 /* ---- Inputs ---- */
@@ -294,21 +260,7 @@ select:focus {
 }
 
 /* ---- Detail blocks / metrics ---- */
-.detailBlock,
-.heroPolicy,
-.agentStats span,
-.compactItem,
-.dbStatus,
-.memoryRow,
-.permissionList p,
-.approvalInboxCard,
-.mcpPaletteItem,
-.mcpWorkflowAttachment,
-.grantEditor,
-.savedWorkflow,
-.approvalItem,
-.softNote,
-.policyDiffList {
+.detailBlock, .agentStats span, .compactItem, .dbStatus, .memoryRow, .permissionList p, .approvalInboxCard, .mcpPaletteItem, .mcpWorkflowAttachment, .grantEditor, .savedWorkflow, .approvalItem, .softNote, .policyDiffList {
   background: var(--bg-overlay);
   border: 1px solid var(--line);
   border-radius: var(--r-control);
@@ -407,8 +359,7 @@ select:focus {
   padding: var(--sp-1);
 }
 
-/* ---- Notices / toasts (legacy; mostly removed in Phase B) ---- */
-.truthNotice,
+/* ---- Notices (legacy; superseded by toasts in Phase B) ---- */
 .builderToast,
 .builderLibraryStrip,
 .emptyWorkflowState,

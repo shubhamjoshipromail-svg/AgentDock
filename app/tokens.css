@@ -67,25 +67,6 @@
   /* Motion */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --dur: 200ms;
-
-  /* ---- Legacy bridge: map the old light-theme variable names onto dark tokens ---- */
-  --bg: var(--bg-base);
-  --surface: var(--bg-raised);
-  --surface-soft: var(--bg-overlay);
-  --ink: var(--text-primary);
-  --muted: var(--text-secondary);
-  --muted-2: var(--text-faint);
-  --line-strong: var(--line-strong);
-  --green: var(--ok);
-  --green-bg: var(--ok-bg);
-  --amber: var(--warn);
-  --amber-bg: var(--warn-bg);
-  --red: var(--danger);
-  --red-bg: var(--danger-bg);
-  --blue: var(--accent);
-  --blue-bg: var(--accent-bg);
-  --shadow: none;
-  --shadow-soft: none;
 }
 
 /* Machine-true values: IDs, costs, tokens, timestamps, event types, model names. */

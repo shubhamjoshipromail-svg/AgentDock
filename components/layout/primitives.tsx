@@ -1,6 +1,6 @@
 "use client";
 
-import type { AuditEvent, CapabilityKind, McpRiskLevel, McpVerificationStatus, Decision } from "../../lib/types";
+import type { CapabilityKind, McpRiskLevel, McpVerificationStatus, Decision } from "../../lib/types";
 
 // ---------------------------------------------------------------------------
 // Design-system primitives. Every primitive consumes tokens (app/tokens.css)
@@ -176,10 +176,6 @@ export function PageHeader({ eyebrow, title, copy }: { eyebrow: string; title: s
   );
 }
 
-export function MetricCard({ label, value }: { label: string; value: string }) {
-  return <div><span>{label}</span><strong className="data">{value}</strong></div>;
-}
-
 export function CapabilityBadge({ kind, label }: { kind: CapabilityKind; label?: string }) {
   const labels: Record<CapabilityKind, string> = {
     db: "DB-backed",
@@ -191,11 +187,13 @@ export function CapabilityBadge({ kind, label }: { kind: CapabilityKind; label?:
   return <span className={`capabilityBadge ${kind}`}>{label ?? labels[kind]}</span>;
 }
 
-export function ComingSoonButton({ children, className = "secondaryButton smallButton" }: { children: React.ReactNode; className?: string }) {
+// Disabled action with an explanatory tooltip. No bespoke class — it is just a
+// disabled Button, so its state reads the same as every other disabled control.
+export function ComingSoonButton({ children, size = "sm" }: { children: React.ReactNode; size?: ButtonSize }) {
   return (
-    <button className={`${className} comingSoonButton`} disabled>
-      {children} · Coming soon
-    </button>
+    <Button size={size} disabled title="Coming soon">
+      {children}
+    </Button>
   );
 }
 
@@ -204,19 +202,6 @@ export function WorkflowMini({ name, status, budget }: { name: string; status: s
     <div className="compactItem">
       <div><strong>{name}</strong><span className="data">{budget}</span></div>
       <span className={status === "Active" ? "statusPill running" : "statusPill awaitingapproval"}>{status}</span>
-    </div>
-  );
-}
-
-export function AuditList({ events, compact = false }: { events: AuditEvent[]; compact?: boolean }) {
-  return (
-    <div className={compact ? "timeline compactTimeline" : "timeline"}>
-      {events.map((event, index) => (
-        <div className="timelineEvent" key={`${event.event}-${index}`}>
-          <span className="data">{String(index + 1).padStart(2, "0")}</span>
-          <p>{event.event}</p>
-        </div>
-      ))}
     </div>
   );
 }

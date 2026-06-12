@@ -8,7 +8,6 @@
 @import "../components/layout/primitives.css";
 @import "../components/layout/layout.css";
 @import "../components/profile/profile.css";
-@import "../components/shared/shared.css";
 @import "../components/store/store.css";
 @import "../components/layout/platform.css";
 @import "../components/build/build.css";
@@ -16,7 +15,6 @@
 @import "../components/control/control.css";
 @import "../components/a2ui/a2ui.css";
 @import "../components/store/store-compact.css";
-@import "../components/shared/runtime.css";
 @import "../components/layout/responsive.css";
 @import "../components/layout/theme.css";
 @import "../components/layout/motion.css";

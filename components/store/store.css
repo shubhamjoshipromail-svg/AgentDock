@@ -9,10 +9,10 @@
 
 .mcpStoreIntro {
   align-items: center;
-  background: var(--surface);
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 22px;
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
   display: flex;
   gap: 16px;
   justify-content: space-between;
@@ -21,7 +21,7 @@
 
 .mcpStoreIntro p,
 .mcpBuilderPalette p {
-  color: var(--muted);
+  color: var(--text-secondary);
   line-height: 1.5;
   margin: 0;
 }
@@ -34,7 +34,7 @@
 }
 
 .mcpPaletteItem {
-  background: var(--surface-soft);
+  background: var(--bg-overlay);
   border: 1px solid var(--line);
   border-radius: 16px;
   display: grid;
@@ -43,13 +43,13 @@
 }
 
 .mcpPaletteItem span {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 0.84rem;
   line-height: 1.35;
 }
 
 .mcpWorkflowAttachment {
-  background: var(--surface-soft);
+  background: var(--bg-overlay);
   border: 1px solid var(--line);
   border-radius: 16px;
   display: grid;
@@ -59,7 +59,7 @@
 
 .mcpWorkflowAttachment > span,
 .mcpWorkflowAttachment div span {
-  color: var(--muted);
+  color: var(--text-secondary);
   display: block;
   font-size: 0.84rem;
   line-height: 1.4;
@@ -76,16 +76,16 @@
 }
 
 .mcpCard p {
-  color: var(--muted);
+  color: var(--text-secondary);
   line-height: 1.45;
   margin-bottom: 18px;
 }
 
 .mcpCard span {
-  background: var(--amber-bg);
+  background: var(--warn-bg);
   border: 1px solid #f4e5b5;
   border-radius: 999px;
-  color: var(--amber);
+  color: var(--warn);
   display: inline-flex;
   font-size: 0.78rem;
   font-weight: 720;
@@ -121,7 +121,7 @@
 }
 
 .storeRow div > span {
-  color: var(--muted);
+  color: var(--text-secondary);
   display: block;
   font-size: 0.86rem;
   margin-top: 4px;

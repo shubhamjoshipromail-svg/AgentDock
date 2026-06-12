@@ -7,7 +7,7 @@ import type { Section } from "../../lib/types";
 import { Pill } from "./primitives";
 import { AuthStatus } from "./AuthMenu";
 
-// The single global mode indicator. Replaces every per-section truthNotice banner.
+// The single global mode indicator. Replaces every per-section status banner.
 function ModePill() {
   const { data: session, status } = useSession();
   if (status === "loading") return null;

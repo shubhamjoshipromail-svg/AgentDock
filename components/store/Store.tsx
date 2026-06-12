@@ -208,7 +208,6 @@ export function Store({
       {tab === "Tools" && (
         <>
           <div className="mcpStoreIntro">
-            <p>Listed does not mean trusted. AgentDock adds risk, access, Flow scope, logs, and revocation first.</p>
             <div className="buttonPair">
               {savedWorkflows.length > 1 && (
                 <select
@@ -299,7 +298,7 @@ export function Store({
                     >
                       {attachingMcpId === server.id ? "Adding..." : isUnverified ? "Add (approval required)" : "Add Tool"}
                     </button>
-                    <button className="secondaryButton smallButton localPreviewButton" onClick={() => setMcpMessage(`${server.displayName}: ${server.description} Source: ${server.registrySource}. Execution is off.`)}>Details</button>
+                    <button className="secondaryButton smallButton" onClick={() => setMcpMessage(`${server.displayName}: ${server.description} Source: ${server.registrySource}. Execution is off.`)}>Details</button>
                   </div>
                 </article>
               );
@@ -315,7 +314,7 @@ export function Store({
                 <Metric label="Works with" value={tool.workflows} />
                 <div className="buttonPair">
                   <ComingSoonButton>Add Tool</ComingSoonButton>
-                  <button className="secondaryButton smallButton localPreviewButton" onClick={() => setMcpMessage(`${tool.name}: mock metadata preview. Sign in to sync DB-backed details.`)}>Preview details</button>
+                  <button className="secondaryButton smallButton" onClick={() => setMcpMessage(`${tool.name}: mock metadata preview. Sign in to sync DB-backed details.`)}>Preview details</button>
                 </div>
               </article>
             ))}

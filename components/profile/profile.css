@@ -14,7 +14,7 @@
 
 .memoryFirewallCard p,
 .dbStatus p {
-  color: var(--muted);
+  color: var(--text-secondary);
   line-height: 1.55;
   margin-bottom: 0;
 }
@@ -26,7 +26,7 @@
 .dbStatus span,
 .detailBlock span,
 .permissionList > span {
-  color: var(--muted);
+  color: var(--text-secondary);
   display: block;
   font-size: 0.78rem;
   font-weight: 720;
@@ -54,7 +54,7 @@
 
 .memoryRow {
   align-items: center;
-  color: var(--muted);
+  color: var(--text-secondary);
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(220px, 1.2fr) 110px 150px 150px 100px;
@@ -69,12 +69,12 @@
 }
 
 .memoryRow strong {
-  color: var(--ink);
+  color: var(--text-primary);
   display: block;
 }
 
 .memoryRow div span {
-  color: var(--muted);
+  color: var(--text-secondary);
   display: block;
   font-size: 0.84rem;
   line-height: 1.35;
@@ -94,30 +94,30 @@
 
 .sensitivityBadge.low,
 .decisionBadge.allowed {
-  background: var(--green-bg);
-  color: var(--green);
+  background: var(--ok-bg);
+  color: var(--ok);
 }
 
 .sensitivityBadge.medium,
 .decisionBadge.approval_required {
-  background: var(--amber-bg);
-  color: var(--amber);
+  background: var(--warn-bg);
+  color: var(--warn);
 }
 
 .sensitivityBadge.high,
 .decisionBadge.revoked {
-  background: var(--blue-bg);
-  color: var(--blue);
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 
 .sensitivityBadge.restricted,
 .decisionBadge.blocked {
-  background: var(--red-bg);
-  color: var(--red);
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .rowActions {
-  color: var(--ink);
+  color: var(--text-primary);
   font-weight: 720;
 }
 
@@ -156,11 +156,11 @@
 }
 
 .permissionList p strong {
-  color: var(--ink);
+  color: var(--text-primary);
 }
 
 .grantEditor {
-  background: var(--surface-soft);
+  background: var(--bg-overlay);
   border: 1px solid var(--line);
   border-radius: 16px;
   display: grid;
@@ -169,7 +169,7 @@
 }
 
 .grantEditor span {
-  color: var(--muted);
+  color: var(--text-secondary);
   display: block;
   font-size: 0.82rem;
   margin-top: 3px;
@@ -185,7 +185,7 @@
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 0.76rem;
   font-weight: 720;
   min-height: 32px;
@@ -194,9 +194,9 @@
 }
 
 .grantToggle.active {
-  background: var(--green-bg);
+  background: var(--ok-bg);
   border-color: #bfe8cc;
-  color: var(--green);
+  color: var(--ok);
 }
 
 .detailActions {

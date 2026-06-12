@@ -31,10 +31,10 @@
 
 .runTimelineItem span {
   align-items: center;
-  background: var(--surface-soft);
+  background: var(--bg-overlay);
   border: 1px solid var(--line);
   border-radius: 12px;
-  color: var(--muted);
+  color: var(--text-secondary);
   display: flex;
   font-size: 0.78rem;
   font-weight: 780;
@@ -43,7 +43,7 @@
 }
 
 .runTimelineItem p {
-  color: var(--ink);
+  color: var(--text-primary);
   line-height: 1.45;
   margin: 6px 0 0;
 }

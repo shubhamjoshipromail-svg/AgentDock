@@ -192,7 +192,7 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
               </div>
               <div className="actionRow detailActions">
                 <ComingSoonButton>Edit Access</ComingSoonButton>
-                <ComingSoonButton className="revokeButton">Revoke Access</ComingSoonButton>
+                <ComingSoonButton>Revoke Access</ComingSoonButton>
               </div>
             </>
           )}
