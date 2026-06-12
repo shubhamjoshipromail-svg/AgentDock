@@ -20,14 +20,18 @@
   .opsFeedList .ec:nth-child(5) { animation-delay: 120ms; }
   .opsFeedList .ec:nth-child(6) { animation-delay: 150ms; }
 
-  /* Graph nodes settle in. */
+  /* Graph nodes settle in (per-node animationDelay drives the staged reveal). */
   .fgNode { animation: cardIn 200ms var(--ease) both; }
+
+  /* Edges fade in behind their target node during a staged reveal. */
+  .flowGraphEdges .edgeReveal { animation: fadeIn 220ms var(--ease) both; }
 
   /* Mode pill fades on appearance / state change. */
   .navTrailing .pill { animation: fadeIn 200ms var(--ease) both; }
 
-  /* Warnings strip draws attention once. */
+  /* Warnings strip is the governance beat — it slides in last and stays. */
   .warningsStrip { animation: eventIn 220ms var(--ease) both; }
+  .buildCanvas .warningsStrip { animation-delay: 1100ms; }
 }
 
 @keyframes cardIn {
