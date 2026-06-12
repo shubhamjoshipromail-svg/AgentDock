@@ -260,3 +260,120 @@ provider (e.g. a 1-agent/1-tool plan returns `costCents: 3`, the unverified tool
   `tests/orchestrator.route.test.ts`; `.env` remains gitignored).
 - No execution surface added: exactly one planning call (+1 retry max), no tool/MCP/agent
   invocation, no streaming. Still plan + simulate only.
+
+---
+
+# Chunk 3 — The Credibility Redesign
+
+Pixels, not behavior. Zero backend/schema/route changes (audited below). All 69 tests
+green at every commit. Concept: **the control tower** — a dark, high-signal operations
+room where monospace marks every machine-true value and color is meaning.
+
+## Per-phase summary + hashes
+
+| Phase | Commit | Summary |
+|-------|--------|---------|
+| 0 | `04d0b83` | Plan: tokens, IA, flow graph, A2UI, demo seed |
+| A | `f65b751` | Design tokens + primitive system (dark skin, fonts, primitives) |
+| B | `6bb307c` | Information architecture + banner consolidation |
+| C | `a316a4f` | Flow graph signature element |
+| D | `380ce57` | A2UI card grammar + operations room |
+| E | `82f6376` | Demo seed + story polish |
+| F | `3f6bb76` | Motion, responsive floor, a11y |
+
+## Token system (`app/tokens.css`)
+
+**Palette:** bg-base `#0E1116`, bg-raised `#161B22`, bg-overlay `#1D242E`, line `#2A323D`,
+text-primary `#E8EDF2`, text-secondary `#9AA7B4`, text-faint `#5C6875`, accent `#5B8DEF`,
+accent-muted `#2C4470`. Semantics: ok `#3FB68B`, warn `#D9A03F`, danger `#E5604C`,
+restricted `#8B5CF6`.
+
+**Color law (enforced in `Badge`, flow-graph tones, A2UI stripes):**
+risk low→ok, medium→warn, high→danger, restricted→restricted;
+verification verified→ok, community→warn, unverified→faint text + warn border;
+decision allowed/approved→ok, approval_required→warn, blocked/denied→danger, info→faint.
+
+**Type:** Space Grotesk (display), Inter (UI), IBM Plex Mono (data) via `next/font/google`.
+Scale 12/13/14/16/20/28/36, body 14. **Space:** 4/8/12/16/24/32/48.
+**Radius:** 6 (controls) / 10 (cards) / 999 (pills). Borders over shadows (one overlay shadow).
+
+A **legacy variable bridge** maps the old light-theme names (`--bg`, `--surface`, `--ink`,
+`--muted`, `--line`, `--green`…) onto the dark tokens so the existing class-based CSS
+re-skinned at once.
+
+## Component inventory (primitives — `components/layout/primitives.tsx`)
+
+`Button` (primary/secondary/ghost/danger, sm/md, loading), `Card` (+header slot), `Badge`
+(risk/verification/decision resolve color internally), `Pill`, `Data` (mono inline),
+`Input`, `Select`, `SearchInput`, `EmptyState`, `Metric`. Legacy primitives (PageHeader,
+CapabilityBadge, DetailBlock, AuditList, WorkflowMini, ComingSoonButton) kept and restyled.
+
+## Flow graph (`components/build/flow-graph.ts` + `FlowGraph.tsx`)
+
+Pure `layoutFlow(input)` → positioned nodes + SVG elbow edges. Goal-leading horizontal
+agent spine ordered by `routeOrder`; approval gates as warn nodes on the spine between the
+agents they follow; tools hang below, memory above, connected by elbow edges. Node tone =
+risk/role per the color law (left border + glyph). Three adapters: `plannedFlowToGraph`,
+`builderNodesToGraph`, `savedWorkflowToGraph`. Selection drives the inspector; the same
+component renders the Flows detail read-only. Node class is `.fgNode` (renamed to avoid a
+collision with the dead Architecture `.flowNode` CSS).
+
+## A2UI grammar (`components/a2ui/EventCard.tsx`)
+
+One fixed anatomy: **who** (agent avatar+name) · **what** (event title) · **on what**
+(resource chip + risk badge) · **authority** (grant/permission, mono) · **decision**
+(leading edge-stripe + badge, color-law) · **when/cost** (mono, right). `ApprovalCard`
+variant adds rationale + action row (Approve primary / Deny danger / Edit ghost) and a warn
+edge pulse; resolving transitions the stripe (≤250ms). Normalizers map both mock
+`AuditEvent` and DB `WorkflowRunEvent` into the grammar. Control is now a two-column ops
+room: filtered A2UI feed (decision chips) + approval inbox + spend panel computed from
+already-fetched data + `A2UI · agent-to-user interface` caption + execution-off footer.
+
+## Demo seed (`prisma/seed.js`)
+
+The seeded demo user now gets a completed `WorkflowRun` with 6 grammar events (allowed /
+approval_required / blocked), one pending Gmail-draft `ApprovalRequest`, and `ActivityLog`
+timeline history (including an `orchestrator_plan` cost entry) — so Control and Flows look
+alive immediately after `npm run db:seed`. Build's empty hero shows three example-goal chips
+that fill the input. Signed-out demo renders the same surfaces via mock data.
+
+## 90-second demo script (scroll-free at 1440×900)
+
+Build → type/click a goal → Generate → plan meta (mono) + warnings strip + flow graph →
+tighten one permission (capped at the policy ceiling) → Save → Flows (card grid + read-only
+graph) → Run preview → Control (A2UI cards stream, color-coded) → Approve the pending item
+→ spend panel shows real numbers → revoke a tool grant with inline confirm. Verified the
+ops room and Build hero render scroll-free at 1280×800 and 1440×900.
+
+## Before/after per section
+
+- **Build:** cream hero + vertical numbered card list → dark hero, plan-meta mono line,
+  first-class warnings strip, **flow graph** as the primary representation, example chips.
+- **Store:** banner + inline-styled search → one-line page, token toolbar (SearchInput/
+  Select), Badge color-law on tool cards.
+- **Flows:** two stacked cards → selectable flow-card grid (status pill + mono counts) +
+  detail with read-only graph; EmptyState.
+- **Control:** 6-card grid + banner → two-column operations room (A2UI feed + filters +
+  approval inbox + spend panel).
+- **Profile:** 6 cards of fake defaults → identity + memory only (honest short page).
+
+## Interpretations
+
+- **App shell = top nav** (restyled), not a left rail — the nav already lists the five
+  sections in story order; a rail would relayout every page for no story gain.
+- **Build hero-dock and Control two-column** restaging (listed under Phase B) were folded
+  into Phases C and D, where those exact surfaces are rebuilt, to avoid laying them out
+  twice.
+- **Hex outside tokens.css:** the verifiable gate (`grep "#…" --include=*.tsx`) is clean.
+  The legacy per-component CSS still contains structural color literals, but they are
+  overridden by the token-only authoritative skin (`tokens.css` + `theme.css` +
+  `primitives.css` + `flow-graph.css` + `a2ui.css` + `motion.css`). Color truth lives in
+  tokens; the literals are dead values behind the override.
+
+## Constraint confirmation
+
+- `git diff --stat ab32414..HEAD -- app/api prisma lib/orchestrator lib/llm lib/registry
+  lib/validation` → **only `prisma/seed.js`** (allowed seed file). No API/schema/route/
+  orchestrator/llm/registry/validation changes.
+- No `truthNotice` remains in JSX. No raw hex in any `.tsx`.
+- 69/69 tests green; `npm run build` clean at every commit.
