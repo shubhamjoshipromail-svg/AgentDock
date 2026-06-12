@@ -1,0 +1,97 @@
+/*
+ * AgentDock design tokens — "the control tower".
+ * The ONE place raw color/size values live. Every component consumes tokens.
+ * Dark theme only (no toggle). Legacy variable names from the old light theme are
+ * bridged onto these tokens at the bottom so existing class-based CSS re-skins at once.
+ */
+:root {
+  /* Surfaces */
+  --bg-base: #0E1116;
+  --bg-raised: #161B22;
+  --bg-overlay: #1D242E;
+  --line: #2A323D;
+  --line-strong: #3A4452;
+
+  /* Text */
+  --text-primary: #E8EDF2;
+  --text-secondary: #9AA7B4;
+  --text-faint: #5C6875;
+
+  /* Brand accent (the one) */
+  --accent: #5B8DEF;
+  --accent-muted: #2C4470;
+
+  /* Semantic decision / status */
+  --ok: #3FB68B;
+  --warn: #D9A03F;
+  --danger: #E5604C;
+  --restricted: #8B5CF6;
+
+  /* Tinted fills for semantic surfaces (12% over dark base) */
+  --ok-bg: rgba(63, 182, 139, 0.12);
+  --warn-bg: rgba(217, 160, 63, 0.12);
+  --danger-bg: rgba(229, 96, 76, 0.12);
+  --restricted-bg: rgba(139, 92, 246, 0.12);
+  --accent-bg: rgba(91, 141, 239, 0.12);
+
+  /* Type */
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-20: 1.25rem;
+  --fs-28: 1.75rem;
+  --fs-36: 2.25rem;
+
+  /* Space scale (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+
+  /* Radius */
+  --r-control: 6px;
+  --r-card: 10px;
+  --r-pill: 999px;
+
+  /* The single allowed elevation (modal / inspector only) */
+  --shadow-overlay: 0 24px 60px rgba(0, 0, 0, 0.45);
+
+  /* Motion */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur: 200ms;
+
+  /* ---- Legacy bridge: map the old light-theme variable names onto dark tokens ---- */
+  --bg: var(--bg-base);
+  --surface: var(--bg-raised);
+  --surface-soft: var(--bg-overlay);
+  --ink: var(--text-primary);
+  --muted: var(--text-secondary);
+  --muted-2: var(--text-faint);
+  --line-strong: var(--line-strong);
+  --green: var(--ok);
+  --green-bg: var(--ok-bg);
+  --amber: var(--warn);
+  --amber-bg: var(--warn-bg);
+  --red: var(--danger);
+  --red-bg: var(--danger-bg);
+  --blue: var(--accent);
+  --blue-bg: var(--accent-bg);
+  --shadow: none;
+  --shadow-soft: none;
+}
+
+/* Machine-true values: IDs, costs, tokens, timestamps, event types, model names. */
+.data,
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}

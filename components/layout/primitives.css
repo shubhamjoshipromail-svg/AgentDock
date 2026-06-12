@@ -1,0 +1,167 @@
+/* Design-system primitive styles. Tokens only (app/tokens.css). */
+
+/* ---- Button ---- */
+.btn {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  display: inline-flex;
+  font-family: var(--font-body);
+  font-weight: 500;
+  gap: var(--sp-2);
+  justify-content: center;
+  line-height: 1;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  white-space: nowrap;
+}
+
+.btn-md { font-size: var(--fs-13); min-height: 34px; padding: 0 var(--sp-3); }
+.btn-sm { font-size: var(--fs-12); min-height: 28px; padding: 0 var(--sp-2); }
+
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--bg-base); }
+.btn-primary:hover:not(:disabled) { background: #6f9bf2; }
+
+.btn-secondary { background: var(--bg-overlay); border-color: var(--line); color: var(--text-primary); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--line-strong); }
+
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text-secondary); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg-overlay); color: var(--text-primary); }
+
+.btn-danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: rgba(229, 96, 76, 0.2); }
+
+.btn:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.btn-spinner {
+  animation: btnspin 0.6s linear infinite;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  border-top-color: transparent;
+  height: 14px;
+  width: 14px;
+}
+
+@keyframes btnspin { to { transform: rotate(360deg); } }
+
+/* ---- Card ---- */
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+}
+
+.cardHeader {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+}
+
+/* ---- Badge (text + color, never color alone) ---- */
+.badge {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  gap: var(--sp-1);
+  letter-spacing: 0.01em;
+  padding: 2px var(--sp-2);
+  white-space: nowrap;
+}
+
+.badge-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.badge-warn { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+.badge-danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+.badge-restricted { background: var(--restricted-bg); border-color: var(--restricted); color: var(--restricted); }
+.badge-accent { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.badge-neutral { background: var(--bg-overlay); border-color: var(--line); color: var(--text-secondary); }
+/* unverified: faint text + warn border (the LAW) */
+.badge-unverified { background: transparent; border-color: var(--warn); color: var(--text-faint); }
+
+/* ---- Pill (status chips, mode pill) ---- */
+.pill {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  gap: var(--sp-1);
+  padding: 3px var(--sp-2);
+}
+
+.pill-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.pill-warn { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+.pill-danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+.pill-accent { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.pill-neutral { background: var(--bg-overlay); border-color: var(--line); color: var(--text-secondary); }
+
+/* ---- Fields ---- */
+.field {
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-primary);
+  min-height: 34px;
+  padding: 0 var(--sp-3);
+}
+
+.field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+  outline: none;
+}
+
+.searchInput {
+  align-items: center;
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-faint);
+  display: inline-flex;
+  gap: var(--sp-2);
+  min-height: 34px;
+  padding: 0 var(--sp-3);
+}
+
+.searchInput:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+  color: var(--text-secondary);
+}
+
+.searchInput input {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+}
+
+/* ---- EmptyState ---- */
+.emptyState {
+  align-items: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-card);
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+}
+
+.emptyStateIcon { color: var(--text-faint); }
+.emptyState strong { color: var(--text-primary); font-family: var(--font-display); font-size: var(--fs-16); }
+.emptyState p { margin: 0; max-width: 42ch; }
+
+/* ---- Metric ---- */
+.metric { display: inline-flex; flex-direction: column; gap: 2px; }
+.metric > span { color: var(--text-faint); font-size: var(--fs-12); }
+.metric > strong { color: var(--text-primary); font-weight: 500; }

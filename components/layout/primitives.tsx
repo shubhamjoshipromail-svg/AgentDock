@@ -1,6 +1,170 @@
 "use client";
 
-import type { AuditEvent, CapabilityKind } from "../../lib/types";
+import type { AuditEvent, CapabilityKind, McpRiskLevel, McpVerificationStatus, Decision } from "../../lib/types";
+
+// ---------------------------------------------------------------------------
+// Design-system primitives. Every primitive consumes tokens (app/tokens.css)
+// via class names defined in primitives.css — no caller ever picks a color.
+// ---------------------------------------------------------------------------
+
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonSize = "sm" | "md";
+
+export function Button({
+  children,
+  variant = "secondary",
+  size = "md",
+  loading = false,
+  className = "",
+  type = "button",
+  ...rest
+}: {
+  children: React.ReactNode;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  loading?: boolean;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type={type}
+      className={`btn btn-${variant} btn-${size}${loading ? " btn-loading" : ""} ${className}`.trim()}
+      disabled={loading || rest.disabled}
+      {...rest}
+    >
+      {loading ? <span className="btn-spinner" aria-hidden /> : children}
+    </button>
+  );
+}
+
+export function Card({
+  title,
+  meta,
+  header,
+  className = "",
+  children
+}: {
+  title?: string;
+  meta?: string;
+  header?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`card ${className}`.trim()}>
+      {header ? (
+        <div className="cardHeader">{header}</div>
+      ) : title ? (
+        <div className="panelHeader"><span>{title}</span>{meta && <strong>{meta}</strong>}</div>
+      ) : null}
+      {children}
+    </div>
+  );
+}
+
+// Inline mono element for machine-true values (IDs, costs, tokens, timestamps).
+export function Data({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <span className={`data ${className}`.trim()}>{children}</span>;
+}
+
+// Risk / verification / decision colors resolve internally. Always carries text.
+export function Badge({
+  risk,
+  verification,
+  decision,
+  tone,
+  children
+}: {
+  risk?: McpRiskLevel;
+  verification?: McpVerificationStatus;
+  decision?: Decision;
+  tone?: "ok" | "warn" | "danger" | "restricted" | "accent" | "neutral";
+  children?: React.ReactNode;
+}) {
+  let resolved: string = tone ?? "neutral";
+  let label = children;
+
+  if (risk) {
+    resolved = risk === "low" ? "ok" : risk === "medium" ? "warn" : risk === "high" ? "danger" : "restricted";
+    label = label ?? `${risk} risk`;
+  } else if (verification) {
+    resolved = verification === "verified" ? "ok" : verification === "community" ? "warn" : "unverified";
+    label = label ?? verification;
+  } else if (decision) {
+    resolved =
+      decision === "allowed" || decision === "approved"
+        ? "ok"
+        : decision === "approval_required"
+          ? "warn"
+          : decision === "blocked" || decision === "denied"
+            ? "danger"
+            : "neutral";
+    label = label ?? decision.replaceAll("_", " ");
+  }
+
+  return <span className={`badge badge-${resolved}`}>{label}</span>;
+}
+
+export function Pill({
+  tone = "neutral",
+  title,
+  children
+}: {
+  tone?: "ok" | "warn" | "danger" | "accent" | "neutral";
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return <span className={`pill pill-${tone}`} title={title}>{children}</span>;
+}
+
+export function Input({ className = "", ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={`field ${className}`.trim()} {...rest} />;
+}
+
+export function Select({ className = "", children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={`field ${className}`.trim()} {...rest}>{children}</select>;
+}
+
+export function SearchInput({ className = "", ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className={`searchInput ${className}`.trim()}>
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+        <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M10.5 10.5 L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+      <input type="search" {...rest} />
+    </div>
+  );
+}
+
+export function EmptyState({
+  icon,
+  title,
+  body,
+  action
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  body?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="emptyState">
+      {icon && <div className="emptyStateIcon" aria-hidden>{icon}</div>}
+      <strong>{title}</strong>
+      {body && <p>{body}</p>}
+      {action}
+    </div>
+  );
+}
+
+export function Metric({ label, value }: { label: string; value: string }) {
+  return <span className="metric"><span>{label}</span><strong className="data">{value}</strong></span>;
+}
+
+// ---------------------------------------------------------------------------
+// Legacy primitives kept working (restyled via tokens). Callers migrate as
+// later phases touch each surface.
+// ---------------------------------------------------------------------------
 
 export function PageHeader({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
   return (
@@ -12,21 +176,8 @@ export function PageHeader({ eyebrow, title, copy }: { eyebrow: string; title: s
   );
 }
 
-export function Card({ title, meta, children }: { title: string; meta: string; children: React.ReactNode }) {
-  return (
-    <div className="card">
-      <div className="panelHeader"><span>{title}</span><strong>{meta}</strong></div>
-      {children}
-    </div>
-  );
-}
-
 export function MetricCard({ label, value }: { label: string; value: string }) {
-  return <div><span>{label}</span><strong>{value}</strong></div>;
-}
-
-export function Metric({ label, value }: { label: string; value: string }) {
-  return <span className="metric"><span>{label}</span><strong>{value}</strong></span>;
+  return <div><span>{label}</span><strong className="data">{value}</strong></div>;
 }
 
 export function CapabilityBadge({ kind, label }: { kind: CapabilityKind; label?: string }) {
@@ -34,7 +185,7 @@ export function CapabilityBadge({ kind, label }: { kind: CapabilityKind; label?:
     db: "DB-backed",
     local: "Local preview",
     soon: "Coming soon",
-    mock: "Mock fallback"
+    mock: "Demo"
   };
 
   return <span className={`capabilityBadge ${kind}`}>{label ?? labels[kind]}</span>;
@@ -51,7 +202,7 @@ export function ComingSoonButton({ children, className = "secondaryButton smallB
 export function WorkflowMini({ name, status, budget }: { name: string; status: string; budget: string }) {
   return (
     <div className="compactItem">
-      <div><strong>{name}</strong><span>{budget}</span></div>
+      <div><strong>{name}</strong><span className="data">{budget}</span></div>
       <span className={status === "Active" ? "statusPill running" : "statusPill awaitingapproval"}>{status}</span>
     </div>
   );
@@ -62,7 +213,7 @@ export function AuditList({ events, compact = false }: { events: AuditEvent[]; c
     <div className={compact ? "timeline compactTimeline" : "timeline"}>
       {events.map((event, index) => (
         <div className="timelineEvent" key={`${event.event}-${index}`}>
-          <span>{String(index + 1).padStart(2, "0")}</span>
+          <span className="data">{String(index + 1).padStart(2, "0")}</span>
           <p>{event.event}</p>
         </div>
       ))}

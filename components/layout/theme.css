@@ -1,450 +1,447 @@
-/* Quiet infrastructure luxury refinement pass */
-:root {
-  --bg: #f7f6f2;
-  --surface: rgba(255, 255, 255, 0.74);
-  --surface-soft: rgba(255, 255, 255, 0.48);
-  --ink: #171614;
-  --muted: #6f6a62;
-  --muted-2: #999286;
-  --line: rgba(23, 22, 20, 0.08);
-  --line-strong: rgba(23, 22, 20, 0.14);
-  --shadow: 0 24px 70px rgba(54, 48, 38, 0.08);
-  --shadow-soft: 0 10px 34px rgba(54, 48, 38, 0.045);
-  --green-bg: rgba(226, 244, 231, 0.74);
-  --amber-bg: rgba(255, 246, 217, 0.74);
-  --red-bg: rgba(255, 237, 235, 0.74);
-  --blue-bg: rgba(237, 243, 255, 0.72);
-}
+/*
+ * Control-tower dark skin. Imported LAST, so it is the single source of color truth
+ * over the structural per-component CSS. Borders over shadows; no blur, no gradients.
+ * Every value here is a token from app/tokens.css.
+ */
 
+/* ---- Page ---- */
 body {
-  background:
-    radial-gradient(circle at 12% -8%, rgba(255, 255, 255, 0.92), transparent 34rem),
-    radial-gradient(circle at 88% 4%, rgba(232, 225, 211, 0.48), transparent 30rem),
-    linear-gradient(180deg, #faf9f5 0%, var(--bg) 42%, #f3f1ea 100%);
-  color: var(--ink);
+  background: var(--bg-base);
+  color: var(--text-primary);
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 body::before {
-  background-image:
-    linear-gradient(rgba(23, 22, 20, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(23, 22, 20, 0.03) 1px, transparent 1px);
-  background-size: 72px 72px;
-  content: "";
-  inset: 0;
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.22), transparent 58%);
-  pointer-events: none;
-  position: fixed;
-  z-index: -1;
+  content: none;
 }
 
 .shell {
-  padding: 28px;
+  padding: var(--sp-6);
 }
 
-.topbar {
-  background: rgba(255, 255, 255, 0.62);
-  border-color: rgba(23, 22, 20, 0.08);
-  border-radius: 999px;
-  box-shadow: 0 14px 36px rgba(54, 48, 38, 0.055);
-  max-width: 1260px;
-  padding: 8px 10px;
+/* ---- Top bar / nav ---- */
+.topbar,
+.platformTopbar {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: none;
+  max-width: 1320px;
+  padding: var(--sp-2) var(--sp-3);
 }
 
 .brand {
-  font-size: 0.95rem;
-  font-weight: 620;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--fs-16);
+  font-weight: 600;
 }
 
 .brandMark {
-  background: #1b1916;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 680;
-  height: 30px;
-  width: 30px;
+  background: var(--accent);
+  border-radius: var(--r-control);
+  color: var(--bg-base);
+  font-family: var(--font-display);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  height: 28px;
+  width: 28px;
 }
 
-.navLinks {
-  background: rgba(255, 255, 255, 0.46);
-  border: 1px solid rgba(23, 22, 20, 0.06);
-  border-radius: 999px;
-  gap: 4px;
-  padding: 4px;
+.navLinks,
+.platformNav {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  gap: var(--sp-1);
+  padding: var(--sp-1);
 }
 
 .navButton,
 .tabButton {
-  border-radius: 999px;
-  font-size: 0.86rem;
-  font-weight: 480;
-  padding: 8px 12px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  padding: var(--sp-2) var(--sp-3);
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.navButton:hover,
+.tabButton:hover {
+  color: var(--text-primary);
 }
 
 .navButton.active,
-.tabButton.active,
-.progressStep.active,
-.goalCard.selected {
-  background: rgba(23, 22, 20, 0.075);
-  color: var(--ink);
+.tabButton.active {
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 
-.authTrigger,
-.googleSignInButton {
-  background: rgba(255, 255, 255, 0.58);
-  border-color: rgba(23, 22, 20, 0.1);
-  font-weight: 560;
+/* ---- Headings / text ---- */
+h1, h2, h3 {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
+h1 { font-size: var(--fs-36); line-height: 1.05; }
+h2 { font-size: var(--fs-28); line-height: 1.1; }
+h3 { font-size: var(--fs-20); font-weight: 500; }
+
+p {
+  color: var(--text-secondary);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.eyebrow,
+.panelHeader span,
+.builderLibraryStrip > div > span,
+.policyDiffList > span,
+.planGroupLabel {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panelHeader strong {
+  color: var(--text-primary);
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+
+/* ---- Surfaces ---- */
 .authPopover,
-.heroPanel,
 .card,
 .agentCard,
-.successScreen,
-.compareCard,
 .mcpCard,
-.storeTable,
-.architectureFlow,
 .builderHeroPrompt,
 .workflowTimelinePanel,
 .workflowInspectorPanel,
 .policySafetyPanel,
 .plannerCard,
 .simulationPanel,
-.truthNotice,
-.builderToast,
 .memoryFirewallCard,
-.profileAuthNotice {
-  backdrop-filter: blur(18px);
-  background: var(--surface);
+.providerCard,
+.heroPanel {
+  backdrop-filter: none;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-soft);
+  border-radius: var(--r-card);
+  box-shadow: none;
 }
 
 .platformPage,
-.hero,
-.contrastSection,
-.profileSection,
-.activitySection,
-.architectureSection,
-.mcpSection,
-.storeSection {
-  max-width: 1260px;
+.hero {
+  max-width: 1320px;
 }
 
-h1,
-h2,
-h3 {
-  color: var(--ink);
-  font-weight: 590;
-  letter-spacing: -0.018em;
-}
-
-h1 {
-  line-height: 1;
-}
-
-h2 {
-  line-height: 1.05;
-}
-
-h3,
-.stepTitleRow strong,
-.workflowInspectorPanel h3,
-.activeRunCard > strong,
-.builderLibraryStrip strong,
-.emptyWorkflowState strong {
-  font-weight: 560;
-}
-
-p,
-.sectionHeader p,
-.subheadline,
-.agentCard p,
-.heroPolicy p,
-.workflowStepCard p,
-.workflowInspectorPanel p,
-.builderHeroPrompt p {
-  color: var(--muted);
-  font-weight: 400;
-  line-height: 1.65;
-}
-
-.eyebrow,
-.panelHeader span,
-.builderLibraryStrip > div > span,
-.plannerPromptPanel span,
-.plannerCanvas .canvasHeader span,
-.policyDiffList > span {
-  color: var(--muted-2);
-  font-size: 0.68rem;
-  font-weight: 560;
-  letter-spacing: 0.14em;
-}
-
-.panelHeader strong {
-  color: var(--ink);
-  font-size: 0.9rem;
-  font-weight: 560;
-}
-
+/* ---- Legacy buttons (kept working until callers move to <Button>) ---- */
 .primaryButton,
 .secondaryButton,
 .ghostButton,
-.revokeButton {
-  border-radius: 999px;
-  font-size: 0.88rem;
-  font-weight: 540;
-  min-height: 36px;
-  padding: 9px 14px;
+.revokeButton,
+.googleSignInButton,
+.authTrigger,
+.templateChip,
+.tabButton {
+  border-radius: var(--r-control);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  min-height: 34px;
+  padding: var(--sp-2) var(--sp-3);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .primaryButton {
-  background: #1c1a17;
-  box-shadow: 0 8px 22px rgba(28, 26, 23, 0.13);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: none;
+  color: var(--bg-base);
+}
+
+.primaryButton:hover {
+  background: #6f9bf2;
+  transform: none;
 }
 
 .secondaryButton,
-.ghostButton {
-  background: rgba(255, 255, 255, 0.54);
-  border-color: rgba(23, 22, 20, 0.11);
+.ghostButton,
+.authTrigger,
+.googleSignInButton,
+.templateChip {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  color: var(--text-primary);
 }
 
-.primaryButton:hover,
 .secondaryButton:hover,
 .ghostButton:hover,
+.authTrigger:hover,
 .templateChip:hover {
-  box-shadow: 0 10px 24px rgba(54, 48, 38, 0.07);
-  transform: translateY(-1px);
+  border-color: var(--line-strong);
+  box-shadow: none;
+  transform: none;
+}
+
+.revokeButton {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  color: var(--danger);
 }
 
 .comingSoonButton,
 .comingSoonButton:disabled {
-  background: rgba(235, 232, 224, 0.55);
-  border-color: rgba(23, 22, 20, 0.07);
-  color: #9a9388;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  color: var(--text-faint);
+  opacity: 0.7;
 }
 
-.capabilityBadge,
-.trustRow span,
-.verifiedBadge,
-.rankText,
-.credentialChecklist span,
-.successGrid span,
-.statusPill,
-.templateChip,
-.policyCheckGrid span {
-  border-color: rgba(23, 22, 20, 0.08);
-  font-weight: 520;
-}
-
-.builderHeroPrompt {
-  border-radius: 30px;
-  padding: clamp(26px, 5vw, 54px);
-}
-
-.builderHeroPrompt h1 {
-  font-size: clamp(2.55rem, 5.5vw, 5.35rem);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  max-width: 980px;
-}
-
-.builderHeroPrompt textarea,
-textarea {
-  background: rgba(255, 255, 255, 0.58);
-  border-color: rgba(23, 22, 20, 0.11);
-  border-radius: 22px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+/* ---- Inputs ---- */
+textarea,
+input,
+select,
+.builderHeroPrompt textarea {
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  box-shadow: none;
+  color: var(--text-primary);
   font-weight: 400;
 }
 
-.builderHeroPrompt textarea:focus,
+textarea::placeholder,
+input::placeholder {
+  color: var(--text-faint);
+}
+
 textarea:focus,
-input:focus {
-  border-color: rgba(23, 22, 20, 0.26);
-  box-shadow: 0 0 0 4px rgba(92, 81, 61, 0.08);
+input:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+  outline: none;
 }
 
-.templateChip,
-.truthNotice,
-.builderLibraryStrip,
-.emptyWorkflowState,
-.profileAuthNotice,
-.softNote {
-  background: rgba(255, 255, 255, 0.48);
+.builderHeroPrompt {
+  border-radius: var(--r-card);
+  padding: var(--sp-6);
 }
 
-.workflowPlannerLayout {
-  gap: 22px;
-  grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.58fr);
+.builderHeroPrompt h1 {
+  font-size: var(--fs-36);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  max-width: 720px;
 }
 
+/* ---- Step / plan cards ---- */
 .workflowTimelinePanel,
 .workflowInspectorPanel,
 .policySafetyPanel,
 .plannerCard,
 .simulationPanel {
-  border-radius: 26px;
-  padding: 20px;
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
 }
 
 .workflowStepCard {
-  background: rgba(255, 255, 255, 0.5);
-  border-color: rgba(23, 22, 20, 0.075);
-  border-radius: 22px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
   box-shadow: none;
-  gap: 16px;
-  grid-template-columns: 46px minmax(0, 1fr);
-  padding: 18px;
+  gap: var(--sp-3);
+  grid-template-columns: 40px minmax(0, 1fr);
+  padding: var(--sp-3);
 }
 
 .workflowStepCard:hover,
 .workflowStepCard.selected {
-  border-color: rgba(23, 22, 20, 0.18);
-  box-shadow: 0 16px 38px rgba(54, 48, 38, 0.07);
+  border-color: var(--accent);
+  box-shadow: none;
 }
 
 .stepNumber,
 .runTimelineItem span {
-  background: rgba(250, 249, 245, 0.8);
-  border-color: rgba(23, 22, 20, 0.08);
-  color: var(--muted);
-  font-weight: 560;
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-weight: 500;
 }
 
 .stepTitleRow span,
 .workflowInspectorPanel > p,
 .builderLibraryStrip p,
 .emptyWorkflowState p {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 
+/* ---- Detail blocks / metrics ---- */
 .detailBlock,
-.controlPreview div,
 .heroPolicy,
-.setupAgentBox,
 .agentStats span,
 .compactItem,
-.approvalList label,
-.policyStat,
 .dbStatus,
 .memoryRow,
 .permissionList p,
-.activityEvent,
-.architectureNode,
-.storeRow,
 .approvalInboxCard,
 .mcpPaletteItem,
 .mcpWorkflowAttachment,
 .grantEditor,
-.providerCard,
 .savedWorkflow,
 .approvalItem,
-.runHistory,
-.softNote {
-  background: rgba(255, 255, 255, 0.42);
-  border-color: rgba(23, 22, 20, 0.07);
+.softNote,
+.policyDiffList {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  box-shadow: none;
 }
 
-.detailBlock {
-  padding: 12px;
-}
+.detailBlock { padding: var(--sp-3); }
 
 .detailBlock span,
 .metric span,
 .agentStats span,
-.storeRow > span:not(.storeRank),
 .controlPreview span {
-  color: var(--muted-2);
-  font-weight: 480;
+  color: var(--text-faint);
+  font-weight: 500;
 }
 
 .detailBlock strong,
 .metric strong,
 .agentStats strong,
-.storeRow strong,
 .controlPreview strong {
-  color: var(--ink);
-  font-weight: 560;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 500;
 }
 
 .policyCheckGrid span {
-  background: rgba(255, 255, 255, 0.42);
-  border-radius: 999px;
-  color: #514b43;
-  padding: 8px 10px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+  padding: var(--sp-2) var(--sp-3);
 }
 
-.policyDiffList {
-  background: rgba(250, 249, 245, 0.54);
-  border-color: rgba(23, 22, 20, 0.07);
-  border-radius: 20px;
-}
-
-.approvalInboxCard,
-.mcpPaletteItem,
-.mcpCard,
-.agentCard,
-.compactAgentCard {
-  box-shadow: none;
-}
-
-.approvalActions {
-  gap: 7px;
-}
-
+/* ---- Tabs ---- */
 .tabRow {
-  background: rgba(255, 255, 255, 0.42);
-  border: 1px solid rgba(23, 22, 20, 0.07);
-  border-radius: 999px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
   display: inline-flex;
-  gap: 4px;
-  padding: 4px;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
 }
 
-.tabButton {
-  background: transparent;
-  border: 0;
-  color: var(--muted);
+/* ---- Notices / toasts (legacy; mostly removed in Phase B) ---- */
+.truthNotice,
+.builderToast,
+.builderLibraryStrip,
+.emptyWorkflowState,
+.profileAuthNotice {
+  backdrop-filter: none;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  box-shadow: none;
+  color: var(--text-secondary);
 }
 
-.tabButton.active {
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 5px 14px rgba(54, 48, 38, 0.05);
+/* ---- Badges: risk / verification / decision color LAW ---- */
+.verifiedBadge {
+  background: var(--ok-bg);
+  border: 1px solid var(--ok);
+  color: var(--ok);
 }
 
-.agentGrid,
-.mcpGrid,
-.templateGrid,
-.dashboardGrid,
-.controlGrid,
-.libraryGrid,
-.builderLowerGrid {
-  gap: 20px;
+.rankText {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-weight: 500;
 }
 
-.compactAgentCard,
-.agentCard,
-.mcpCard {
-  border-radius: 24px;
+.sensitivityBadge,
+.statusPill {
+  border-radius: var(--r-pill);
+  font-size: var(--fs-12);
+  font-weight: 500;
 }
 
-.agentStats.compactStats,
-.compactStats {
-  gap: 8px;
+.sensitivityBadge.low { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok); }
+.sensitivityBadge.medium { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); }
+.sensitivityBadge.high { background: var(--danger-bg); border: 1px solid var(--danger); color: var(--danger); }
+.sensitivityBadge.restricted { background: var(--restricted-bg); border: 1px solid var(--restricted); color: var(--restricted); }
+
+.statusPill.running { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok); }
+.statusPill.awaitingapproval { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); }
+
+/* ---- Capability / mode badge ---- */
+.capabilityBadge {
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: 500;
 }
 
-.runTimelineItem p {
-  color: var(--ink);
-  font-weight: 430;
+.capabilityBadge.db { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok); }
+.capabilityBadge.local { background: var(--accent-bg); border: 1px solid var(--accent); color: var(--accent); }
+.capabilityBadge.mock { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); }
+.capabilityBadge.soon { background: var(--bg-overlay); border: 1px solid var(--line); color: var(--text-faint); }
+
+/* ---- Tables ---- */
+.tableWrap table { color: var(--text-secondary); }
+.tableWrap th { color: var(--text-faint); }
+.tableWrap td, .tableWrap th { border-color: var(--line); }
+
+/* ---- Meter ---- */
+.meter {
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  overflow: hidden;
 }
 
-.memoryFirewallCard {
-  border-radius: 28px;
+.meter span {
+  background: var(--accent);
+  display: block;
+  height: 100%;
 }
 
+/* ---- Memory rows / grants ---- */
+.memoryRow.selected,
+.grantToggle.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.grantToggle {
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+}
+
+.planMetaLine {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+
+/* ---- Responsive (refined in Phase F) ---- */
 @media (max-width: 1080px) {
   .workflowPlannerLayout,
   .builderLowerGrid,
@@ -452,40 +449,5 @@ input:focus {
   .libraryGrid {
     grid-template-columns: 1fr;
   }
-
-  .workflowInspectorPanel {
-    position: static;
-  }
-}
-
-@media (max-width: 760px) {
-  .shell {
-    padding: 14px;
-  }
-
-  .topbar {
-    border-radius: 24px;
-  }
-
-  .navLinks,
-  .tabRow {
-    border-radius: 22px;
-    width: 100%;
-  }
-
-  .builderHeroPrompt {
-    padding: 22px;
-  }
-
-  .workflowStepCard {
-    grid-template-columns: 1fr;
-  }
-
-  .stepDetailsGrid,
-  .runMetricGrid,
-  .runtimeSummary,
-  .compactStats,
-  .compactMcpAttachPanel .mcpPaletteGrid {
-    grid-template-columns: 1fr;
-  }
+  .workflowInspectorPanel { position: static; }
 }

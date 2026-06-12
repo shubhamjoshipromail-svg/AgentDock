@@ -5,6 +5,7 @@
  * This is a file split only — selectors and declarations are unchanged.
  */
 @import "./base.css";
+@import "../components/layout/primitives.css";
 @import "../components/layout/layout.css";
 @import "../components/profile/profile.css";
 @import "../components/shared/shared.css";
