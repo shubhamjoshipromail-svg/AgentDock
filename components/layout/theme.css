@@ -507,8 +507,18 @@ select:focus {
   .workflowPlannerLayout,
   .builderLowerGrid,
   .controlGrid,
-  .libraryGrid {
+  .libraryGrid,
+  .opsRoom {
     grid-template-columns: 1fr;
   }
   .workflowInspectorPanel { position: static; }
+}
+
+/* Responsive floor: usable at 1280, degrades cleanly to 1024. Below 1024 is
+   explicitly out of scope. */
+@media (max-width: 1024px) {
+  .shell { padding: var(--sp-4); }
+  .topbar, .platformTopbar { flex-wrap: wrap; gap: var(--sp-2); }
+  .storeToolbar { flex-direction: column; align-items: stretch; }
+  .storeToolbar .searchInput { min-width: 0; }
 }

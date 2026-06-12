@@ -1,0 +1,49 @@
+/* Motion — CSS-first, all ≤250ms, all gated behind reduced-motion. Tokens only. */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Plan cards stagger in on generation. */
+  .planCard {
+    animation: cardIn 220ms var(--ease) both;
+  }
+  .planCardGroup .planCard:nth-child(2) { animation-delay: 40ms; }
+  .planCardGroup .planCard:nth-child(3) { animation-delay: 80ms; }
+  .planCardGroup .planCard:nth-child(4) { animation-delay: 120ms; }
+  .planCardGroup .planCard:nth-child(5) { animation-delay: 160ms; }
+
+  /* Timeline events slide-fade in (approval cards keep their pulse instead). */
+  .ec:not(.ec-approval) {
+    animation: eventIn 220ms var(--ease) both;
+  }
+  .opsFeedList .ec:nth-child(2) { animation-delay: 30ms; }
+  .opsFeedList .ec:nth-child(3) { animation-delay: 60ms; }
+  .opsFeedList .ec:nth-child(4) { animation-delay: 90ms; }
+  .opsFeedList .ec:nth-child(5) { animation-delay: 120ms; }
+  .opsFeedList .ec:nth-child(6) { animation-delay: 150ms; }
+
+  /* Graph nodes settle in. */
+  .fgNode { animation: cardIn 200ms var(--ease) both; }
+
+  /* Mode pill fades on appearance / state change. */
+  .navTrailing .pill { animation: fadeIn 200ms var(--ease) both; }
+
+  /* Warnings strip draws attention once. */
+  .warningsStrip { animation: eventIn 220ms var(--ease) both; }
+}
+
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes eventIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Approval decision stripe transition (warn -> ok/danger on resolve). */
+.ec { transition: border-left-color 250ms var(--ease); }
