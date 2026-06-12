@@ -128,11 +128,6 @@ export function ControlPlane({
         title="Control"
         copy="Approvals, blocks, spend, and timeline."
       />
-      <div className="truthNotice">
-        <CapabilityBadge kind={session?.user ? "db" : "mock"} />
-        <strong>{session?.user ? "DB-backed mode active." : "You are in demo mode."}</strong>
-        <span>Runs, approvals, and Timeline save when signed in. Real execution stays off.</span>
-      </div>
       {controlMessage && <div className="profileAuthNotice compactNotice">{controlMessage}</div>}
 
       <div className="controlGrid">

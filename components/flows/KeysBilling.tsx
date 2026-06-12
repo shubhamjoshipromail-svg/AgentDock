@@ -1,17 +1,12 @@
 "use client";
 
 import { credentials, providerUsage } from "../mock-data";
-import { Card, CapabilityBadge, PageHeader, WorkflowMini } from "../layout/primitives";
+import { Card, PageHeader, WorkflowMini } from "../layout/primitives";
 
 export function KeysBilling({ spend }: { spend: number }) {
   return (
     <section className="platformPage">
       <PageHeader eyebrow="Access" title="Access Gateway" copy="Agents never receive raw keys. AgentDock issues scoped, revocable access." />
-      <div className="truthNotice">
-        <CapabilityBadge kind="soon" />
-        <strong>Coming soon / metadata preview.</strong>
-        <span>This page previews the Access Gateway. Real provider connections, billing, and credential minting are not active yet.</span>
-      </div>
       <div className="providerGrid">
         {["OpenAI", "Anthropic", "Gemini", "OpenRouter", "Google Workspace", "GitHub", "Stripe later"].map((provider) => (
           <div className="providerCard" key={provider}>

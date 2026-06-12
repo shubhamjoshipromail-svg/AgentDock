@@ -81,6 +81,12 @@ body::before {
   color: var(--accent);
 }
 
+.navTrailing {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-2);
+}
+
 /* ---- Headings / text ---- */
 h1, h2, h3 {
   color: var(--text-primary);
@@ -335,6 +341,59 @@ select:focus {
   color: var(--text-secondary);
   padding: var(--sp-2) var(--sp-3);
 }
+
+/* ---- Store toolbar ---- */
+.storeToolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0;
+}
+
+.storeToolbar .searchInput { min-width: 220px; }
+.storeResultCount { align-self: center; }
+.storeLoadMore { display: flex; justify-content: center; margin: var(--sp-4) 0; }
+
+/* ---- Flow cards (Flows list) ---- */
+.flowCardColumn {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+}
+
+.flowCardGrid {
+  display: grid;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.flowCard {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  text-align: left;
+  transition: border-color var(--dur) var(--ease);
+}
+
+.flowCard:hover,
+.flowCard.selected { border-color: var(--accent); }
+.flowCard.selected { background: var(--accent-bg); }
+
+.flowCardTop {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: space-between;
+}
+
+.flowCardTop strong { color: var(--text-primary); font-family: var(--font-display); font-size: var(--fs-14); }
+.flowCardMeta { color: var(--text-faint); display: flex; gap: var(--sp-3); }
 
 /* ---- Tabs ---- */
 .tabRow {

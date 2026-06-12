@@ -7,7 +7,7 @@ import { attachToolToFlow, listFlows, listToolServers, syncToolCatalog } from ".
 import type { SyncSummary } from "../../lib/api/client";
 import { agents, mcpTools, workflowTemplates } from "../mock-data";
 import type { McpVerificationStatus, PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
-import { CapabilityBadge, ComingSoonButton, Metric, PageHeader } from "../layout/primitives";
+import { Badge, Button, CapabilityBadge, ComingSoonButton, Metric, PageHeader, SearchInput, Select } from "../layout/primitives";
 import { WorkflowTemplateCard } from "./WorkflowTemplateCard";
 
 export function Store({
@@ -175,12 +175,7 @@ export function Store({
 
   return (
     <section className="platformPage">
-      <PageHeader eyebrow="Store" title="Store" copy="Agents, tools, and templates you can add to Flows." />
-      <div className="truthNotice">
-        <CapabilityBadge kind={session?.user ? "db" : "mock"} />
-        <strong>{session?.user ? "DB-backed mode active." : "You are in demo mode. Sign in to persist Flows, runs, approvals, memory, and tools."}</strong>
-        <span>Agent and template installs are previews. Tools can be added to saved Flows.</span>
-      </div>
+      <PageHeader eyebrow="Store" title="Store" copy="Install agents and tools like apps. Govern them like infrastructure." />
       <div className="tabRow">
         {(["Agents", "Tools", "Templates"] as StoreTab[]).map((item) => (
           <button className={tab === item ? "tabButton active" : "tabButton"} key={item} onClick={() => setTab(item)}>{item}</button>
@@ -238,17 +233,14 @@ export function Store({
             )}
           </div>
           {session?.user && (
-            <div className="mcpSearchBar" style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "8px 0" }}>
-              <input
-                type="search"
+            <div className="storeToolbar">
+              <SearchInput
                 placeholder="Search tools…"
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="secondaryButton smallButton"
-                style={{ minWidth: "180px" }}
+                aria-label="Search tools"
               />
-              <select
-                className="secondaryButton smallButton"
+              <Select
                 value={filterVerification}
                 onChange={(e) => handleFilterChange(e.target.value as McpVerificationStatus | "", filterRisk)}
                 aria-label="Filter by verification"
@@ -257,9 +249,8 @@ export function Store({
                 <option value="verified">Verified</option>
                 <option value="community">Community</option>
                 <option value="unverified">Unverified</option>
-              </select>
-              <select
-                className="secondaryButton smallButton"
+              </Select>
+              <Select
                 value={filterRisk}
                 onChange={(e) => handleFilterChange(filterVerification, e.target.value)}
                 aria-label="Filter by risk"
@@ -269,9 +260,9 @@ export function Store({
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
                 <option value="restricted">Restricted</option>
-              </select>
+              </Select>
               {totalServers > 0 && (
-                <span className="rankText" style={{ alignSelf: "center" }}>{totalServers} result{totalServers !== 1 ? "s" : ""}</span>
+                <span className="rankText storeResultCount">{totalServers} result{totalServers !== 1 ? "s" : ""}</span>
               )}
             </div>
           )}
@@ -281,18 +272,15 @@ export function Store({
             {dbMcpAvailable ? mcpServers.map((server) => {
               const defaultPermission = server.recommendedPermission;
               const isVerified = server.verificationStatus === "verified";
-              const isCommunity = server.verificationStatus === "community";
               const isUnverified = server.verificationStatus === "unverified";
               return (
                 <article className="mcpCard compactAgentCard" key={server.id}>
                   <div className="panelHeader">
-                    <span>{isVerified ? "AgentDock verified" : isCommunity ? "Community" : "Official MCP Registry"}</span>
-                    <strong>{server.riskLevel} risk</strong>
+                    <span>{isVerified ? "AgentDock verified" : server.verificationStatus === "community" ? "Community" : "Official MCP Registry"}</span>
+                    <Badge risk={server.riskLevel} />
                   </div>
                   <div className="badgeGroup">
-                    {isVerified && <span className="verifiedBadge">Verified</span>}
-                    {isCommunity && <span className="rankText">Community</span>}
-                    {isUnverified && <span className="rankText">Unverified</span>}
+                    <Badge verification={server.verificationStatus} />
                     <span className="rankText">{server.category ?? "Uncategorized"}</span>
                   </div>
                   <h3>{server.displayName}</h3>
@@ -333,8 +321,8 @@ export function Store({
             ))}
           </div>
           {dbMcpAvailable && nextCursor && (
-            <div style={{ textAlign: "center", margin: "16px 0" }}>
-              <button className="secondaryButton" onClick={loadMore}>Load more</button>
+            <div className="storeLoadMore">
+              <Button onClick={loadMore}>Load more</Button>
             </div>
           )}
         </>

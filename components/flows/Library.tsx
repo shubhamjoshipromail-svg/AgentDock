@@ -7,7 +7,7 @@ import { listFlows, patchToolGrant, revokeToolGrant, saveFlow } from "../../lib/
 import { starterFlowTemplate } from "../../lib/catalog/templates";
 import { formatCents, workflowAgents } from "../mock-data";
 import type { LibraryTab, PersistedMcpAccessGrant, PersistedWorkflow } from "../../lib/types";
-import { Card, CapabilityBadge, DetailBlock, PageHeader } from "../layout/primitives";
+import { Button, Card, CapabilityBadge, Data, DetailBlock, EmptyState, PageHeader, Pill } from "../layout/primitives";
 import { KeysBilling } from "./KeysBilling";
 
 export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab: LibraryTab) => void; spend: number }) {
@@ -17,6 +17,7 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
   const [loadingSavedWorkflows, setLoadingSavedWorkflows] = useState(false);
   const [savingWorkflow, setSavingWorkflow] = useState(false);
   const [updatingMcpGrantId, setUpdatingMcpGrantId] = useState("");
+  const [selectedFlowId, setSelectedFlowId] = useState("");
 
   const loadSavedWorkflows = async () => {
     if (!session?.user) {
@@ -62,7 +63,7 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
   };
 
   const visibleWorkflows = session?.user ? savedWorkflows : [];
-  const selectedWorkflow = visibleWorkflows[0];
+  const selectedWorkflow = visibleWorkflows.find((workflow) => workflow.id === selectedFlowId) ?? visibleWorkflows[0];
   const installedAgents = visibleWorkflows.flatMap((workflow) => workflow.workflowAgents.map((workflowAgent) => workflowAgent.agent));
   const attachedMcps = visibleWorkflows.flatMap((workflow) => workflow.workflowMcps ?? []);
 
@@ -99,11 +100,6 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
   return (
     <section className="platformPage libraryPage">
       <PageHeader eyebrow="Flows" title="Flows" copy="Saved agent systems you can run, edit, or pause." />
-      <div className="truthNotice">
-        <CapabilityBadge kind={session?.user ? "db" : "mock"} />
-        <strong>{session?.user ? "DB-backed mode active." : "You are in demo mode."}</strong>
-        <span>Saved Flows and tool access load from Postgres when signed in. Scoped Access is a preview.</span>
-      </div>
       {workflowMessage && <div className="profileAuthNotice">{workflowMessage}</div>}
       <div className="tabRow">
         {(["My Flows", "My Agents", "My Tools", "Scoped Access"] as LibraryTab[]).map((item) => (
@@ -113,32 +109,54 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
 
       {tab === "My Flows" && (
         <div className="libraryGrid">
-          <Card title="My Flows" meta={session?.user ? `${visibleWorkflows.length} saved` : "Demo"}>
-            {loadingSavedWorkflows && <div className="savedWorkflow"><strong>Loading Flows...</strong><span>Postgres profile</span></div>}
-            {!session?.user && <div className="profileAuthNotice compactNotice">Sign in to save Flows. Mock drafts remain available in Build.</div>}
+          <div className="flowCardColumn">
+            <div className="panelHeader">
+              <span>My Flows</span>
+              <strong>{session?.user ? `${visibleWorkflows.length} saved` : "Demo"}</strong>
+            </div>
+            {loadingSavedWorkflows && <EmptyState title="Loading Flows…" body="Reading your saved Flows from Postgres." />}
+            {!session?.user && (
+              <EmptyState
+                title="No saved Flows in demo mode"
+                body="Sign in to save Flows. You can still plan and preview drafts in Build."
+              />
+            )}
             {session?.user && !loadingSavedWorkflows && visibleWorkflows.length === 0 && (
-              <div className="savedWorkflow">
-                <strong>No Flows yet.</strong>
-                <span>Save a Flow from Build to begin.</span>
+              <EmptyState
+                title="No flows yet"
+                body="Describe a goal in Build and AgentDock will plan one."
+                action={<Button onClick={saveWorkflowToProfile} loading={savingWorkflow}>Load starter template</Button>}
+              />
+            )}
+            <div className="flowCardGrid">
+              {visibleWorkflows.map((workflow) => (
+                <button
+                  className={`flowCard${workflow.id === selectedWorkflow?.id ? " selected" : ""}`}
+                  key={workflow.id}
+                  onClick={() => setSelectedFlowId(workflow.id)}
+                >
+                  <div className="flowCardTop">
+                    <strong>{workflow.name}</strong>
+                    <Pill tone={workflow.status === "active" ? "ok" : "neutral"}>{workflow.status}</Pill>
+                  </div>
+                  <div className="flowCardMeta">
+                    <Data>{workflow.workflowAgents.length} agents</Data>
+                    <Data>{workflow.workflowMcps?.length ?? 0} tools</Data>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {session?.user && visibleWorkflows.length > 0 && (
+              <div className="heroActions compactActions">
+                <Button variant="ghost" onClick={saveWorkflowToProfile} loading={savingWorkflow}>Load starter template</Button>
               </div>
             )}
-            {visibleWorkflows.map((workflow) => (
-              <div className="savedWorkflow" key={workflow.id}>
-                <strong>{workflow.name}</strong>
-                <span>{workflow.status} - {workflow.workflowAgents.length} agents - {workflow.workflowMcps?.length ?? 0} tools</span>
-              </div>
-            ))}
-            <div className="heroActions compactActions">
-              <button className="secondaryButton" onClick={saveWorkflowToProfile} disabled={savingWorkflow}>
-                {savingWorkflow ? "Saving..." : "Load starter template"}
-              </button>
-            </div>
-          </Card>
+          </div>
           <Card title="Flow detail" meta={selectedWorkflow?.name ?? "Template"}>
             <div className="detailGrid">
               <DetailBlock label="Goal" value={selectedWorkflow?.goal ?? "Find high-fit AI platform roles, research each company, tailor the resume, and draft outreach for approval."} />
-              <DetailBlock label="Agents" value={selectedWorkflow?.workflowAgents?.map((workflowAgent) => workflowAgent.agent.name).join(" -> ") || "Discovery -> Research -> Resume -> Outreach"} />
-              <DetailBlock label="Tools" value={selectedWorkflow?.workflowMcps?.length ? selectedWorkflow.workflowMcps.map((mcp) => mcp.mcpServer.displayName).join(", ") : "No DB-backed tools yet"} />
+              <DetailBlock label="Agents" value={selectedWorkflow?.workflowAgents?.map((workflowAgent) => workflowAgent.agent.name).join(" → ") || "Discovery → Research → Resume → Outreach"} />
+              <DetailBlock label="Tools" value={selectedWorkflow?.workflowMcps?.length ? selectedWorkflow.workflowMcps.map((mcp) => mcp.mcpServer.displayName).join(", ") : "No tools attached yet"} />
               <DetailBlock label="Budget" value={`${formatCents(selectedWorkflow?.weeklyBudgetCents ?? 500)} weekly cap`} />
               <DetailBlock label="Runtime mode" value="AgentDock Sandbox Mode" />
             </div>
