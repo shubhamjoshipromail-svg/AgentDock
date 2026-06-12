@@ -105,17 +105,18 @@ p {
   line-height: 1.6;
 }
 
+/* Quiet section captions — sentence case, body font. The all-caps mono eyebrow
+   is gone (it was the #1 "AI-generated UI" tell). Section context lives in the
+   top bar now. */
 .eyebrow,
 .panelHeader span,
 .builderLibraryStrip > div > span,
 .policyDiffList > span,
 .planGroupLabel {
   color: var(--text-faint);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--fs-12);
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .panelHeader strong {
@@ -372,46 +373,59 @@ select:focus {
   color: var(--text-secondary);
 }
 
-/* ---- Badges: risk / verification / decision color LAW ---- */
-.verifiedBadge {
-  background: var(--ok-bg);
-  border: 1px solid var(--ok);
-  color: var(--ok);
+/* ---- Risk / verification / capability: quiet dot + text (color never alone) ---- */
+.verifiedBadge,
+.sensitivityBadge,
+.capabilityBadge {
+  align-items: center;
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-family: var(--font-body);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  gap: 6px;
 }
+
+.verifiedBadge::before,
+.sensitivityBadge::before,
+.capabilityBadge::before {
+  background: var(--text-faint);
+  border-radius: 50%;
+  content: "";
+  flex: 0 0 auto;
+  height: 7px;
+  width: 7px;
+}
+
+.verifiedBadge::before { background: var(--ok); }
+
+.sensitivityBadge.low::before { background: var(--ok); }
+.sensitivityBadge.medium::before { background: var(--warn); }
+.sensitivityBadge.high::before { background: var(--danger); }
+.sensitivityBadge.high { color: var(--danger); }
+.sensitivityBadge.restricted::before { background: var(--restricted); }
+.sensitivityBadge.restricted { color: var(--restricted); }
+
+.capabilityBadge.db::before { background: var(--ok); }
+.capabilityBadge.local::before { background: var(--accent); }
+.capabilityBadge.mock::before { background: var(--warn); }
+.capabilityBadge.soon::before { background: var(--text-faint); }
 
 .rankText {
   color: var(--text-faint);
-  font-family: var(--font-mono);
   font-weight: 500;
 }
 
-.sensitivityBadge,
+/* Run status stays a real pill — it is rare and genuinely status. */
 .statusPill {
   border-radius: var(--r-pill);
   font-size: var(--fs-12);
   font-weight: 500;
+  padding: 3px var(--sp-2);
 }
-
-.sensitivityBadge.low { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok); }
-.sensitivityBadge.medium { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); }
-.sensitivityBadge.high { background: var(--danger-bg); border: 1px solid var(--danger); color: var(--danger); }
-.sensitivityBadge.restricted { background: var(--restricted-bg); border: 1px solid var(--restricted); color: var(--restricted); }
 
 .statusPill.running { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok); }
 .statusPill.awaitingapproval { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); }
-
-/* ---- Capability / mode badge ---- */
-.capabilityBadge {
-  border-radius: var(--r-pill);
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
-  font-weight: 500;
-}
-
-.capabilityBadge.db { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok); }
-.capabilityBadge.local { background: var(--accent-bg); border: 1px solid var(--accent); color: var(--accent); }
-.capabilityBadge.mock { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); }
-.capabilityBadge.soon { background: var(--bg-overlay); border: 1px solid var(--line); color: var(--text-faint); }
 
 /* ---- Tables ---- */
 .tableWrap table { color: var(--text-secondary); }

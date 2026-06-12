@@ -102,6 +102,36 @@ body {
   padding-top: var(--sp-3);
 }
 
+/* Rail auth: stay inside the narrow rail, open the popover upward. */
+.railFoot .authMenu {
+  max-width: 100%;
+  width: 100%;
+}
+
+.railFoot .authTrigger {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.railFoot .authTrigger > span:not(.authAvatar) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.railFoot .authPopover {
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: auto;
+  top: auto;
+}
+
+.railFoot .authPopover::before {
+  bottom: -7px;
+  top: auto;
+  transform: rotate(225deg);
+}
+
 /* ---- Work area ---- */
 .workMain {
   display: grid;
@@ -179,6 +209,16 @@ body {
   display: flex;
   height: 100%;
   justify-content: center;
+}
+
+.sectionLede {
+  margin-bottom: var(--sp-4);
+}
+
+.sectionLede p {
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 70ch;
 }
 
 /* ---- Command palette ---- */

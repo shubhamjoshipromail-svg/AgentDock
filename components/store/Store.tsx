@@ -267,20 +267,18 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
           <div className="mcpGrid compactStoreGrid">
             {dbMcpAvailable ? mcpServers.map((server) => {
               const defaultPermission = server.recommendedPermission;
-              const isVerified = server.verificationStatus === "verified";
               const isUnverified = server.verificationStatus === "unverified";
               return (
                 <article className="mcpCard compactAgentCard" key={server.id}>
                   <div className="panelHeader">
-                    <span>{isVerified ? "AgentDock verified" : server.verificationStatus === "community" ? "Community" : "Official MCP Registry"}</span>
+                    <span>{server.category ?? "Uncategorized"}</span>
                     <Badge risk={server.riskLevel} />
-                  </div>
-                  <div className="badgeGroup">
-                    <Badge verification={server.verificationStatus} />
-                    <span className="rankText">{server.category ?? "Uncategorized"}</span>
                   </div>
                   <h3>{server.displayName}</h3>
                   <p>{server.description}</p>
+                  <div className="badgeGroup">
+                    <Badge verification={server.verificationStatus} />
+                  </div>
                   <Metric label="Access" value={defaultPermission.replaceAll("_", " ")} />
                   <Metric label="Tools" value={server.tools?.length ? `${server.tools.length} metadata records` : "No tool metadata"} />
                   {server.repositoryUrl && (
@@ -302,8 +300,8 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
             }) : mcpTools.map((tool) => (
               <article className="mcpCard compactAgentCard" key={tool.name}>
                 <div className="panelHeader">
-                  <span>{tool.verified}</span>
-                  <strong>{tool.risk} risk</strong>
+                  <span>{tool.workflows}</span>
+                  <span className="rankText">{tool.risk} risk</span>
                 </div>
                 <h3>{tool.name}</h3>
                 <p>{tool.scopes}</p>

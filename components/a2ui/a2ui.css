@@ -95,7 +95,7 @@
 }
 
 .opsFeedHead h3 { margin: 0; }
-.a2uiCaption { color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-12); }
+.a2uiCaption { color: var(--text-faint); font-size: var(--fs-12); }
 
 .opsFilters { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-bottom: var(--sp-1); }
 

@@ -249,18 +249,6 @@ h3 {
   letter-spacing: -0.01em;
   margin-bottom: 8px;
 }
-.trustRow span,
-.verifiedBadge,
-.rankText,
-.credentialChecklist span,
-.successGrid span {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: #383d42;
-  font-size: 0.82rem;
-  font-weight: 680;
-  padding: 8px 11px;
-}
 
 .heroActions,
 .actionRow {
@@ -532,19 +520,6 @@ input:focus {
   gap: 7px;
 }
 
-.verifiedBadge {
-  background: var(--accent-bg);
-  border-color: #d9e5ff;
-  color: var(--accent);
-  padding: 6px 9px;
-}
-
-.rankText {
-  background: #fff;
-  display: inline-flex;
-  margin-bottom: 12px;
-  padding: 6px 9px;
-}
 
 .statusPill {
   border-radius: 999px;

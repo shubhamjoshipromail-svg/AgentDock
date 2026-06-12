@@ -166,11 +166,11 @@ export function Metric({ label, value }: { label: string; value: string }) {
 // later phases touch each surface.
 // ---------------------------------------------------------------------------
 
-export function PageHeader({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
+// Section context (eyebrow + title) now lives in the shell top bar. PageHeader
+// keeps only the one-line lede so surfaces don't repeat their own heading.
+export function PageHeader({ copy }: { eyebrow?: string; title?: string; copy: string }) {
   return (
-    <div className="sectionHeader pageHeader">
-      <p className="eyebrow">{eyebrow}</p>
-      <h2>{title}</h2>
+    <div className="sectionLede">
       <p>{copy}</p>
     </div>
   );
