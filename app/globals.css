@@ -12,6 +12,7 @@
 @import "../components/store/store.css";
 @import "../components/layout/platform.css";
 @import "../components/build/build.css";
+@import "../components/build/flow-graph.css";
 @import "../components/control/control.css";
 @import "../components/store/store-compact.css";
 @import "../components/shared/runtime.css";

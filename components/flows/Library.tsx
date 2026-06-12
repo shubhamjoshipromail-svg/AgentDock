@@ -8,6 +8,8 @@ import { starterFlowTemplate } from "../../lib/catalog/templates";
 import { formatCents, workflowAgents } from "../mock-data";
 import type { LibraryTab, PersistedMcpAccessGrant, PersistedWorkflow } from "../../lib/types";
 import { Button, Card, CapabilityBadge, Data, DetailBlock, EmptyState, PageHeader, Pill } from "../layout/primitives";
+import { FlowGraph } from "../build/FlowGraph";
+import { savedWorkflowToGraph } from "../build/flow-graph";
 import { KeysBilling } from "./KeysBilling";
 
 export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab: LibraryTab) => void; spend: number }) {
@@ -153,6 +155,11 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
             )}
           </div>
           <Card title="Flow detail" meta={selectedWorkflow?.name ?? "Template"}>
+            {selectedWorkflow && (
+              <div className="flowDetailGraph">
+                <FlowGraph input={savedWorkflowToGraph(selectedWorkflow)} readOnly />
+              </div>
+            )}
             <div className="detailGrid">
               <DetailBlock label="Goal" value={selectedWorkflow?.goal ?? "Find high-fit AI platform roles, research each company, tailor the resume, and draft outreach for approval."} />
               <DetailBlock label="Agents" value={selectedWorkflow?.workflowAgents?.map((workflowAgent) => workflowAgent.agent.name).join(" → ") || "Discovery → Research → Resume → Outreach"} />
