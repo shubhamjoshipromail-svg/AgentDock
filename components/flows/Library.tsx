@@ -20,6 +20,7 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
   const [savingWorkflow, setSavingWorkflow] = useState(false);
   const [updatingMcpGrantId, setUpdatingMcpGrantId] = useState("");
   const [selectedFlowId, setSelectedFlowId] = useState("");
+  const [confirmRevokeId, setConfirmRevokeId] = useState("");
 
   const loadSavedWorkflows = async () => {
     if (!session?.user) {
@@ -213,10 +214,18 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
                             </button>
                           ))}
                         </div>
-                        <div className="buttonPair">
-                          <button className="secondaryButton smallButton" disabled={updatingMcpGrantId === grant.id} onClick={() => updateWorkflowMcpGrant(grant, "requiresApproval")}>Edit Access</button>
-                          <button className="revokeButton" disabled={updatingMcpGrantId === grant.id} onClick={() => revokeWorkflowMcpGrant(grant)}>Revoke Tool</button>
-                        </div>
+                        {confirmRevokeId === grant.id ? (
+                          <div className="confirmRow">
+                            <p>Revoke access? The next action under this grant will be blocked.</p>
+                            <Button variant="danger" size="sm" loading={updatingMcpGrantId === grant.id} onClick={() => { setConfirmRevokeId(""); revokeWorkflowMcpGrant(grant); }}>Revoke access</Button>
+                            <Button variant="ghost" size="sm" onClick={() => setConfirmRevokeId("")}>Cancel</Button>
+                          </div>
+                        ) : (
+                          <div className="buttonPair">
+                            <Button variant="secondary" size="sm" disabled={updatingMcpGrantId === grant.id} onClick={() => updateWorkflowMcpGrant(grant, "requiresApproval")}>Edit access</Button>
+                            <Button variant="danger" size="sm" onClick={() => setConfirmRevokeId(grant.id)}>Revoke access</Button>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>

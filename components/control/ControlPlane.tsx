@@ -1,19 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { listFlows, listRuns, resolveApproval, simulateRun } from "../../lib/api/client";
-import { formatCents } from "../mock-data";
 import type {
   AuditEvent,
+  Decision,
   PersistedApprovalRequest,
   PersistedWorkflow,
   PersistedWorkflowRun,
   Section
 } from "../../lib/types";
-import { AuditList, Card, CapabilityBadge, DetailBlock, Metric, PageHeader } from "../layout/primitives";
-import { ApprovalInbox } from "../shared/ApprovalInbox";
+import { Button, Card, Data, EmptyState, PageHeader, Pill } from "../layout/primitives";
+import { ApprovalCard, EventCard, auditEventToA2UI, runEventToA2UI, type A2UIEvent } from "../a2ui/EventCard";
+
+const DECISION_FILTERS: { key: Decision | "all"; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "allowed", label: "Allowed" },
+  { key: "approval_required", label: "Approval" },
+  { key: "blocked", label: "Blocked" }
+];
 
 export function ControlPlane({
   events,
@@ -39,6 +46,7 @@ export function ControlPlane({
   const [controlMessage, setControlMessage] = useState("");
   const [runningControlSimulation, setRunningControlSimulation] = useState(false);
   const [resolvingApprovalId, setResolvingApprovalId] = useState("");
+  const [decisionFilter, setDecisionFilter] = useState<Decision | "all">("all");
 
   const loadControlPlaneData = async () => {
     if (!session?.user) {
@@ -74,18 +82,16 @@ export function ControlPlane({
     }
 
     const workflow = savedWorkflows.find((item) => item.name === "Job Search Automation") ?? savedWorkflows[0];
-
     if (!workflow?.id) {
-      setControlMessage("Save this Flow first to run a DB-backed preview.");
+      setControlMessage("Save a Flow first to run a preview.");
       return;
     }
 
     setRunningControlSimulation(true);
     setControlMessage("");
-
     try {
       const data = await simulateRun(workflow.id, "Run preview failed.");
-      setControlMessage(`DB-backed run created: ${data.workflowRun.events.length} events and ${data.workflowRun.approvalRequests.length} approvals.`);
+      setControlMessage(`Run created: ${data.workflowRun.events.length} events, ${data.workflowRun.approvalRequests.length} approvals.`);
       await loadControlPlaneData();
     } catch (error) {
       setControlMessage(error instanceof Error ? error.message : "Run preview failed.");
@@ -97,10 +103,9 @@ export function ControlPlane({
   const resolveControlApproval = async (approvalId: string, status: "approved" | "denied" | "edited") => {
     setResolvingApprovalId(approvalId);
     setControlMessage("");
-
     try {
       await resolveApproval(approvalId, status, "Unable to resolve approval.");
-      setControlMessage(`Approval ${status} and written to Timeline.`);
+      setControlMessage(`Approval ${status} and written to timeline.`);
       await loadControlPlaneData();
     } catch (error) {
       setControlMessage(error instanceof Error ? error.message : "Unable to resolve approval.");
@@ -109,95 +114,108 @@ export function ControlPlane({
     }
   };
 
-  const latestRun = workflowRuns[0];
-  const hasActiveRun = Boolean(latestRun) || !session?.user;
-  const timelineItems = latestRun?.events?.length
-    ? latestRun.events.slice(0, 6).map((event) => event.title)
-    : session?.user ? [] : [
-      "Job Discovery searched 12 roles",
-      "Company Research summarized 3 companies",
-      "Resume draft created",
-      "Outreach drafts require approval",
-      "Direct email send blocked by Policy Engine"
-    ];
+  // Unify the feed: DB run events when signed in, mock audit events otherwise.
+  const feed: A2UIEvent[] = useMemo(() => {
+    if (session?.user) {
+      return workflowRuns.flatMap((run) => run.events.map(runEventToA2UI));
+    }
+    return events.map(auditEventToA2UI);
+  }, [session?.user, workflowRuns, events]);
+
+  const filteredFeed = decisionFilter === "all" ? feed : feed.filter((e) => e.decision === decisionFilter);
+
+  // Spend panel computed from already-fetched data — no new endpoint.
+  const dbSpendCents = workflowRuns.reduce((sum, run) => sum + run.totalCostCents, 0);
+  const todaySpendCents = session?.user ? dbSpendCents : Math.round(spend * 100);
+  const recentCosts = feed.filter((e) => typeof e.costCents === "number" && (e.costCents ?? 0) > 0).slice(0, 5);
+  const capCents = 500;
+  const pendingCount = dbApprovals.length || pendingApprovals;
 
   return (
     <section className="platformPage controlPlanePage">
-      <PageHeader
-        eyebrow="Control"
-        title="Control"
-        copy="Approvals, blocks, spend, and timeline."
-      />
+      <PageHeader eyebrow="Control" title="Control" copy="Approvals, blocks, spend, and timeline." />
       {controlMessage && <div className="profileAuthNotice compactNotice">{controlMessage}</div>}
 
-      <div className="controlGrid">
-        <Card title="Active run" meta={latestRun?.status?.replaceAll("_", " ") ?? (session?.user ? "None yet" : "Demo ready")}>
-          {hasActiveRun ? (
-            <div className="activeRunCard">
-              <strong>{latestRun?.workflow.name ?? "Job Search Automation"}</strong>
-              <div className="runMetricGrid">
-                <Metric label="Spend" value={latestRun ? formatCents(latestRun.totalCostCents) : `$${spend.toFixed(2)} / $5.00`} />
-                <Metric label="Pending approvals" value={`${dbApprovals.length || pendingApprovals}`} />
-                <Metric label="Last run" value={latestRun ? new Date(latestRun.startedAt).toLocaleString() : runHistory[0] ?? "Not run yet"} />
-              </div>
-              <div className="heroActions compactActions">
-                <button className="primaryButton" onClick={runControlPlaneWorkflow} disabled={runningControlSimulation}>
-                  {runningControlSimulation ? "Running..." : "Run Preview"}
-                </button>
-                <button className="secondaryButton" onClick={() => onOpenSection("Build")}>Open Build</button>
-              </div>
+      <div className="opsRoom">
+        <div className="opsFeed">
+          <div className="opsFeedHead">
+            <div>
+              <h3>Timeline</h3>
+              <span className="a2uiCaption">A2UI · agent-to-user interface</span>
             </div>
-          ) : (
-            <div className="emptyWorkflowState">
-              <strong>No run yet.</strong>
-              <p>Save a Flow in Build, then run a preview.</p>
-              <button className="primaryButton" onClick={() => onOpenSection("Build")}>Open Build</button>
-            </div>
-          )}
-        </Card>
-        <Card title="Timeline" meta={latestRun ? `${latestRun.events.length} events` : session?.user ? "No run yet" : "Mock preview"}>
-          {timelineItems.length ? (
-            <div className="runTimeline">
-              {timelineItems.map((item, index) => (
-              <div className="runTimelineItem" key={`${item}-${index}`}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <p>{item}</p>
-              </div>
-              ))}
-            </div>
-          ) : (
-            <div className="emptyWorkflowState">
-              <strong>No timeline yet.</strong>
-              <p>Run a preview to see events here.</p>
-            </div>
-          )}
-        </Card>
-        <ApprovalInbox
-          items={["Review resume draft", "Approve 3 Gmail drafts", "Company Preferences access request", "Direct application submission blocked"]}
-          approvals={dbApprovals}
-          onResolve={resolveControlApproval}
-          resolvingApprovalId={resolvingApprovalId}
-          dbBacked={Boolean(session?.user && dbApprovals.length)}
-        />
-        <Card title="Recent Timeline" meta="Latest 5">
-          <AuditList events={events.slice(0, 5)} compact />
-          <div className="heroActions compactActions">
-            <button className="secondaryButton" onClick={() => onOpenSection("Flows")}>View Flows</button>
+            <Pill tone="neutral">{filteredFeed.length} events</Pill>
           </div>
-        </Card>
-        <Card title="Spend" meta="$5 weekly cap">
-          <div className="costWidget inlineCost">
-            <span>Job Search Automation</span>
-            <strong>${spend.toFixed(2)} / $5.00</strong>
-            <div className="meter"><span style={{ width: `${Math.min(100, (spend / 5) * 100)}%` }} /></div>
+          <div className="opsFilters" role="group" aria-label="Filter timeline by decision">
+            {DECISION_FILTERS.map((filter) => (
+              <button
+                key={filter.key}
+                className={`filterChip${decisionFilter === filter.key ? " active" : ""}`}
+                onClick={() => setDecisionFilter(filter.key)}
+                aria-pressed={decisionFilter === filter.key}
+              >
+                {filter.label}
+              </button>
+            ))}
           </div>
-          <div className="softNote">Runs pause before the cap.</div>
-        </Card>
-        <Card title="Revoke" meta="Scoped">
-          <DetailBlock label="Memory" value="Profile controls Memory Zones" />
-          <DetailBlock label="Tools" value="Flow tool access lives in Flows" />
-          <DetailBlock label="Access" value="Scoped Access lives in Flows" />
-        </Card>
+          <div className="opsFeedList">
+            {filteredFeed.length ? (
+              filteredFeed.map((event) => <EventCard key={event.id} event={event} />)
+            ) : (
+              <EmptyState
+                title="No events yet"
+                body="Run a flow preview to see agent activity stream in here."
+                action={<Button variant="primary" onClick={runControlPlaneWorkflow} loading={runningControlSimulation}>Run preview</Button>}
+              />
+            )}
+          </div>
+          <p className="opsFooterNote">Execution is off in this build. Events come from flow-plan calls and simulated runs.</p>
+        </div>
+
+        <div className="opsAside">
+          <Card title="Active run" meta={workflowRuns[0]?.status?.replaceAll("_", " ") ?? (session?.user ? "None yet" : "Demo ready")}>
+            <div className="runMetricGrid">
+              <div className="metric"><span>Spend</span><strong className="data">${(todaySpendCents / 100).toFixed(2)} / $5.00</strong></div>
+              <div className="metric"><span>Pending</span><strong className="data">{pendingCount}</strong></div>
+            </div>
+            <div className="heroActions compactActions">
+              <Button variant="primary" onClick={runControlPlaneWorkflow} loading={runningControlSimulation}>Run preview</Button>
+              <Button variant="secondary" onClick={() => onOpenSection("Build")}>Open Build</Button>
+            </div>
+          </Card>
+
+          <Card title="Approval inbox" meta={`${pendingCount} pending`}>
+            {dbApprovals.length ? (
+              <div className="opsFeedList">
+                {dbApprovals.map((approval) => (
+                  <ApprovalCard
+                    key={approval.id}
+                    approval={approval}
+                    onResolve={resolveControlApproval}
+                    resolving={resolvingApprovalId === approval.id}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="Inbox clear" body="No approvals waiting. New ones appear here the moment an agent needs you." />
+            )}
+          </Card>
+
+          <Card title="Spend" meta="$5.00 weekly cap">
+            <div className="spendTotal">${(todaySpendCents / 100).toFixed(2)}</div>
+            <div className="spendCap">of $5.00 weekly cap</div>
+            <div className="meter"><span style={{ width: `${Math.min(100, (todaySpendCents / capCents) * 100)}%` }} /></div>
+            {recentCosts.length > 0 && (
+              <div className="spendRows">
+                {recentCosts.map((event) => (
+                  <div className="spendRow" key={event.id}>
+                    <span>{event.what}</span>
+                    <Data>${((event.costCents ?? 0) / 100).toFixed(2)}</Data>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
     </section>
   );

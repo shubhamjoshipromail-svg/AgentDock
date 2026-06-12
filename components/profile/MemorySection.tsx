@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { loadMemory, patchMemoryGrant, revokeMemoryGrant } from "../../lib/api/client";
 import { memoryPartitions } from "../mock-data";
 import type { PersistedMemoryGrant, PersistedMemoryPartition, PersistedMemoryPayload } from "../../lib/types";
-import { ComingSoonButton, DetailBlock } from "../layout/primitives";
+import { Button, ComingSoonButton, DetailBlock } from "../layout/primitives";
 
 export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemory: string; onSelectMemory: (name: string) => void }) {
   const { data: session } = useSession();
@@ -14,6 +14,7 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
   const [memoryMessage, setMemoryMessage] = useState("");
   const [loadingMemory, setLoadingMemory] = useState(false);
   const [updatingGrantId, setUpdatingGrantId] = useState("");
+  const [confirmRevokeId, setConfirmRevokeId] = useState("");
   const activeMockPartition = memoryPartitions.find((partition) => partition.name === selectedMemory) ?? memoryPartitions[1];
   const activeDbPartition = memoryData?.partitions.find((partition) => partition.name === selectedMemory) ?? memoryData?.partitions[0];
   const dbBacked = Boolean(session?.user && memoryData?.partitions.length);
@@ -159,9 +160,15 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
                         </button>
                       ))}
                     </div>
-                    <button className="revokeButton" disabled={updatingGrantId === grant.id} onClick={() => revokeGrant(grant.id)}>
-                      {updatingGrantId === grant.id ? "Updating..." : "Revoke Access"}
-                    </button>
+                    {confirmRevokeId === grant.id ? (
+                      <div className="confirmRow">
+                        <p>Revoke access? The next action under this grant will be blocked.</p>
+                        <Button variant="danger" size="sm" loading={updatingGrantId === grant.id} onClick={() => { setConfirmRevokeId(""); revokeGrant(grant.id); }}>Revoke access</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setConfirmRevokeId("")}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <Button variant="danger" size="sm" onClick={() => setConfirmRevokeId(grant.id)}>Revoke access</Button>
+                    )}
                   </div>
                 )) : <p>No agents currently have direct grants to this partition.</p>}
               </div>

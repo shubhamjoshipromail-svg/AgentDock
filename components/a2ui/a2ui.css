@@ -1,0 +1,152 @@
+/* A2UI card grammar. Tokens only. */
+
+.ec {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: var(--r-card);
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: space-between;
+  padding: var(--sp-3);
+}
+
+.ec-stripe-ok { border-left-color: var(--ok); }
+.ec-stripe-warn { border-left-color: var(--warn); }
+.ec-stripe-danger { border-left-color: var(--danger); }
+.ec-stripe-neutral { border-left-color: var(--text-faint); }
+
+.ecMain { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+
+.ecWho { align-items: center; display: flex; gap: var(--sp-2); }
+
+.ecAvatar {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+
+.ecWhoName { color: var(--text-secondary); font-size: var(--fs-12); font-weight: 500; }
+
+.ecWhat { color: var(--text-primary); font-size: var(--fs-14); margin: 0; }
+
+.ecMeta { align-items: center; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.ecResource {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: var(--fs-12);
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+}
+
+.ecAuthority { color: var(--text-faint); font-size: var(--fs-12); }
+
+.ecRationale { color: var(--text-secondary); font-size: var(--fs-13); margin: 0; }
+
+.ecActions { display: flex; gap: var(--sp-2); margin-top: var(--sp-1); }
+
+.ecAside {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--sp-2);
+  justify-content: space-between;
+}
+
+.ecWhen { color: var(--text-faint); display: flex; flex-direction: column; align-items: flex-end; font-size: var(--fs-12); gap: 2px; }
+
+/* Pending approval: subtle warn edge pulse (reduced-motion-aware). */
+@media (prefers-reduced-motion: no-preference) {
+  .ec-approval { animation: ecPulse 2.4s var(--ease) infinite; }
+  @keyframes ecPulse {
+    0%, 100% { border-left-color: var(--warn); }
+    50% { border-left-color: var(--accent-muted); }
+  }
+}
+
+/* ---- Operations room layout ---- */
+.opsRoom {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
+}
+
+.opsFeed, .opsAside { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.opsFeedHead {
+  align-items: baseline;
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: space-between;
+}
+
+.opsFeedHead h3 { margin: 0; }
+.a2uiCaption { color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-12); }
+
+.opsFilters { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-bottom: var(--sp-1); }
+
+.filterChip {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  font-size: var(--fs-12);
+  padding: var(--sp-1) var(--sp-3);
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.filterChip:hover { border-color: var(--line-strong); }
+.filterChip.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+.opsFeedList { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+/* ---- Spend panel ---- */
+.spendTotal { color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-28); font-weight: 500; }
+.spendCap { color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-13); }
+.spendRows { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-3); }
+.spendRow {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: var(--fs-13);
+  gap: var(--sp-2);
+  justify-content: space-between;
+}
+.spendRow span:last-child { color: var(--text-primary); font-family: var(--font-mono); }
+
+/* ---- Inline revoke confirm ---- */
+.confirmRow {
+  align-items: center;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-control);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+.confirmRow p { color: var(--text-secondary); flex: 1; font-size: var(--fs-13); margin: 0; min-width: 200px; }
+
+.opsFooterNote {
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+  margin-top: var(--sp-4);
+}
+
+@media (max-width: 1080px) {
+  .opsRoom { grid-template-columns: 1fr; }
+}
