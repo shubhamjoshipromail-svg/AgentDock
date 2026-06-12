@@ -1,7 +1,6 @@
 .platformShell {
-  background:
-    linear-gradient(#fff, #fff),
-    radial-gradient(circle at top right, rgba(17, 17, 17, 0.04), transparent 34rem);
+  background: var(--bg-base);
+  min-height: 100dvh;
 }
 
 .platformTopbar {
