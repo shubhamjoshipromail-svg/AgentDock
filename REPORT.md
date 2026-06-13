@@ -377,3 +377,102 @@ ops room and Build hero render scroll-free at 1280×800 and 1440×900.
   orchestrator/llm/registry/validation changes.
 - No `truthNotice` remains in JSX. No raw hex in any `.tsx`.
 - 69/69 tests green; `npm run build` clean at every commit.
+
+---
+
+# Chunk 3.5 — The Premium Pass (Workstation, Cohesion, Restraint)
+
+Frontend only. Zero backend changes (no schema/migrations/routes, no edits to
+`lib/{orchestrator,llm,registry,validation}` or `app/api`). 69/69 tests green and
+`npm run build` clean at every commit.
+
+## Per-phase commits
+- `chunk3.5-0` ec3ce90 — cohesive dark viewport + plan progress feedback
+- `chunk3.5-A` 3c97fd8 — legacy CSS removed, single styling system
+- `chunk3.5-B` 30e1290 — workstation shell, command palette, toasts
+- `chunk3.5-C` 34f9748 — restraint pass (color/badge/mono/type diets)
+- `chunk3.5-D` bd28446 — planning workstation + staged reveal
+- `chunk3.5-E` d32f76d — single-home IA + logo-led objects
+- `chunk3.5-F` (this commit) — interaction polish + final audit
+
+## Cohesion + feedback hotfix (Phase 0)
+Root cause of the "white page": `platform.css` painted `.platformShell` with
+`linear-gradient(#fff,#fff)` over the dark body. Claimed the viewport on
+`html`/`body`/`.platformShell` with `--bg-base` + `min-height:100dvh`; Phase B
+added `overflow:hidden` so there is no page-level scrollbar anywhere, at rest, at
+any viewport. Plan feedback now appears in place (scroll-into-view + cycling stage
+labels + indeterminate bar) the moment a plan is requested.
+
+## CSS line count (the single-system gate)
+- Before Chunk 3.5: **4144** lines.
+- After Phase A (dead-code removal): **3512** (−632, −15%). Deleted 5 dead
+  components (Architecture, RouteView, MemoryFirewallVisualizer,
+  RuntimeModeSection, Activity) + `shared.css` + `runtime.css`; removed the
+  cream-era variable bridge and migrated every legacy `var(--bg/--surface/--ink/
+  --muted/--green/--amber/--red/--blue/--shadow…)` to real dark tokens; killed
+  `localPreviewButton` / `truthNotice` / `comingSoonButton`.
+- After Phase F: **4294**. The net rise over the 3512 floor is *new functional
+  CSS* (workstation shell, command palette, toasts, three-zone Build, logo/avatar,
+  skeletons, staged-reveal) — not re-added legacy. The legacy cascade-override
+  system is gone; `theme.css` is token-only.
+- Method for "no rule targets dead markup": recovered each deleted component's
+  class set from git, cross-checked every candidate against all `.tsx` (static +
+  interpolated tokens), and removed pure-dead blocks + dead parts of grouped
+  selectors via a per-file audit script.
+
+## De-duplication (what was removed and where the fact now lives)
+- Per-section status banners → **one mode pill** in the shell rail.
+- Store "AgentDock verified" header text that duplicated the verification badge →
+  removed; verification lives in the single quiet badge.
+- DB/Demo capability badge duplicated on Store intro + Library agent cards →
+  removed; the rail mode pill is the only mode indicator.
+- Sync summary shown as both a banner and a pill → **one** sync status (timestamp
+  + count, `<Data>`) in the Store toolbar.
+- Approvals resolvable in both Build and Control → **Control only** (Build shows
+  gates as graph nodes with a "decided in Control" note; dead `ApprovalInbox`
+  deleted).
+- Every inline `*Message` string + its banner `<div>` (Builder, Store, Library,
+  MemorySection, Profile, ControlPlane) → **toasts** via `useToast()`.
+
+## Restraint-pass counts (Store, 1440×900)
+- Before: each agent/tool card carried ~5–6 filled/outlined semantic pills
+  (verified text + verification badge + risk badge + rank + access + tools),
+  so a single fold showed 30+ amber/green filled chips — "amber mud".
+- After: each card carries at most **two** semantic signals, both rendered as a
+  7px dot + text (no fill, no border). A Store fold reads slate + one accent with
+  ~4–6 small status dots total. Loud color (filled/striped) is reserved for
+  blocked/restricted and live pending approvals (Control event stripes).
+
+## Staged-reveal timing (client-side, Phase D)
+On a plan response the canvas assembles the graph instead of dumping it: nodes
+draw in left-to-right (goal → agents → tools/memory → gates) on a **90ms** per-node
+stagger (`FlowGraph animate`, delay = reading-order index × 90ms); edges fade in
+behind their target; the warnings strip slides in **last at 1.1s** as the
+governance beat; plan meta fades under the command bar. Total ≤ ~2.5s. While the
+request is in flight the canvas shows the stage-label progress in place.
+`prefers-reduced-motion` collapses all of it to instant (base.css zeroes
+durations).
+
+## Logo derivation rules (Phase E)
+`deriveLogoSrc(server)`: homepage host → `s2/favicons?domain=…&sz=64`; github
+repo → `github.com/<org>.png?size=64`; else repo host → favicon. The `Logo`
+primitive renders the glyph first and keeps it as the fallback, overlaying the
+image and removing it `onError`, so cards degrade gracefully offline. Agents use a
+deterministic `Avatar` tinted in the accent's hue neighborhood (200–256°, no
+rainbow).
+
+## Gate confirmation
+- No backend diff (schema/migrations/routes/lib/orchestrator|llm|registry|
+  validation all untouched).
+- 69/69 tests green; build clean at every commit.
+- No page-level scroll at rest (html/body `overflow:hidden`; only `.workContent`
+  and inner panels scroll). Verified at 1440×900 and 1280×800.
+- ⌘K command palette works (open/filter/↑↓/enter/esc).
+- Single approval home (Control); single mode pill (rail); single sync status.
+- No mono font outside the `Data` primitive + machine values (costs, tokens,
+  timestamps, model meta, key caps).
+- The word "Generate" does not appear in UI copy (it is "Plan flow").
+- Viewport fully dark; `prefers-reduced-motion` disables non-essential motion.
+
+## Out of scope (future work)
+Drag-and-drop canvas, SSE/token streaming of plans, light theme, mobile (<1024).

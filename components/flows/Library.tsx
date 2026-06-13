@@ -7,7 +7,7 @@ import { listFlows, patchToolGrant, revokeToolGrant, saveFlow } from "../../lib/
 import { starterFlowTemplate } from "../../lib/catalog/templates";
 import { formatCents, workflowAgents } from "../mock-data";
 import type { LibraryTab, PersistedMcpAccessGrant, PersistedWorkflow } from "../../lib/types";
-import { Avatar, Button, Card, Data, DetailBlock, EmptyState, PageHeader, Pill } from "../layout/primitives";
+import { Avatar, Button, Card, Data, DetailBlock, EmptyState, PageHeader, Pill, SkeletonGrid } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 import { FlowGraph } from "../build/FlowGraph";
 import { savedWorkflowToGraph } from "../build/flow-graph";
@@ -113,7 +113,7 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
               <span>My Flows</span>
               <strong>{session?.user ? `${visibleWorkflows.length} saved` : "Demo"}</strong>
             </div>
-            {loadingSavedWorkflows && <EmptyState title="Loading Flows…" body="Reading your saved Flows from Postgres." />}
+            {loadingSavedWorkflows && <SkeletonGrid count={4} />}
             {!session?.user && (
               <EmptyState
                 title="No saved Flows in demo mode"

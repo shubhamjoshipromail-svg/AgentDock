@@ -26,12 +26,11 @@
 .dbStatus span,
 .detailBlock span,
 .permissionList > span {
-  color: var(--text-secondary);
+  color: var(--text-faint);
   display: block;
-  font-size: 0.78rem;
-  font-weight: 720;
-  margin-bottom: 7px;
-  text-transform: uppercase;
+  font-size: var(--fs-12);
+  font-weight: 500;
+  margin-bottom: 6px;
 }
 
 .dbStatus strong {

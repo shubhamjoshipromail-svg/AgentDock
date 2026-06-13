@@ -134,6 +134,47 @@ p {
   box-shadow: none;
 }
 
+/* Cards that carry actions get a subtle hover raise (120–200ms). */
+.agentCard,
+.mcpCard,
+.paletteCard,
+.flowCard {
+  transition: border-color 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.agentCard:hover,
+.mcpCard:hover,
+.paletteCard:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+/* Skeleton loading shimmer. */
+.skeleton {
+  background: var(--bg-overlay);
+  border-radius: var(--r-control);
+  position: relative;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton::after {
+    animation: skeletonSweep 1.3s var(--ease) infinite;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+    content: "";
+    inset: 0;
+    position: absolute;
+  }
+}
+
+@keyframes skeletonSweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.skeletonCard { height: 132px; }
+.skeletonGrid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 .platformPage,
 .hero {
   max-width: 1320px;
@@ -278,12 +319,19 @@ select:focus {
   font-weight: 500;
 }
 
-.detailBlock strong,
+/* Metric values stay mono (machine values). DetailBlock values are often prose
+   (goals, agent chains) so they use the body font. */
 .metric strong,
 .agentStats strong,
 .controlPreview strong {
   color: var(--text-primary);
   font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.detailBlock strong {
+  color: var(--text-primary);
+  font-family: var(--font-body);
   font-weight: 500;
 }
 

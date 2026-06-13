@@ -187,6 +187,20 @@ export function Metric({ label, value }: { label: string; value: string }) {
   return <span className="metric"><span>{label}</span><strong className="data">{value}</strong></span>;
 }
 
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`skeleton ${className}`.trim()} aria-hidden />;
+}
+
+export function SkeletonGrid({ count = 4 }: { count?: number }) {
+  return (
+    <div className="skeletonGrid" aria-hidden>
+      {Array.from({ length: count }).map((_, index) => (
+        <Skeleton key={index} className="skeletonCard" />
+      ))}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Legacy primitives kept working (restyled via tokens). Callers migrate as
 // later phases touch each surface.

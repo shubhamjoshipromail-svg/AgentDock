@@ -7,7 +7,7 @@ import { attachToolToFlow, listFlows, listToolServers, syncToolCatalog } from ".
 import type { SyncSummary } from "../../lib/api/client";
 import { agents, mcpTools, workflowTemplates } from "../mock-data";
 import type { McpVerificationStatus, PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
-import { Avatar, Badge, Button, ComingSoonButton, Data, Logo, Metric, PageHeader, SearchInput, Select } from "../layout/primitives";
+import { Avatar, Badge, Button, ComingSoonButton, Data, Logo, Metric, PageHeader, SearchInput, Select, SkeletonGrid } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 import { deriveLogoSrc } from "./logo";
 import { WorkflowTemplateCard } from "./WorkflowTemplateCard";
@@ -35,6 +35,7 @@ export function Store({
   const [totalServers, setTotalServers] = useState<number>(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [detailServer, setDetailServer] = useState<PersistedMcpServer | null>(null);
+  const [loadingServers, setLoadingServers] = useState(false);
 
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -48,6 +49,7 @@ export function Store({
       return;
     }
 
+    if (!opts.append) setLoadingServers(true);
     try {
       const params: Record<string, string | number> = { limit: 24 };
       if (opts.q) params.q = opts.q;
@@ -66,6 +68,8 @@ export function Store({
     } catch (error) {
 toast(error instanceof Error ? error.message : "Unable to load tool catalog.", "danger");
       if (!opts.append) setMcpServers([]);
+    } finally {
+      setLoadingServers(false);
     }
   };
 
@@ -264,6 +268,7 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
               )}
             </div>
           )}
+          {session?.user && loadingServers && !mcpServers.length ? <SkeletonGrid count={6} /> : (
           <div className="mcpGrid compactStoreGrid">
             {dbMcpAvailable ? mcpServers.map((server) => {
               const defaultPermission = server.recommendedPermission;
@@ -315,6 +320,7 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
               </article>
             ))}
           </div>
+          )}
           {dbMcpAvailable && nextCursor && (
             <div className="storeLoadMore">
               <Button onClick={loadMore}>Load more</Button>
