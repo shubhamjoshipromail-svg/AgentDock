@@ -1,6 +1,32 @@
 "use client";
 
+import { useState } from "react";
+
 import type { CapabilityKind, McpRiskLevel, McpVerificationStatus, Decision } from "../../lib/types";
+
+// Logo-led object identity: a rounded square. The glyph renders first and stays
+// as the fallback; the favicon/avatar image overlays it and is removed on error,
+// so it degrades gracefully offline.
+export function Logo({ src, label, glyph }: { src?: string; label: string; glyph?: React.ReactNode }) {
+  const [ok, setOk] = useState(Boolean(src));
+  return (
+    <span className="objLogo" aria-hidden>
+      <span className="objLogoGlyph">{glyph ?? label.slice(0, 1).toUpperCase()}</span>
+      {src && ok && <img className="objLogoImg" src={src} alt="" loading="lazy" onError={() => setOk(false)} />}
+    </span>
+  );
+}
+
+// Deterministic initial avatar, tinted in the accent's neighborhood (no rainbow).
+export function Avatar({ name }: { name: string }) {
+  const hash = name.split("").reduce((acc, ch) => ch.charCodeAt(0) + ((acc << 5) - acc), 0);
+  const hue = 200 + (Math.abs(hash) % 56); // 200–256: blue → violet, near the accent
+  return (
+    <span className="objAvatar" aria-hidden style={{ background: `hsl(${hue} 38% 22%)`, color: `hsl(${hue} 58% 78%)` }}>
+      {name.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Design-system primitives. Every primitive consumes tokens (app/tokens.css)

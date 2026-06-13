@@ -447,19 +447,49 @@ select:focus {
 }
 
 /* ---- Memory rows / grants ---- */
-.memoryRow.selected,
+.memoryRow.selected {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Grant controls read as stateful toggles (dot + tint), not action buttons:
+   off = faint dot + faint text; on = accent dot + accent text + tint. */
+.grantToggle {
+  align-items: center;
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--text-faint);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-12);
+  font-weight: 500;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 var(--sp-3);
+  text-transform: capitalize;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.grantToggle::before {
+  background: var(--line-strong);
+  border-radius: 50%;
+  content: "";
+  height: 7px;
+  transition: background var(--dur) var(--ease);
+  width: 7px;
+}
+
+.grantToggle:hover { border-color: var(--line-strong); }
+
 .grantToggle.active {
   background: var(--accent-bg);
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.grantToggle {
-  background: var(--bg-base);
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  color: var(--text-secondary);
-}
+.grantToggle.active::before { background: var(--accent); }
 
 .planMetaLine {
   color: var(--text-secondary);

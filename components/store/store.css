@@ -2,6 +2,84 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* ---- Logo-led object cards (Phase E) ---- */
+.objCardHead {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.objCardTitle {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.objCardTitle h3 {
+  font-size: var(--fs-16);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.objCardFooter {
+  margin-top: auto;
+}
+
+.storeSyncStatus {
+  align-self: center;
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}
+
+/* ---- Detail side panel ---- */
+.detailOverlay {
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  inset: 0;
+  justify-content: flex-end;
+  position: fixed;
+  z-index: 70;
+}
+
+.detailPanel {
+  background: var(--bg-raised);
+  border-left: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  height: 100dvh;
+  overflow-y: auto;
+  padding: var(--sp-6);
+  width: min(420px, 92vw);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .detailPanel { animation: detailIn 200ms var(--ease) both; }
+}
+
+@keyframes detailIn {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.detailPanelHead {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: space-between;
+}
+
+.detailTools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
 .mcpStoreIntro,
 .mcpBuilderPalette {
   margin-bottom: 16px;

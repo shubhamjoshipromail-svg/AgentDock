@@ -7,7 +7,7 @@ import { listFlows, patchToolGrant, revokeToolGrant, saveFlow } from "../../lib/
 import { starterFlowTemplate } from "../../lib/catalog/templates";
 import { formatCents, workflowAgents } from "../mock-data";
 import type { LibraryTab, PersistedMcpAccessGrant, PersistedWorkflow } from "../../lib/types";
-import { Button, Card, CapabilityBadge, Data, DetailBlock, EmptyState, PageHeader, Pill } from "../layout/primitives";
+import { Avatar, Button, Card, Data, DetailBlock, EmptyState, PageHeader, Pill } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 import { FlowGraph } from "../build/FlowGraph";
 import { savedWorkflowToGraph } from "../build/flow-graph";
@@ -172,12 +172,14 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
         <div className="agentGrid compactStoreGrid">
           {(session?.user && installedAgents.length ? installedAgents : workflowAgents).map((agent) => (
             <article className="agentCard compactAgentCard" key={agent.name}>
-              <div className="agentTopline">
-                <span className="verifiedBadge">Used in Flow</span>
-                <CapabilityBadge kind={session?.user ? "db" : "mock"} />
+              <div className="objCardHead">
+                <Avatar name={agent.name} />
+                <div className="objCardTitle">
+                  <h3>{agent.name}</h3>
+                  <span className="rankText">{agent.provider} · {agent.category}</span>
+                </div>
+                <span className="verifiedBadge">Used in flow</span>
               </div>
-              <h3>{agent.name}</h3>
-              <p>{agent.provider} - {agent.category}</p>
             </article>
           ))}
         </div>

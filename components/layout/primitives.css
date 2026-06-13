@@ -173,6 +173,50 @@
 .emptyState strong { color: var(--text-primary); font-family: var(--font-display); font-size: var(--fs-16); }
 .emptyState p { margin: 0; max-width: 42ch; }
 
+/* ---- Logo-led object identity ---- */
+.objLogo {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 32px;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  width: 32px;
+}
+
+.objLogoGlyph {
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+
+.objLogoImg {
+  height: 20px;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+}
+
+.objAvatar {
+  align-items: center;
+  border-radius: 8px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--font-display);
+  font-size: var(--fs-14);
+  font-weight: 600;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
 /* ---- Metric ---- */
 .metric { display: inline-flex; flex-direction: column; gap: 2px; }
 .metric > span { color: var(--text-faint); font-size: var(--fs-12); }

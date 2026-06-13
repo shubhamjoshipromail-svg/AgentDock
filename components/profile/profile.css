@@ -181,23 +181,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.grantToggle {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text-secondary);
-  font-size: 0.76rem;
-  font-weight: 720;
-  min-height: 32px;
-  padding: 7px 9px;
-  text-transform: capitalize;
-}
-
-.grantToggle.active {
-  background: var(--ok-bg);
-  border-color: #bfe8cc;
-  color: var(--ok);
-}
+/* .grantToggle is styled in theme.css as a stateful toggle. */
 
 .detailActions {
   justify-content: flex-start;
