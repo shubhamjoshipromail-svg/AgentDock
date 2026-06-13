@@ -3,25 +3,27 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
-import { listFlows, patchToolGrant, revokeToolGrant, saveFlow } from "../../lib/api/client";
+import { listFlows, saveFlow } from "../../lib/api/client";
 import { starterFlowTemplate } from "../../lib/catalog/templates";
-import { formatCents, workflowAgents } from "../mock-data";
-import type { LibraryTab, PersistedMcpAccessGrant, PersistedWorkflow } from "../../lib/types";
-import { Avatar, Button, Card, Data, DetailBlock, EmptyState, PageHeader, Pill, SkeletonGrid } from "../layout/primitives";
+import { formatCents } from "../mock-data";
+import type { LibraryTab, PersistedWorkflow } from "../../lib/types";
+import { Button, Card, Data, DetailBlock, EmptyState, PageHeader, Pill, SkeletonGrid } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 import { FlowGraph } from "../build/FlowGraph";
 import { savedWorkflowToGraph } from "../build/flow-graph";
-import { KeysBilling } from "./KeysBilling";
 
-export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab: LibraryTab) => void; spend: number }) {
+// Flows is a single view: the saved-flows list + flow detail (read-only graph).
+// The former My Agents / My Tools / Scoped Access tabs were removed — My Agents
+// duplicated Store, per-flow tool grants belong in flow detail / Control, and
+// Scoped Access was cut in Chunk 3. tab/setTab/spend remain in the signature
+// (the parent still owns that state) but are no longer used here.
+export function Library({ spend }: { tab: LibraryTab; setTab: (tab: LibraryTab) => void; spend: number }) {
   const { data: session } = useSession();
   const toast = useToast();
   const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
   const [loadingSavedWorkflows, setLoadingSavedWorkflows] = useState(false);
   const [savingWorkflow, setSavingWorkflow] = useState(false);
-  const [updatingMcpGrantId, setUpdatingMcpGrantId] = useState("");
   const [selectedFlowId, setSelectedFlowId] = useState("");
-  const [confirmRevokeId, setConfirmRevokeId] = useState("");
 
   const loadSavedWorkflows = async () => {
     if (!session?.user) {
@@ -66,48 +68,13 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
 
   const visibleWorkflows = session?.user ? savedWorkflows : [];
   const selectedWorkflow = visibleWorkflows.find((workflow) => workflow.id === selectedFlowId) ?? visibleWorkflows[0];
-  const installedAgents = visibleWorkflows.flatMap((workflow) => workflow.workflowAgents.map((workflowAgent) => workflowAgent.agent));
-  const attachedMcps = visibleWorkflows.flatMap((workflow) => workflow.workflowMcps ?? []);
-
-  const updateWorkflowMcpGrant = async (grant: PersistedMcpAccessGrant, field: "canRead" | "canWrite" | "canExecute" | "canDelete" | "requiresApproval") => {
-    setUpdatingMcpGrantId(grant.id);
-
-    try {
-      await patchToolGrant(grant.id, { [field]: !grant[field] }, "Unable to update tool access.");
-      toast("Tool access updated and logged.", "ok");
-      await loadSavedWorkflows();
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Unable to update tool access.", "danger");
-    } finally {
-      setUpdatingMcpGrantId("");
-    }
-  };
-
-  const revokeWorkflowMcpGrant = async (grant: PersistedMcpAccessGrant) => {
-    setUpdatingMcpGrantId(grant.id);
-
-    try {
-      await revokeToolGrant(grant.id, "Unable to revoke tool.");
-      toast("Tool revoked and logged.", "ok");
-      await loadSavedWorkflows();
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Unable to revoke tool.", "danger");
-    } finally {
-      setUpdatingMcpGrantId("");
-    }
-  };
+  void spend;
 
   return (
     <section className="platformPage libraryPage">
       <PageHeader eyebrow="Flows" title="Flows" copy="Saved agent systems you can run, edit, or pause." />
-      <div className="tabRow">
-        {(["My Flows", "My Agents", "My Tools", "Scoped Access"] as LibraryTab[]).map((item) => (
-          <button className={tab === item ? "tabButton active" : "tabButton"} key={item} onClick={() => setTab(item)}>{item}</button>
-        ))}
-      </div>
 
-      {tab === "My Flows" && (
-        <div className="libraryGrid">
+      <div className="libraryGrid">
           <div className="flowCardColumn">
             <div className="panelHeader">
               <span>My Flows</span>
@@ -166,78 +133,6 @@ export function Library({ tab, setTab, spend }: { tab: LibraryTab; setTab: (tab:
             </div>
           </Card>
         </div>
-      )}
-
-      {tab === "My Agents" && (
-        <div className="agentGrid compactStoreGrid">
-          {(session?.user && installedAgents.length ? installedAgents : workflowAgents).map((agent) => (
-            <article className="agentCard compactAgentCard" key={agent.name}>
-              <div className="objCardHead">
-                <Avatar name={agent.name} />
-                <div className="objCardTitle">
-                  <h3>{agent.name}</h3>
-                  <span className="rankText">{agent.provider} · {agent.category}</span>
-                </div>
-                <span className="verifiedBadge">Used in flow</span>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {tab === "My Tools" && (
-        <div className="libraryGrid">
-          <Card title="Tools" meta={`${attachedMcps.length} scoped`}>
-            {attachedMcps.length ? attachedMcps.map((workflowMcp) => {
-                const grant = selectedWorkflow?.mcpAccessGrants?.find((item) => item.mcpServer.id === workflowMcp.mcpServer.id);
-                return (
-                  <div className="mcpWorkflowAttachment" key={workflowMcp.id}>
-                    <div>
-                      <strong>{workflowMcp.mcpServer.displayName}</strong>
-                      <span>{workflowMcp.purpose ?? "Flow-scoped tool metadata"}</span>
-                    </div>
-                    <span>{workflowMcp.defaultPermission.replaceAll("_", " ")} - {workflowMcp.mcpServer.riskLevel} risk - {grant?.requiresApproval ? "approval required" : "no approval"}</span>
-                    {grant && (
-                      <>
-                        <div className="grantToggleGrid">
-                          {([
-                            ["canRead", "read"],
-                            ["canWrite", "write"],
-                            ["canExecute", "execute"],
-                            ["canDelete", "delete"],
-                            ["requiresApproval", "approval"]
-                          ] as const).map(([field, label]) => (
-                            <button className={grant[field] ? "grantToggle active" : "grantToggle"} disabled={updatingMcpGrantId === grant.id} key={field} onClick={() => updateWorkflowMcpGrant(grant, field)}>
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {confirmRevokeId === grant.id ? (
-                          <div className="confirmRow">
-                            <p>Revoke access? The next action under this grant will be blocked.</p>
-                            <Button variant="danger" size="sm" loading={updatingMcpGrantId === grant.id} onClick={() => { setConfirmRevokeId(""); revokeWorkflowMcpGrant(grant); }}>Revoke access</Button>
-                            <Button variant="ghost" size="sm" onClick={() => setConfirmRevokeId("")}>Cancel</Button>
-                          </div>
-                        ) : (
-                          <div className="buttonPair">
-                            <Button variant="secondary" size="sm" disabled={updatingMcpGrantId === grant.id} onClick={() => updateWorkflowMcpGrant(grant, "requiresApproval")}>Edit access</Button>
-                            <Button variant="danger" size="sm" onClick={() => setConfirmRevokeId(grant.id)}>Revoke access</Button>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              }) : <div className="approvalItem">No DB-backed tools yet. Add one from Store or Build.</div>}
-          </Card>
-        </div>
-      )}
-
-      {tab === "Scoped Access" && (
-        <div className="libraryGrid">
-          <KeysBilling spend={spend} />
-        </div>
-      )}
     </section>
   );
 }
