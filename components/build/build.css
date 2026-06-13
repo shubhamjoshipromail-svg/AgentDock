@@ -1,0 +1,1085 @@
+.builderPage {
+  display: grid;
+  gap: 18px;
+}
+
+/* In-place plan progress (Phase 0 feedback). */
+.planRegionAnchor {
+  scroll-margin-top: var(--sp-6);
+}
+
+.planProgress {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.planProgressBar {
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  height: 6px;
+  overflow: hidden;
+}
+
+.planProgressBar span {
+  background: var(--accent);
+  border-radius: var(--r-pill);
+  display: block;
+  height: 100%;
+  width: 40%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .planProgressBar span {
+    animation: planProgressSlide 1.1s var(--ease) infinite;
+  }
+}
+
+@keyframes planProgressSlide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(350%); }
+}
+
+.planProgressStages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.planProgressStages li {
+  color: var(--text-faint);
+  font-size: var(--fs-13);
+  transition: color var(--dur) var(--ease);
+}
+
+.planProgressStages li.active {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.planProgressStages li.done {
+  color: var(--text-secondary);
+}
+
+.planProgressStages li.done::before {
+  color: var(--ok);
+  content: "✓ ";
+}
+
+/* ===== Build workstation (Phase D): three fixed zones, no page growth ===== */
+.buildWorkspace {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: auto minmax(0, 1fr) 340px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ---- Left library (collapsible) ---- */
+.buildLibrary {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  transition: width var(--dur) var(--ease);
+  width: 264px;
+}
+
+.buildLibrary.collapsed { width: 46px; }
+
+.buildLibraryHead {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-faint);
+  display: flex;
+  font-size: var(--fs-12);
+  justify-content: space-between;
+  padding: var(--sp-3);
+}
+
+.iconToggle {
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--fs-16);
+  line-height: 1;
+  padding: 0 var(--sp-1);
+}
+
+.iconToggle:hover { color: var(--text-primary); }
+
+.buildLibraryBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  overflow-y: auto;
+  padding: var(--sp-3);
+}
+
+.buildLibrarySection { display: flex; flex-direction: column; gap: var(--sp-2); }
+.buildLibraryLabel { color: var(--text-faint); font-size: var(--fs-12); font-weight: 500; }
+.buildLibraryHint { color: var(--text-secondary); font-size: var(--fs-12); margin: 0; }
+
+.paletteList { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.paletteCard {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.paletteCardTop { align-items: center; display: flex; gap: var(--sp-2); justify-content: space-between; }
+.paletteCardTop strong { font-size: var(--fs-13); }
+.paletteCardActions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+
+/* ---- Center: command bar + canvas ---- */
+.buildCanvasZone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-height: 0;
+  min-width: 0;
+}
+
+.buildCanvas {
+  flex: 1;
+}
+
+.commandBar {
+  align-items: flex-end;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+}
+
+.commandInput {
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-primary);
+  flex: 1;
+  font-family: var(--font-body);
+  line-height: 1.5;
+  min-height: 40px;
+  padding: var(--sp-2) var(--sp-3);
+  resize: none;
+}
+
+.commandInput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); outline: none; }
+.commandActions { display: flex; gap: var(--sp-2); }
+.planMetaLine { color: var(--text-secondary); font-size: var(--fs-12); margin: 0; padding: 0 var(--sp-1); }
+
+.buildCanvas {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-4);
+  position: relative;
+}
+
+.canvasEmpty,
+.canvasProgress {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  height: 100%;
+  justify-content: center;
+}
+
+.exampleChips { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; max-width: 640px; }
+
+.exampleChip {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--fs-13);
+  padding: var(--sp-2) var(--sp-3);
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.exampleChip:hover { border-color: var(--line-strong); color: var(--text-primary); }
+
+.canvasProgressBar {
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  height: 6px;
+  overflow: hidden;
+  width: min(360px, 70%);
+}
+
+.canvasProgressBar span { background: var(--accent); border-radius: var(--r-pill); display: block; height: 100%; width: 40%; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .canvasProgressBar span { animation: planProgressSlide 1.1s var(--ease) infinite; }
+}
+
+
+/* ---- Right inspector ---- */
+.buildInspector {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.inspectorTabs { border-bottom: 1px solid var(--line); display: flex; gap: var(--sp-1); padding: var(--sp-2); }
+
+.inspectorTab {
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--fs-13);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.inspectorTab.active { background: var(--accent-bg); color: var(--accent); }
+
+.inspectorBody { display: flex; flex-direction: column; gap: var(--sp-4); overflow-y: auto; padding: var(--sp-4); }
+.inspectorBlock { display: flex; flex-direction: column; gap: var(--sp-2); }
+.inspectorBlock h3 { margin: 0; }
+
+.inspectorRow {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.inspectorRow > div { display: flex; gap: var(--sp-2); justify-content: space-between; }
+.inspectorRowTop { align-items: center; }
+.inspectorRow strong { font-size: var(--fs-13); }
+.inspectorRow span { color: var(--text-faint); font-size: var(--fs-12); }
+.inspectorRow p { color: var(--text-secondary); font-size: var(--fs-12); margin: 0; }
+.inspectorGrid { display: grid; gap: var(--sp-2); grid-template-columns: 1fr 1fr; }
+.inspectorActions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.inspectorNote { color: var(--text-faint); font-size: var(--fs-12); margin: 0; }
+
+.planPermissionLabel {
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-12);
+  gap: var(--sp-1);
+}
+
+@media (max-width: 1180px) {
+  .buildWorkspace { grid-template-columns: auto minmax(0, 1fr) 300px; }
+}
+
+.builderPromptBar,
+.builderPalette,
+.builderCanvas,
+.builderInspector,
+.validationPanel,
+.builderToast {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: none;
+}
+
+.builderPromptBar {
+  align-items: center;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 0.55fr) minmax(280px, 1fr) auto;
+  padding: 16px;
+}
+
+.builderPromptBar span {
+  color: var(--text-secondary);
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+}
+
+.builderPromptBar label {
+  color: var(--text-primary);
+  font-size: 1.04rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.builderPromptBar textarea {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  color: var(--text-primary);
+  line-height: 1.45;
+  min-height: 64px;
+  outline: none;
+  padding: 12px 13px;
+  resize: vertical;
+}
+
+.builderPromptBar textarea:focus {
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.06);
+}
+
+.builderToast {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 13px 16px;
+}
+
+.builderToast span {
+  color: var(--text-secondary);
+}
+
+.builderGrid {
+  align-items: stretch;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(230px, 0.72fr) minmax(420px, 1.5fr) minmax(260px, 0.82fr);
+}
+
+.builderPalette,
+.builderCanvas,
+.builderInspector,
+.validationPanel {
+  padding: 16px;
+}
+
+.paletteTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.paletteList,
+.detailStack {
+  display: grid;
+  gap: 10px;
+}
+
+.paletteItem {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.paletteItem strong,
+.paletteItem span {
+  display: block;
+}
+
+.paletteItem span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.canvasHeader {
+  align-items: start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.canvasHeader span {
+  color: var(--text-secondary);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+}
+
+.canvasHeader strong {
+  display: block;
+  font-size: 1.25rem;
+  margin-top: 5px;
+}
+
+.canvasHeader p {
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+  max-width: 430px;
+}
+
+.builderGraph {
+  align-items: stretch;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+}
+
+.graphStep {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.builderNode {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  color: var(--text-primary);
+  display: grid;
+  gap: 8px;
+  min-height: 190px;
+  padding: 14px;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 205px;
+}
+
+.builderNode:hover,
+.builderNode.selected {
+  border-color: #111;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.builderNode strong {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.builderNode small {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.nodeType {
+  border-radius: 999px;
+  color: #34383d;
+  font-size: 0.72rem;
+  font-weight: 760;
+  padding: 6px 8px;
+  width: fit-content;
+}
+
+.nodeType.goal,
+.nodeType.control {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.nodeType.agent {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.nodeType.mcp {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.nodeType.memory {
+  background: var(--bg-overlay);
+  color: var(--text-secondary);
+}
+
+.nodeAttachments {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.nodeAttachments span {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 680;
+  overflow: hidden;
+  padding: 6px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphArrow {
+  color: var(--text-faint);
+  font-weight: 760;
+}
+
+.builderInspector {
+  min-width: 0;
+}
+
+.builderInspector h3 {
+  font-size: 1.28rem;
+  margin: 14px 0;
+}
+
+.inspectorActions {
+  margin-top: 14px;
+}
+
+.validationPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.policyCheckGrid {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.policyCheckGrid span {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #34383d;
+  font-size: 0.82rem;
+  font-weight: 680;
+  line-height: 1.25;
+  padding: 9px 11px;
+}
+
+.builderActionBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.plannerGrid {
+  align-items: stretch;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.35fr) minmax(300px, 0.9fr);
+}
+
+.plannerPromptPanel,
+.plannerCanvas,
+.plannerInspector,
+.plannerCard,
+.simulationPanel {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: none;
+  padding: 16px;
+}
+
+.plannerPromptPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.plannerPromptPanel span,
+.plannerCanvas .canvasHeader span {
+  color: var(--text-secondary);
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+}
+
+.plannerPromptPanel label {
+  color: var(--text-primary);
+  display: block;
+  font-size: 1.18rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.plannerPromptPanel textarea {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  line-height: 1.5;
+  min-height: 138px;
+  outline: none;
+  padding: 13px;
+  resize: vertical;
+}
+
+.plannerPromptActions {
+  display: grid;
+  gap: 9px;
+}
+
+.plannerPromptActions span,
+.plannerPromptPanel p,
+.memoryVisualizer p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.plannerGraph {
+  align-items: stretch;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+}
+
+.plannerNode {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  color: var(--text-primary);
+  display: grid;
+  gap: 8px;
+  min-height: 200px;
+  padding: 14px;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 214px;
+}
+
+.plannerNode:hover,
+.plannerNode.selected {
+  border-color: #111;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.plannerNode strong {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.plannerNode small {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.plannerInspector {
+  min-width: 0;
+}
+
+.plannerInspector h3 {
+  font-size: 1.28rem;
+  margin: 14px 0;
+}
+
+.inspectorGrid {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.policyDiffList {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 13px;
+}
+
+.policyDiffList > span {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+}
+
+.policyDiffList p {
+  color: #34383d;
+  font-weight: 680;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.plannerSupportGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+}
+
+.memoryZoneGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.memoryZone {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  padding: 13px;
+}
+
+.memoryZone strong,
+.memoryZone span {
+  display: block;
+}
+
+.memoryZone span {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 680;
+  line-height: 1.3;
+}
+
+.memoryZone.allowed,
+.memoryZone.selectedAccess {
+  background: var(--ok-bg);
+  border-color: #cfecd8;
+}
+
+.memoryZone.blocked {
+  background: var(--danger-bg);
+  border-color: #ffd9d6;
+}
+
+.memoryZone.approval-required,
+.memoryZone.limited {
+  background: var(--warn-bg);
+  border-color: #f4e5b5;
+}
+
+.approvalInboxList {
+  display: grid;
+  gap: 10px;
+}
+
+.approvalInboxCard {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.approvalInboxCard span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 680;
+}
+
+.approvalInboxCard p {
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.dbApproval {
+  border-color: var(--line-strong);
+}
+
+.approvalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.simulationPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.unsafeSimulationResult {
+  background: var(--warn-bg);
+  border: 1px solid #f4e5b5;
+  border-radius: 16px;
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+}
+
+.unsafeSimulationResult span {
+  color: var(--warn);
+  font-weight: 720;
+}
+
+.runtimeSummary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cleanBuilderPage {
+  gap: 18px;
+}
+
+.builderHeroPrompt,
+.workflowTimelinePanel,
+.workflowInspectorPanel,
+.policySafetyPanel {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: none;
+  padding: 22px;
+}
+
+.builderHeroPrompt {
+  display: grid;
+  gap: 16px;
+}
+
+.builderHeroPrompt h1 {
+  font-size: clamp(2rem, 4vw, 4rem);
+  letter-spacing: 0;
+  line-height: 1.02;
+  margin: 0 0 10px;
+}
+
+.builderHeroPrompt p {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 850px;
+}
+
+.promptLabel {
+  color: var(--text-secondary);
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 520;
+  margin: 4px 0 -8px;
+}
+
+.builderHeroPrompt textarea {
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  color: var(--text-primary);
+  font-size: 1.02rem;
+  line-height: 1.55;
+  min-height: 130px;
+  outline: none;
+  padding: 16px;
+  resize: vertical;
+  width: 100%;
+}
+
+.builderHeroPrompt textarea:focus {
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.06);
+}
+
+.templateChipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.templateChip {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-weight: 720;
+  padding: 9px 12px;
+}
+
+.templateChip:hover {
+  border-color: var(--line-strong);
+}
+
+.builderLibraryStrip,
+.emptyWorkflowState {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.builderLibraryStrip {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.builderLibraryStrip span,
+.builderLibraryStrip p,
+.emptyWorkflowState p {
+  color: var(--text-secondary);
+  display: block;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.builderLibraryStrip > div > span {
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+}
+
+.builderLibraryStrip strong,
+.emptyWorkflowState strong {
+  color: var(--text-primary);
+  display: block;
+  font-size: 1.05rem;
+}
+
+.workflowPlannerLayout {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.62fr);
+}
+
+.emptyPlannerLayout {
+  grid-template-columns: 1fr;
+}
+
+.verticalWorkflow {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.workflowStepCard {
+  align-items: stretch;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--text-primary);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 54px minmax(0, 1fr);
+  padding: 16px;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 100%;
+}
+
+.workflowStepCard:hover,
+.workflowStepCard.selected {
+  border-color: #111;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.stepNumber {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text-secondary);
+  display: flex;
+  font-weight: 780;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+}
+
+.stepMain {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.stepTitleRow {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.stepTitleRow strong,
+.workflowInspectorPanel h3 {
+  color: var(--text-primary);
+  display: block;
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+
+.stepTitleRow span,
+.workflowInspectorPanel > p {
+  color: var(--text-secondary);
+  display: block;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.workflowStepCard p,
+.workflowInspectorPanel p,
+.policySafetyPanel p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.stepDetailsGrid {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.workflowInspectorPanel {
+  position: sticky;
+  top: 90px;
+}
+
+.workflowInspectorPanel h3 {
+  margin: 14px 0 6px;
+}
+
+.cleanInspectorGrid {
+  grid-template-columns: 1fr;
+  margin-top: 14px;
+}
+
+.builderLowerGrid,
+.controlGrid,
+.libraryGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compactPolicyChecks {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compactMcpAttachPanel .mcpPaletteGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}

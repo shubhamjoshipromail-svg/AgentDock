@@ -1,0 +1,171 @@
+/* Flow Graph — the signature surface. The viewport clips; the canvas is
+   transformed (fit-to-view). Tokens only. */
+.flowGraph {
+  background:
+    radial-gradient(circle, var(--line) 1px, transparent 1px) 0 0 / 24px 24px,
+    var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  cursor: grab;
+  height: 100%;
+  min-height: 280px;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+
+.flowGraph:active { cursor: grabbing; }
+
+.flowGraphCanvas {
+  position: absolute;
+  transform-origin: 0 0;
+  top: 0;
+  left: 0;
+}
+
+.flowGraphControls {
+  bottom: var(--sp-3);
+  display: flex;
+  gap: var(--sp-1);
+  position: absolute;
+  right: var(--sp-3);
+}
+
+.fgCtl {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-14);
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+
+.fgCtl:hover { border-color: var(--line-strong); color: var(--text-primary); }
+
+.flowDetailGraph { margin-bottom: var(--sp-3); }
+.flowDetailGraph .flowGraph { height: 320px; }
+
+.flowGraphEdges {
+  inset: 0;
+  overflow: visible;
+  position: absolute;
+}
+
+.flowEdge {
+  stroke-width: 1.5;
+}
+
+.edge-neutral { stroke: var(--line-strong); }
+.edge-warn { stroke: var(--warn); }
+.edge-restricted { stroke: var(--restricted); }
+.edge-ok { stroke: var(--ok); }
+.edge-danger { stroke: var(--danger); }
+.edge-accent { stroke: var(--accent); }
+
+.fgNode {
+  align-items: center;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--r-card);
+  display: flex;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  position: absolute;
+  text-align: left;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.fgNode:hover { border-color: var(--line-strong); }
+
+.fgNode.selected {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.flowNodeGlyph {
+  color: var(--text-faint);
+  flex-shrink: 0;
+  font-size: var(--fs-16);
+}
+
+.flowNodeBody { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+
+.flowNodeTitle {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowNodeSub {
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tone = the color law. Left border + glyph carry it. */
+.tone-accent { border-left-color: var(--accent); }
+.tone-accent .flowNodeGlyph { color: var(--accent); }
+.tone-ok { border-left-color: var(--ok); }
+.tone-ok .flowNodeGlyph { color: var(--ok); }
+.tone-warn { border-left-color: var(--warn); }
+.tone-warn .flowNodeGlyph { color: var(--warn); }
+.tone-danger { border-left-color: var(--danger); }
+.tone-danger .flowNodeGlyph { color: var(--danger); }
+.tone-restricted { border-left-color: var(--restricted); }
+.tone-restricted .flowNodeGlyph { color: var(--restricted); }
+.tone-neutral { border-left-color: var(--text-faint); }
+
+/* Goal node: leading, quiet. */
+.node-goal { background: var(--bg-overlay); }
+
+/* Gate node: distinct diamond accent (warn). */
+.node-gate {
+  background: var(--warn-bg);
+  border-color: var(--warn);
+  border-left-width: 1px;
+  justify-content: center;
+}
+.node-gate .flowNodeTitle { color: var(--warn); }
+.node-gate .flowNodeGlyph { color: var(--warn); }
+
+/* Warnings strip — the governance moment, impossible to miss. */
+.warningsStrip {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-card);
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-3);
+}
+
+.warningsStripHead {
+  align-items: center;
+  color: var(--warn);
+  display: flex;
+  font-weight: 500;
+  gap: var(--sp-2);
+  justify-content: space-between;
+}
+
+.warningsStripList {
+  display: grid;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+}
+
+.warningsStripList p {
+  color: var(--text-secondary);
+  font-size: var(--fs-13);
+  margin: 0;
+}

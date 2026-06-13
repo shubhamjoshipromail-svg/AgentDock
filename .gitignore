@@ -5,9 +5,9 @@ node_modules/
 .next/
 out/
 
-# production
-build/
-dist/
+# production (root output only — must NOT match components/build/)
+/build/
+/dist/
 
 # env files with real secrets
 .env
