@@ -476,3 +476,93 @@ rainbow).
 
 ## Out of scope (future work)
 Drag-and-drop canvas, SSE/token streaming of plans, light theme, mobile (<1024).
+
+---
+
+# Chunk 3.6 — Consistency, Elevation & Premium Polish
+
+Frontend only. Zero backend changes. 69/69 tests green and build clean at every commit.
+
+## Per-phase commits
+- `chunk3.6-A` 50d5656 — unified catalog card grammar (Tools = Agents)
+- `chunk3.6-B` 48119ee — elevation + light system (premium dark)
+- `chunk3.6-C` 7878e0a — fit-to-view graph + overlap fix (+ untrack components/build)
+- `chunk3.6-D` 8b50117 — flows cleanup + unified cards
+- `chunk3.6-E` e8a72a3 — honest plan-loading state
+- `chunk3.6-F` 09090a1 — global integrity sweep
+- `chunk3.6-G` (this commit) — premium micro-details
+
+## CRITICAL gitignore fix (found in Phase C)
+The root `.gitignore` had an **unanchored `build/`** pattern that also matched
+`components/build/`. The entire Build feature — `Builder.tsx`, `FlowGraph.tsx`,
+`flow-graph.ts`, `flow-graph.css`, `build.css`, `palette.ts`, `serialize.ts` — was
+therefore silently ignored and **never committed across chunks 3–3.6**; it ran on
+disk but was missing from git/GitHub. Anchored the patterns to `/build/` and
+`/dist/` (root output only) and added `components/build/` to tracking. This is why
+earlier "Build" commits appeared to land but the directory was absent upstream.
+
+## Tools = Agents (one card grammar)
+Root cause of "two different apps": a legacy `.mcpCard span { background:
+var(--warn-bg); border: 1px solid #f4e5b5; ... }` rule painted **every span** in a
+tool card as an amber pill (category, risk, access, even the logo glyph). Deleted
+it and introduced a single `CatalogCard` (media · name · faint category ·
+one-line description · ≤2 quiet dot+text signals · footer actions). Store Agents
+and Store Tools (DB + mock) both render through it.
+- Before: tool cards = 5–6 amber outlined pills + amber logo ring; agent cards =
+  Provider/Mode mono DetailBlock tiles. Two grammars.
+- After: identical anatomy and signal treatment on both tabs; zero amber pills;
+  provider/mode are quiet secondary text.
+
+## Elevation token system (the premium pass — hues unchanged)
+- Surface luminance steps: `--bg-base < --bg-raised < --bg-overlay < --bg-popover`.
+- Top-edge highlight insets: `--hl-1/2/3 = inset 0 1px 0 rgba(255,255,255,.03/.05/.07)`.
+- Ambient shadow tiers: `--shadow-1/2/3` (low-opacity, large-blur, tier-scaled).
+- Composed: `--elev-1/2/3 = hl + shadow`. Accent: `--accent-grad`, `--accent-glow`.
+- `app/elevation.css` applies them: raised surfaces lit-from-top; cards lift a tier
+  on hover; overlays (palette, detail panel, popover, toasts) float at `--elev-3`
+  over a dimmed/blurred scrim; inner tiles stay quiet (highlight only). Workspace
+  gets a ≤3% top-center radial light. Primary buttons get the accent gradient +
+  hover glow. Borders quieted to secondary; display headings tightened.
+
+## Fit-to-view graph
+The viewport clips; the canvas is transformed (`translate + scale`). On load and
+on every plan change the whole graph is centered and scaled to fit (fit floor 0.22
+so a wide 6-agent spine never clips or needs horizontal scroll; manual zoom floor
+0.4, cap 1.4). Hand-built pan (drag), zoom (⌘/ctrl-scroll), and corner +/−/fit
+controls; auto-fit re-runs on resize unless the user takes manual control. The
+warnings strip moved into its own flex slot above the canvas (can no longer
+overlap nodes). Node subtitles are prose; layout spacing tightened.
+
+## Flows IA decision
+Flows is now a **single view**: saved-flows list + flow detail (read-only
+fit-to-view graph). Removed the Scoped Access tab (Chunk 3 directive). Removed the
+My Agents sub-tab (it duplicated Store) and the My Tools sub-tab (per-flow tool
+grants belong in flow detail / Control — noted as a follow-up). Deleted the
+now-dead `KeysBilling` component.
+
+## Honest loading + streaming TODO
+Replaced the fabricated stage-label sequence with an honest in-canvas state: the
+goal shown immediately as the seed node, one "Planning your flow…" line, a real
+indeterminate bar, a live elapsed counter, and a "~30–60s for complex goals" hint.
+Failures set an in-canvas error ("Planning didn't complete" + message + Try again)
+plus a danger toast. The post-response staged reveal is kept (rendering the
+delivered result). A `TODO(streaming)` marker sits at the `planFlow` call in
+`components/build/Builder.tsx` — SSE token-streaming (a future backend chunk) will
+replace this with true node-by-node reveal.
+
+## Integrity sweep + micro-details
+No uppercase eyebrows; mono only on machine values; no amber-pill survivors (last
+raw `#f4e5b5` tokenized); dead exports removed (WorkflowMini, MetricCard, AuditList
+earlier). Micro-details: selected graph node gets an accent ring + faint glow;
+skeletons sit on the elevation system; logos get an inner top-highlight; hover
+lifts and the accent glow use ease-out ~160ms, all reduced-motion gated.
+
+## Gate confirmation
+- No backend diff; 69/69 tests green; build clean at every commit.
+- Tools and Agents share one card grammar; zero amber pills on either.
+- No mono-on-prose; no clipped graph; no warnings/node overlap.
+- Dark hues unchanged — elevation/luminance only.
+
+## Out of scope (future)
+SSE/streaming plan generation, drag-and-drop authoring, light-theme exploration,
+Chunk 4 (real execution).

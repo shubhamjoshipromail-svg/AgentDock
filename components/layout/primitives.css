@@ -179,6 +179,7 @@
   background: var(--bg-overlay);
   border: 1px solid var(--line);
   border-radius: 8px;
+  box-shadow: var(--hl-1);
   display: inline-flex;
   flex: 0 0 auto;
   height: 32px;

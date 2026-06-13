@@ -85,7 +85,8 @@
 .fgNode:hover { border-color: var(--line-strong); }
 
 .fgNode.selected {
-  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(91, 141, 239, 0.28);
 }
 
 .flowNodeGlyph {
