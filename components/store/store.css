@@ -2,6 +2,73 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* ---- Unified catalog card (Store Agents = Tools) ---- */
+.catalogGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+}
+
+.catalogCard {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+.catalogCardHead {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.catalogCardTitle {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.catalogCardTitle h3 {
+  font-size: var(--fs-16);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalogCardCategory {
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalogCardDesc {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.catalogCardSignals {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+.catalogCardFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: auto;
+}
+
 /* ---- Logo-led object cards (Phase E) ---- */
 .objCardHead {
   align-items: center;
@@ -159,48 +226,3 @@
   margin-bottom: 18px;
 }
 
-.mcpCard span {
-  background: var(--warn-bg);
-  border: 1px solid #f4e5b5;
-  border-radius: 999px;
-  color: var(--warn);
-  display: inline-flex;
-  font-size: 0.78rem;
-  font-weight: 720;
-  padding: 7px 9px;
-}
-
-.storeTable {
-  border-radius: 24px;
-  display: grid;
-  gap: 10px;
-  margin-top: 22px;
-  padding: 12px;
-}
-
-.storeRow {
-  align-items: center;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 54px minmax(220px, 1.2fr) repeat(4, minmax(110px, 0.7fr));
-  padding: 12px;
-}
-
-.storeRank {
-  align-items: center;
-  background: #111;
-  border-radius: 12px;
-  color: #fff;
-  display: inline-flex;
-  font-weight: 760;
-  height: 40px;
-  justify-content: center;
-  width: 40px;
-}
-
-.storeRow div > span {
-  color: var(--text-secondary);
-  display: block;
-  font-size: 0.86rem;
-  margin-top: 4px;
-}

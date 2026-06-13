@@ -6,10 +6,11 @@ import { useSession } from "next-auth/react";
 import { attachToolToFlow, listFlows, listToolServers, syncToolCatalog } from "../../lib/api/client";
 import type { SyncSummary } from "../../lib/api/client";
 import { agents, mcpTools, workflowTemplates } from "../mock-data";
-import type { McpVerificationStatus, PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
+import type { McpRiskLevel, McpVerificationStatus, PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
 import { Avatar, Badge, Button, ComingSoonButton, Data, Logo, Metric, PageHeader, SearchInput, Select, SkeletonGrid } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 import { deriveLogoSrc } from "./logo";
+import { CatalogCard } from "./CatalogCard";
 import { WorkflowTemplateCard } from "./WorkflowTemplateCard";
 
 export function Store({
@@ -187,27 +188,20 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
         ))}
       </div>
       {tab === "Agents" && (
-        <div className="agentGrid compactStoreGrid">
-          {agents.map((agent, index) => (
-            <article className="agentCard compactAgentCard" key={agent.name}>
-              <div className="objCardHead">
-                <Avatar name={agent.name} />
-                <div className="objCardTitle">
-                  <h3>{agent.name}</h3>
-                  <span className="rankText">{agent.category}</span>
-                </div>
-                {agent.verified && <span className="verifiedBadge">Verified</span>}
-              </div>
-              <p>{agent.description}</p>
-              <div className="agentStats compactStats">
-                <Metric label="Provider" value={agent.provider} />
-                <Metric label="Mode" value={agent.defaultMode} />
-              </div>
-              <div className="buttonPair objCardFooter">
+        <div className="catalogGrid">
+          {agents.map((agent) => (
+            <CatalogCard
+              key={agent.name}
+              media={<Avatar name={agent.name} />}
+              name={agent.name}
+              category={`${agent.provider} · ${agent.category}`}
+              description={agent.description}
+              signals={agent.verified ? <Badge verification="verified" /> : <Badge tone="neutral">Community</Badge>}
+              footer={<>
                 <ComingSoonButton>Install</ComingSoonButton>
                 <ComingSoonButton>{defaultAgent === agent.name ? "Default" : "Set default"}</ComingSoonButton>
-              </div>
-            </article>
+              </>}
+            />
           ))}
         </div>
       )}
@@ -269,25 +263,21 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
             </div>
           )}
           {session?.user && loadingServers && !mcpServers.length ? <SkeletonGrid count={6} /> : (
-          <div className="mcpGrid compactStoreGrid">
+          <div className="catalogGrid">
             {dbMcpAvailable ? mcpServers.map((server) => {
-              const defaultPermission = server.recommendedPermission;
               const isUnverified = server.verificationStatus === "unverified";
               return (
-                <article className="mcpCard compactAgentCard" key={server.id}>
-                  <div className="objCardHead">
-                    <Logo src={deriveLogoSrc(server)} label={server.displayName} />
-                    <div className="objCardTitle">
-                      <h3>{server.displayName}</h3>
-                      <span className="rankText">{server.category ?? "Uncategorized"}</span>
-                    </div>
+                <CatalogCard
+                  key={server.id}
+                  media={<Logo src={deriveLogoSrc(server)} label={server.displayName} />}
+                  name={server.displayName}
+                  category={server.category ?? "Uncategorized"}
+                  description={server.description}
+                  signals={<>
                     <Badge risk={server.riskLevel} />
-                  </div>
-                  <p>{server.description}</p>
-                  <div className="badgeGroup">
                     <Badge verification={server.verificationStatus} />
-                  </div>
-                  <div className="buttonPair objCardFooter">
+                  </>}
+                  footer={<>
                     <Button
                       variant="secondary"
                       size="sm"
@@ -298,26 +288,22 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
                       {attachingMcpId === server.id ? "Adding…" : isUnverified ? "Add (approval required)" : "Add to flow"}
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setDetailServer(server)}>Details</Button>
-                  </div>
-                </article>
+                  </>}
+                />
               );
             }) : mcpTools.map((tool) => (
-              <article className="mcpCard compactAgentCard" key={tool.name}>
-                <div className="objCardHead">
-                  <Logo label={tool.name} />
-                  <div className="objCardTitle">
-                    <h3>{tool.name}</h3>
-                    <span className="rankText">{tool.workflows}</span>
-                  </div>
-                  <span className="rankText">{tool.risk} risk</span>
-                </div>
-                <p>{tool.scopes}</p>
-                <Metric label="Access" value={tool.permission} />
-                <div className="buttonPair objCardFooter">
+              <CatalogCard
+                key={tool.name}
+                media={<Logo label={tool.name} />}
+                name={tool.name}
+                category={tool.workflows}
+                description={tool.scopes}
+                signals={<Badge risk={tool.risk.toLowerCase() as McpRiskLevel} />}
+                footer={<>
                   <ComingSoonButton>Add to flow</ComingSoonButton>
                   <Button variant="ghost" size="sm" onClick={() => toast(`${tool.name}: mock metadata preview. Sign in to sync DB-backed details.`, "info")}>Details</Button>
-                </div>
-              </article>
+                </>}
+              />
             ))}
           </div>
           )}
