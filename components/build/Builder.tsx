@@ -41,7 +41,6 @@ const EXAMPLE_GOALS = [
   "Triage new GitHub issues and draft replies without posting."
 ];
 
-const PLAN_STAGES = ["Reading your catalog", "Selecting agents", "Applying policy", "Assembling the flow"];
 
 export function Builder({
   prompt,
@@ -84,7 +83,8 @@ export function Builder({
   // Orchestrator (real model planning) state.
   const [planning, setPlanning] = useState(false);
   const [planned, setPlanned] = useState<PlannedFlowResponse | null>(null);
-  const [planStage, setPlanStage] = useState(0);
+  const [planElapsed, setPlanElapsed] = useState(0);
+  const [planError, setPlanError] = useState("");
   const [planRevealKey, setPlanRevealKey] = useState(0);
   const [permissionEdits, setPermissionEdits] = useState<Record<string, (typeof PERMISSION_VALUES)[number]>>({});
   const [budgetEdit, setBudgetEdit] = useState<number | null>(null);
@@ -124,10 +124,11 @@ export function Builder({
     loadMcpServers();
   }, [session?.user?.email]);
 
-  // Cycle the stage labels while a plan request is in flight.
+  // Honest elapsed timer while a plan request is in flight (no fake step labels).
   useEffect(() => {
-    if (!planning) return setPlanStage(0);
-    const id = window.setInterval(() => setPlanStage((s) => (s + 1) % PLAN_STAGES.length), 700);
+    if (!planning) return setPlanElapsed(0);
+    const started = Date.now();
+    const id = window.setInterval(() => setPlanElapsed(Math.round((Date.now() - started) / 1000)), 1000);
     return () => window.clearInterval(id);
   }, [planning]);
 
@@ -146,11 +147,16 @@ export function Builder({
 
     setPlanning(true);
     setPlanned(null);
+    setPlanError("");
     setPermissionEdits({});
     setBudgetEdit(null);
     setInspectorTab("plan");
 
     try {
+      // TODO(streaming): a future backend chunk will replace this single awaited
+      // call with SSE token-streaming so nodes reveal in true real time as the
+      // model emits them. Until then the wait is honest (elapsed + indeterminate)
+      // and the staged reveal below renders the completed result.
       const data = await planFlow(prompt);
       setPlanned(data);
       setBudgetEdit(data.plan.estimatedBudgetCents);
@@ -163,7 +169,9 @@ export function Builder({
       );
     } catch (error) {
       setPlanned(null);
-      toast(error instanceof Error ? error.message : "Unable to plan this flow.", "danger");
+      const message = error instanceof Error ? error.message : "Unable to plan this flow.";
+      setPlanError(message);
+      toast(message, "danger");
     } finally {
       setPlanning(false);
     }
@@ -377,12 +385,27 @@ export function Builder({
         <div className="buildCanvas">
           {planning ? (
             <div className="canvasProgress" aria-live="polite" aria-busy="true">
+              <div className="planningGoalNode">
+                <span className="flowNodeGlyph" aria-hidden>◎</span>
+                <div className="planningGoalBody">
+                  <strong>Goal</strong>
+                  <span>{prompt.length > 90 ? `${prompt.slice(0, 88)}…` : prompt}</span>
+                </div>
+              </div>
               <div className="canvasProgressBar"><span /></div>
-              <ol className="planProgressStages">
-                {PLAN_STAGES.map((stage, index) => (
-                  <li key={stage} className={index === planStage ? "active" : index < planStage ? "done" : ""}>{stage}</li>
-                ))}
-              </ol>
+              <span className="canvasPlanningLine">Planning your flow…</span>
+              <span className="canvasPlanningHint">
+                Complex goals can take ~30–60s · <span className="data">{planElapsed}s</span>
+              </span>
+            </div>
+          ) : planError ? (
+            <div className="canvasEmpty">
+              <EmptyState
+                icon={<span style={{ fontSize: 28 }}>⚠</span>}
+                title="Planning didn’t complete"
+                body={planError}
+                action={<Button variant="primary" onClick={generatePlan}>Try again</Button>}
+              />
             </div>
           ) : hasPlan && planned ? (
             <FlowGraph key={planRevealKey} input={plannedFlowToGraph(planned.plan)} animate />
