@@ -797,7 +797,7 @@
 .memoryZone.approval-required,
 .memoryZone.limited {
   background: var(--warn-bg);
-  border-color: #f4e5b5;
+  border-color: var(--warn);
 }
 
 .approvalInboxList {
@@ -843,7 +843,7 @@
 
 .unsafeSimulationResult {
   background: var(--warn-bg);
-  border: 1px solid #f4e5b5;
+  border: 1px solid var(--warn);
   border-radius: 16px;
   display: grid;
   gap: 5px;

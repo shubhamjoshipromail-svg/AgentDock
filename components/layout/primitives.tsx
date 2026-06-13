@@ -237,15 +237,6 @@ export function ComingSoonButton({ children, size = "sm" }: { children: React.Re
   );
 }
 
-export function WorkflowMini({ name, status, budget }: { name: string; status: string; budget: string }) {
-  return (
-    <div className="compactItem">
-      <div><strong>{name}</strong><span className="data">{budget}</span></div>
-      <span className={status === "Active" ? "statusPill running" : "statusPill awaitingapproval"}>{status}</span>
-    </div>
-  );
-}
-
 export function DetailBlock({ label, value }: { label: string; value: string }) {
   return <div className="detailBlock"><span>{label}</span><strong>{value}</strong></div>;
 }

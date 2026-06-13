@@ -597,7 +597,7 @@ input:focus {
 
 .policyStat.approval-required {
   background: var(--warn-bg);
-  border-color: #f4e5b5;
+  border-color: var(--warn);
 }
 
 .policyStat.blocked {
