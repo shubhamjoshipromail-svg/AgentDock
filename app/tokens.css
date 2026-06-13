@@ -61,6 +61,27 @@
   --r-card: 10px;
   --r-pill: 999px;
 
+  /* Popover surface (one step above overlay) */
+  --bg-popover: #232C38;
+
+  /* ---- Elevation & light model ----
+     Light comes from the top: a 1px inner top-edge highlight makes a surface
+     feel lit from above; an ambient shadow below sets it off the base. Tiers
+     get progressively stronger highlight + shadow. Borders become secondary. */
+  --hl-1: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --hl-2: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --hl-3: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.22);
+  --shadow-3: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.32);
+  --elev-1: var(--hl-1), var(--shadow-1);
+  --elev-2: var(--hl-2), var(--shadow-2);
+  --elev-3: var(--hl-3), var(--shadow-3);
+
+  /* Accent presence: faint vertical gradient + hover glow for primary actions. */
+  --accent-grad: linear-gradient(180deg, #6f9bf2 0%, var(--accent) 100%);
+  --accent-glow: 0 2px 14px rgba(91, 141, 239, 0.35);
+
   /* The single allowed elevation (modal / inspector only) */
   --shadow-overlay: 0 24px 60px rgba(0, 0, 0, 0.45);
 
