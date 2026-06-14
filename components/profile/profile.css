@@ -185,3 +185,27 @@
 .detailActions {
   justify-content: flex-start;
 }
+
+/* Provider keys (BYO) */
+.providerKeyForm {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0;
+}
+
+.providerKeyInput { flex: 1; min-width: 180px; }
+
+.providerKeyList { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.providerKeyRow {
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3);
+}

@@ -187,3 +187,18 @@ export function patchMemoryGrant(
 export function revokeMemoryGrant(grantId: string, fallbackMessage = "Unable to revoke memory grant.") {
   return request<{ grant: PersistedMemoryGrant }>(`/api/memory/grants/${grantId}/revoke`, fallbackMessage, { method: "POST" });
 }
+
+// --- Chunk 4: BYO provider credentials (metadata only ever crosses the wire) ---
+export type CredentialMetadata = { id: string; provider: string; last4: string | null; status: string; createdAt: string };
+
+export function listCredentials(fallbackMessage = "Unable to load provider keys.") {
+  return request<{ credentials: CredentialMetadata[] }>("/api/credentials", fallbackMessage);
+}
+
+export function addCredential(provider: "anthropic" | "openai", key: string, fallbackMessage = "Unable to store provider key.") {
+  return request<{ credential: CredentialMetadata }>("/api/credentials", fallbackMessage, jsonInit("POST", { provider, key }));
+}
+
+export function revokeCredential(id: string, fallbackMessage = "Unable to revoke provider key.") {
+  return request<{ ok: boolean }>(`/api/credentials/${id}/revoke`, fallbackMessage, { method: "POST" });
+}

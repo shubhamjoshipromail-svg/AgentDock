@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 
 import { Card, DetailBlock, PageHeader } from "../layout/primitives";
 import { MemorySection } from "./MemorySection";
+import { ProviderKeys } from "./ProviderKeys";
 
 export function Profile({
   selectedMemory,
@@ -27,6 +28,7 @@ export function Profile({
           <DetailBlock label="Email" value={profileEmail ?? "Not signed in"} />
           <DetailBlock label="Workspace" value={session?.user ? "Personal workspace" : "Demo workspace"} />
         </Card>
+        <ProviderKeys />
       </div>
       <MemorySection selectedMemory={selectedMemory} onSelectMemory={onSelectMemory} />
     </section>

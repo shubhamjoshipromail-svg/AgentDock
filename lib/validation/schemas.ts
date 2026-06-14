@@ -93,3 +93,18 @@ export type ApprovalResolveInput = z.infer<typeof approvalResolveSchema>;
 export type ToolGrantPatchInput = z.infer<typeof toolGrantPatchSchema>;
 export type MemoryGrantPatchInput = z.infer<typeof memoryGrantPatchSchema>;
 export type ToolAttachInput = z.infer<typeof toolAttachSchema>;
+
+// Chunk 4: BYO provider key intake. The key is write-only — accepted, encrypted,
+// never returned. Bounds keep an accidental paste of a huge blob out.
+export const createCredentialSchema = z.object({
+  provider: z.enum(["anthropic", "openai"]),
+  key: z.string().min(20).max(400)
+});
+
+// Chunk 4: start a real run for a saved flow.
+export const startRunSchema = z.object({
+  workflowId: z.string().uuid()
+});
+
+export type CreateCredentialInput = z.infer<typeof createCredentialSchema>;
+export type StartRunInput = z.infer<typeof startRunSchema>;
