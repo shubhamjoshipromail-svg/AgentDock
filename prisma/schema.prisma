@@ -84,6 +84,12 @@ enum WorkflowRunStatus {
   completed
   failed
   blocked
+  // Chunk 4 real-execution lifecycle (added; old values kept for back-compat).
+  queued
+  paused_for_approval
+  halted_cost
+  halted_error
+  killed
 }
 
 enum WorkflowRunEventType {
@@ -223,6 +229,10 @@ model Agent {
   provider           String
   verified           Boolean             @default(false)
   description        String
+  // Chunk 4 runnable config: the agent's system prompt + model. Allow-listed
+  // tools come via McpAccessGrant rows. Nullable so existing rows are valid.
+  systemPrompt       String?             @map("system_prompt")
+  model              String?
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -319,7 +329,12 @@ model WorkflowRun {
   status          WorkflowRunStatus   @default(pending)
   startedAt       DateTime            @default(now()) @map("started_at")
   completedAt     DateTime?           @map("completed_at")
+  endedAt         DateTime?           @map("ended_at")
   totalCostCents  Int                 @default(0) @map("total_cost_cents")
+  stepCount       Int                 @default(0) @map("step_count")
+  toolCallCount   Int                 @default(0) @map("tool_call_count")
+  killedAt        DateTime?           @map("killed_at")
+  killReason      String?             @map("kill_reason")
   riskLevel       String              @map("risk_level")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
@@ -346,6 +361,14 @@ model WorkflowRunEvent {
   mcpTool           String?              @map("mcp_tool")
   memoryPartitionId String?              @map("memory_partition_id") @db.Uuid
   costCents         Int                  @default(0) @map("cost_cents")
+  // Chunk 4 immutable-audit fields. Events are append-only; never updated.
+  actorType         String?              @map("actor_type")
+  actorId           String?              @map("actor_id")
+  resourceType      String?              @map("resource_type")
+  resourceId        String?              @map("resource_id")
+  authorityRef      String?              @map("authority_ref")
+  untrusted         Boolean              @default(false)
+  schemaVersion     Int                  @default(1) @map("schema_version")
   metadata          Json                 @default("{}")
   createdAt         DateTime             @default(now()) @map("created_at")
   workflowRun       WorkflowRun          @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
@@ -372,6 +395,14 @@ model ApprovalRequest {
   status        ApprovalRequestStatus @default(pending)
   requestedAt   DateTime              @default(now()) @map("requested_at")
   resolvedAt    DateTime?             @map("resolved_at")
+  // The run + step this approval pauses (Chunk 4: resume on approve).
+  stepIndex     Int?                  @map("step_index")
+  // Mandate shape (AP2-style; maps cleanly to a future signed mandate).
+  scope         String?
+  limitCents    Int?                  @map("limit_cents")
+  expiresAt     DateTime?             @map("expires_at")
+  revokedAt     DateTime?             @map("revoked_at")
+  signature     String?
   metadata      Json                  @default("{}")
   user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   workflowRun   WorkflowRun           @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
@@ -488,6 +519,13 @@ model McpAccessGrant {
   requiresApproval Boolean   @default(true) @map("requires_approval")
   allowedActions   Json?     @map("allowed_actions")
   blockedActions   Json?     @map("blocked_actions")
+  // Mandate shape (scope + limit + expiry + revocation) — the kill switch sets
+  // revokedAt to terminate in-flight authority.
+  scope            String?
+  limitCents       Int?      @map("limit_cents")
+  expiresAt        DateTime? @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  signature        String?
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -607,6 +645,13 @@ model ScopedCredential {
   scopeDescription String           @map("scope_description")
   status           CredentialStatus @default(pending)
   expiresAt        DateTime?        @map("expires_at")
+  // secrets: server-only, never logged/returned. BYO provider key encrypted at
+  // rest with AES-256-GCM (CREDENTIAL_ENCRYPTION_KEY). last4 is the only
+  // displayable fragment.
+  encryptedKey       String?        @map("encrypted_key")
+  encryptionIv       String?        @map("encryption_iv")
+  encryptionAuthTag  String?        @map("encryption_auth_tag")
+  last4              String?
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)

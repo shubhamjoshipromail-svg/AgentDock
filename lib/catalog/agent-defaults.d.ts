@@ -4,6 +4,8 @@ export type AgentDefault = {
   provider: string;
   verified: boolean;
   description: string;
+  model?: string;
+  systemPrompt?: string;
 };
 
 export const agentDefaults: AgentDefault[];
