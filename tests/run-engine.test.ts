@@ -16,15 +16,17 @@ vi.mock("../lib/execution/tools/web-search", () => ({
 const llm = vi.hoisted(() => ({
   queue: [] as { text: string; inputTokens?: number; outputTokens?: number; costCents?: number }[],
   calls: 0,
-  userPrompts: [] as string[]
+  userPrompts: [] as string[],
+  systemPrompts: [] as string[]
 }));
 
 vi.mock("../lib/execution/provider", () => ({
   getRunProvider: vi.fn(async () => ({
     name: "anthropic",
     model: "claude-sonnet-4-6",
-    completeJson: vi.fn(async (params: { user: string }) => {
+    completeJson: vi.fn(async (params: { system: string; user: string }) => {
       llm.calls += 1;
+      llm.systemPrompts.push(params.system);
       llm.userPrompts.push(params.user);
       const next = llm.queue.shift();
       if (!next) throw new Error("no queued completion");
@@ -66,6 +68,7 @@ describe("run engine — bounded, gated, killable", () => {
     llm.queue = [];
     llm.calls = 0;
     llm.userPrompts = [];
+    llm.systemPrompts = [];
     setCurrentUser(null);
     vi.unstubAllEnvs();
   });
@@ -193,6 +196,60 @@ describe("run engine — bounded, gated, killable", () => {
     expect(evs.some((e) => e.eventType === "a2a_handoff")).toBe(true);
     expect(evs.some((e) => e.title.includes("gmail") && e.decision === "allowed")).toBe(false);
     expect(evs.some((e) => e.eventType === "approval_requested" && e.decision === "approval_required")).toBe(true);
+  });
+
+  it("reports allowed but unimplemented tools as unavailable, never simulated success", async () => {
+    const user = await createTestUser();
+    const agent = await prisma.agent.create({
+      data: { userId: user.id, name: "Docs Agent", category: "Docs", provider: "OpenAI", verified: true, description: "Reads docs.", systemPrompt: "Use docs when available.", model: "claude-sonnet-4-6" }
+    });
+    const workflow = await prisma.workflow.create({
+      data: { userId: user.id, name: "Docs Flow", goal: "Check a document.", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "approval_gated" }
+    });
+    await prisma.workflowAgent.create({ data: { workflowId: workflow.id, agentId: agent.id, roleInWorkflow: "docs", routeOrder: 1, defaultMode: "auto" } });
+    const docs = await prisma.mcpServer.create({
+      data: { name: "docs-mcp", displayName: "Docs", description: "Docs.", registrySource: "curated", registryId: "agentdock:docs-unavailable", riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only" }
+    });
+    await prisma.mcpAccessGrant.create({
+      data: { userId: user.id, workflowId: workflow.id, agentId: agent.id, mcpServerId: docs.id, canRead: true, requiresApproval: false }
+    });
+    llm.queue = [
+      { text: TOOL("docs-mcp", "read", "roadmap doc") },
+      { text: FINAL("Could not read the document because the docs tool is unavailable.") }
+    ];
+
+    const outcome = await startRun(user.id, workflow.id);
+    expect(outcome.ok && outcome.result.status).toBe("completed");
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const toolEvent = (await events(run.id)).find((e) => e.eventType === "mcp_tool_use");
+    expect(toolEvent?.title).toContain("(unavailable)");
+    expect(toolEvent?.metadata).toMatchObject({
+      real: false,
+      toolName: "docs-mcp",
+      toolInput: "roadmap doc",
+      toolOutput: "[unavailable] no real executor for this tool"
+    });
+    expect(JSON.stringify(toolEvent)).not.toContain("[simulated]");
+    expect(llm.userPrompts[1]).toContain("[unavailable] no real executor for this tool");
+  });
+
+  it("uses a substantive default prompt when an agent has no systemPrompt", async () => {
+    const user = await createTestUser();
+    const agent = await prisma.agent.create({
+      data: { userId: user.id, name: "Default Agent", category: "General", provider: "OpenAI", verified: true, description: "Works.", systemPrompt: null, model: "claude-sonnet-4-6" }
+    });
+    const workflow = await prisma.workflow.create({
+      data: { userId: user.id, name: "Default Prompt Flow", goal: "Produce a useful result.", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "approval_gated" }
+    });
+    await prisma.workflowAgent.create({ data: { workflowId: workflow.id, agentId: agent.id, roleInWorkflow: "work", routeOrder: 1, defaultMode: "auto" } });
+    llm.queue = [{ text: FINAL("Structured result: useful output.") }];
+
+    const outcome = await startRun(user.id, workflow.id);
+    expect(outcome.ok && outcome.result.status).toBe("completed");
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    expect(run.resultText).toBe("Structured result: useful output.");
+    expect(llm.systemPrompts[0]).toContain("Return a clear, structured final result");
+    expect(llm.systemPrompts[0]).not.toContain("You are Default Agent.\n\nAVAILABLE TOOLS");
   });
 
   it("DENY-BY-DEFAULT: a non-allowed tool is NOT executed; a blocked event is logged", async () => {
