@@ -566,3 +566,105 @@ lifts and the accent glow use ease-out ~160ms, all reduced-motion gated.
 ## Out of scope (future)
 SSE/streaming plan generation, drag-and-drop authoring, light-theme exploration,
 Chunk 4 (real execution).
+
+---
+
+# Chunk 4 — The First Real Execution
+
+The first chunk where real code executes and real money moves. A saved flow runs
+for real (BYO key), every tool call passes a deterministic pre-action gate,
+approvals pause the live run, cost is metered and halts at caps, every action
+writes an immutable audit event, and a kill switch terminates an in-flight run.
+Backend changes are intended here (schema, routes, lib/execution). 115 tests
+green (69 prior + 46 new); build clean at every commit.
+
+## Per-phase commits
+- `chunk4-A` e81803f — execution schema + mandate-shaped authorization + encrypted credentials
+- `chunk4-B` b893a65 — BYO provider key (encrypted, server-only)
+- `chunk4-C` f8d99e3 — deterministic pre-action policy gate
+- `chunk4-D` 9edb5e1 — real run engine (bounded, gated, killable)
+- `chunk4-E` 7c56b1d — one real read-only tool (web search)
+- `chunk4-F` 3c667f6 — memory firewall enforced at runtime
+- `chunk4-G` 8e8e6e0 — live governed-run UI (blocked & killed)
+- `chunk4-H` (this commit) — red-team pass + security documentation
+
+## Real vs. simulated — post-Chunk-4 truth
+| Layer | After Chunk 4 |
+|---|---|
+| Orchestrator planning call | REAL (unchanged) |
+| Agent execution | REAL — model calls on the BYO key, real output, real cost |
+| Tool execution | REAL for ONE read-only tool (web search); all others gated + simulated |
+| Policy enforcement | REAL — deterministic gate before every tool call |
+| Cost/tokens | REAL — metered, capped, halts at cap |
+| Approvals | REAL — pause a running agent until a human decides |
+| Kill switch / revocation | REAL — terminates an in-flight run at the next boundary |
+| Memory firewall | REAL — bounds the exact bytes each step's prompt contains |
+| Credentials | BYO-key real (encrypted at rest); broker = next chunk |
+| Ranking / External agents | Still Stage 0 / not present (later chunks) |
+
+## Policy-gate rules (deny-by-default, evaluated pre-action)
+| Condition | Decision |
+|---|---|
+| tool not on agent allow-list / no grant | blocked |
+| grant revoked (kill switch) | blocked |
+| restricted-risk server | blocked |
+| grant or server recommendation = blocked | blocked |
+| read_only + read | allowed |
+| read_only + write/send/delete | blocked |
+| draft_only + read | allowed |
+| draft_only + write/send | approval_required |
+| approval_required grant | approval_required |
+| verification ≠ verified (ceiling) | never allowed → approval_required |
+| lethal trifecta (untrusted ingest + sensitive memory + external send) | never allowed → approval_required |
+
+## Caps (env, with safe defaults)
+`RUN_MAX_COST_CENTS`=50 · `USER_DAILY_RUN_COST_CAP_CENTS`=200 ·
+`RUN_MAX_STEPS`=16 · `RUN_MAX_TOOL_CALLS`=8 · `STEP_TIMEOUT_MS`=60000 ·
+`RUN_WALL_CLOCK_TIMEOUT_MS`=120000 · per-step tool-iteration ceiling=3.
+All checked BEFORE each model/tool call; the daily cap is pre-checked in
+`POST /api/runs` so an over-cap request makes zero model calls.
+
+## Credential encryption + leak audit
+AES-256-GCM (`lib/execution/crypto.ts`), key sha256-derived from
+`CREDENTIAL_ENCRYPTION_KEY`, fresh IV per encrypt, GCM auth tag for integrity.
+Decryption is server-only at call time (`loadActiveProviderKey`, used only by the
+run engine). Intake returns provider + `last4` only. Leak audit (tests +
+grep): the plaintext appears in no API response, event, run row, or
+components/app source.
+
+## Kill-switch semantics
+`POST /api/runs/[id]/kill` sets status `killed`. The drive loop re-reads run
+status + depended-on grant `revokedAt` at every boundary and terminates before
+the next model/tool call. `resumeAfterApproval` refuses to resume a killed/
+terminal run (the kill always wins the race). Revoking a tool grant mid-run halts
+the run with a reason.
+
+## Injection / trifecta / cost / kill test results (all passing)
+- Non-allowed tool requested (incl. via injected goal AND via malicious search
+  output) → blocked, never executed.
+- Trifecta combination → forced approval (never allowed).
+- Runaway tool loop → halted by the tool-call ceiling; model calls bounded.
+- Cost cap exceeded → `halted_cost`, no further calls.
+- Kill / grant-revoke mid-run → no tool executes afterward.
+- Secret-leak canary → never present in events or run.
+
+## Real cost of a real run (example)
+A single-agent flow (Job Discovery) running on Claude Sonnet with one web search:
+model usage ~1.5k in / ~0.5k out tokens ≈ 1¢ per step (priced via
+`lib/llm/pricing.ts`), web search 0¢ (DuckDuckGo IA, free). A typical 1–2 step
+run lands at ~1–3¢, metered live and capped at `RUN_MAX_COST_CENTS`.
+
+## Mandate-shape fields (for the future AP2 / broker chunk)
+`McpAccessGrant` and `ApprovalRequest` carry `scope`, `limitCents`, `expiresAt`,
+`revokedAt`, `signature` (nullable placeholder); approvals also carry `stepIndex`
+and reference the run they pause. These map cleanly onto an AP2-style signed
+mandate when the broker arrives.
+
+## Deferred risks (rationale)
+- No microVM/gVisor sandbox — mitigated by allow-listing + one safe read-only
+  tool; real sandbox precedes multi-tool execution (later infra chunk).
+- External/NANDA agents — same gates, different executor; need the internal case
+  as a proven rig first.
+- Credential broker (key minting, pay-through-us) — next chunk; Chunk 4 is
+  BYO-key only.
+See `docs/security.md` for the full threat model and seven-layer defense.
