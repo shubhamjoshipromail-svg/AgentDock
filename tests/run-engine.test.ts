@@ -5,6 +5,12 @@ import { createTestUser, prisma, resetDatabase } from "./helpers/db";
 
 vi.mock("../lib/auth-user", () => mockAuthUserModule());
 
+// The real web-search tool is exercised via the engine; mock it so tests never
+// hit the network. Its real behavior is covered in web-search.test.ts.
+vi.mock("../lib/execution/tools/web-search", () => ({
+  webSearch: vi.fn(async () => ({ output: "mock search results", costCents: 1 }))
+}));
+
 // Mock the BYO provider at the execution boundary — no network, no key. A queue
 // of fake completions is shifted on each completeJson call.
 const llm = vi.hoisted(() => ({
