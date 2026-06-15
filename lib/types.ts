@@ -9,6 +9,21 @@ export type RuntimeModeName = "Provider API Mode" | "AgentDock Sandbox Mode" | "
 export type Decision = "allowed" | "blocked" | "approval_required" | "approved" | "denied" | "info";
 export type EventType = "memory access" | "credential minting" | "A2A handoff" | "MCP/tool use" | "approval request" | "blocked action" | "spend event";
 
+export type RunEventMeta = {
+  modelOutput?: string;
+  envelopeType?: "final" | "tool_call";
+  inputTokens?: number;
+  outputTokens?: number;
+  toolName?: string;
+  toolInput?: string;
+  toolOutput?: string;
+  real?: boolean;
+  handoffFrom?: string;
+  handoffTo?: string;
+  handoffContent?: string;
+  [key: string]: unknown;
+};
+
 export type Agent = {
   name: string;
   category: string;

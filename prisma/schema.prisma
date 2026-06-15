@@ -331,6 +331,7 @@ model WorkflowRun {
   completedAt     DateTime?           @map("completed_at")
   endedAt         DateTime?           @map("ended_at")
   totalCostCents  Int                 @default(0) @map("total_cost_cents")
+  resultText      String?             @map("result_text")
   stepCount       Int                 @default(0) @map("step_count")
   toolCallCount   Int                 @default(0) @map("tool_call_count")
   killedAt        DateTime?           @map("killed_at")
