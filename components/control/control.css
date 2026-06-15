@@ -17,6 +17,128 @@
   margin-top: 4px;
 }
 
+.flowSelector {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.flowSelector span {
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+}
+
+.flowSelector select {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.finalDeliverable {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.finalDeliverable h3 {
+  margin: 2px 0 0;
+}
+
+.finalDeliverable pre,
+.payloadRow pre {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.runContentSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.capturedRunEvent {
+  display: grid;
+  gap: 8px;
+}
+
+.capturedPayload {
+  border-left: 1px solid var(--line-strong);
+  display: grid;
+  gap: 8px;
+  margin-left: 18px;
+  padding-left: 16px;
+}
+
+.payloadRow {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+}
+
+.payloadRow span {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  text-transform: lowercase;
+}
+
+.payloadRow code {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.runHistoryList {
+  display: grid;
+  gap: 8px;
+}
+
+.runHistoryButton {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.runHistoryButton:hover {
+  border-color: var(--line-strong);
+}
+
+.runHistoryButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.runHistoryButton span {
+  display: grid;
+  gap: 3px;
+}
+
+.runHistoryButton small {
+  color: var(--text-tertiary);
+}
+
 .runTimeline {
   display: grid;
   gap: 10px;

@@ -4,7 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useToast } from "../layout/Toast";
 
-import { getRealRun, killRealRun, listFlows, listRuns, resolveApproval, simulateRun, startRealRun, type RealRun } from "../../lib/api/client";
+import {
+  getRealRun,
+  killRealRun,
+  listFlows,
+  listRealRuns,
+  listRuns,
+  resolveApproval,
+  simulateRun,
+  startRealRun,
+  type RealRun,
+  type RealRunEvent,
+  type RealRunSummary
+} from "../../lib/api/client";
 import type {
   AuditEvent,
   Decision,
@@ -22,6 +34,77 @@ const DECISION_FILTERS: { key: Decision | "all"; label: string }[] = [
   { key: "approval_required", label: "Approval" },
   { key: "blocked", label: "Blocked" }
 ];
+
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function compactDate(iso?: string | null): string {
+  if (!iso) return "not ended";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "unknown";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function CapturedRunEvent({
+  event
+}: {
+  event: RealRunEvent;
+}) {
+  const meta = event.metadata ?? {};
+  const decision = (event.decision ?? "info") as Decision;
+  return (
+    <div className="capturedRunEvent">
+      <EventCard
+        event={{
+          id: event.id,
+          who: event.actorType === "agent" ? "Agent" : event.actorType === "human" ? "You" : "System",
+          what: event.title,
+          resource: event.resourceType ?? undefined,
+          authority: event.authorityRef ?? undefined,
+          decision,
+          timestamp: event.createdAt,
+          costCents: event.costCents,
+          eventType: event.eventType
+        }}
+      />
+      {(meta.modelOutput || meta.toolInput || meta.toolOutput || meta.handoffContent) && (
+        <div className="capturedPayload">
+          {meta.handoffFrom && meta.handoffTo && (
+            <div className="payloadRow">
+              <span>handoff</span>
+              <code>{meta.handoffFrom} → {meta.handoffTo}</code>
+            </div>
+          )}
+          {meta.toolInput && (
+            <div className="payloadRow">
+              <span>input</span>
+              <pre>{meta.toolInput}</pre>
+            </div>
+          )}
+          {meta.toolOutput && (
+            <div className="payloadRow">
+              <span>{event.untrusted ? "untrusted output" : "output"}</span>
+              <pre>{meta.toolOutput}</pre>
+            </div>
+          )}
+          {meta.handoffContent && (
+            <div className="payloadRow">
+              <span>untrusted handoff</span>
+              <pre>{meta.handoffContent}</pre>
+            </div>
+          )}
+          {meta.modelOutput && (
+            <div className="payloadRow">
+              <span>{meta.envelopeType === "final" ? "final" : "model envelope"}</span>
+              <pre>{meta.modelOutput}</pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ControlPlane({
   events,
@@ -44,6 +127,8 @@ export function ControlPlane({
   const toast = useToast();
   const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<PersistedWorkflowRun[]>([]);
+  const [realRunHistory, setRealRunHistory] = useState<RealRunSummary[]>([]);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
   const [dbApprovals, setDbApprovals] = useState<PersistedApprovalRequest[]>([]);
   const [runningControlSimulation, setRunningControlSimulation] = useState(false);
   const [resolvingApprovalId, setResolvingApprovalId] = useState("");
@@ -52,24 +137,31 @@ export function ControlPlane({
   const [liveRun, setLiveRun] = useState<RealRun | null>(null);
   const [startingReal, setStartingReal] = useState(false);
   const [killing, setKilling] = useState(false);
+  const [openingRunId, setOpeningRunId] = useState("");
 
   const loadControlPlaneData = async () => {
     if (!session?.user) {
       setSavedWorkflows([]);
       setWorkflowRuns([]);
+      setRealRunHistory([]);
+      setSelectedWorkflowId("");
       setDbApprovals([]);
       return;
     }
 
     try {
-      const [workflowsData, runsData] = await Promise.all([
+      const [workflowsData, runsData, realRunsData] = await Promise.all([
         listFlows("Unable to load saved Flows."),
-        listRuns("Unable to load runs.")
+        listRuns("Unable to load runs."),
+        listRealRuns("Unable to load real runs.")
       ]);
 
       const runs: PersistedWorkflowRun[] = runsData.workflowRuns ?? [];
-      setSavedWorkflows(workflowsData.workflows ?? []);
+      const workflows = workflowsData.workflows ?? [];
+      setSavedWorkflows(workflows);
       setWorkflowRuns(runs);
+      setRealRunHistory(realRunsData.runs ?? []);
+      setSelectedWorkflowId((current) => current || workflows[0]?.id || "");
       setDbApprovals(runs.flatMap((run) => run.approvalRequests).filter((approval) => approval.status === "pending"));
     } catch (error) {
 toast(error instanceof Error ? error.message : "Unable to load Control data.", "danger");
@@ -86,7 +178,7 @@ toast(error instanceof Error ? error.message : "Unable to load Control data.", "
       return;
     }
 
-    const workflow = savedWorkflows.find((item) => item.name === "Job Search Automation") ?? savedWorkflows[0];
+    const workflow = savedWorkflows.find((item) => item.id === selectedWorkflowId) ?? savedWorkflows[0];
     if (!workflow?.id) {
 toast("Save a Flow first to run a preview.", "warn");
       return;
@@ -142,17 +234,31 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
 
   const startReal = async () => {
     if (!session?.user) return toast("Sign in and add a provider key in Profile to run for real.", "warn");
-    const workflow = savedWorkflows.find((w) => w.name === "Job Search Automation") ?? savedWorkflows[0];
+    const workflow = savedWorkflows.find((w) => w.id === selectedWorkflowId) ?? savedWorkflows[0];
     if (!workflow?.id) return toast("Save a flow first to run it.", "warn");
     setStartingReal(true);
     try {
       const data = await startRealRun(workflow.id);
       toast(`Run ${data.run.status.replaceAll("_", " ")}.`, data.run.status === "completed" ? "ok" : "info");
       await refreshLiveRun(data.run.runId);
+      await loadControlPlaneData();
     } catch (error) {
       toast(error instanceof Error ? error.message : "Unable to start run.", "danger");
     } finally {
       setStartingReal(false);
+    }
+  };
+
+  const openRun = async (runId: string) => {
+    setOpeningRunId(runId);
+    try {
+      const data = await getRealRun(runId);
+      setLiveRun(data.run);
+      toast("Run history opened.", "info");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to open run.", "danger");
+    } finally {
+      setOpeningRunId("");
     }
   };
 
@@ -206,6 +312,12 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
   }, [session?.user, workflowRuns, events, liveRun]);
 
   const filteredFeed = decisionFilter === "all" ? feed : feed.filter((e) => e.decision === decisionFilter);
+  const filteredLiveEvents = liveRun
+    ? (decisionFilter === "all"
+      ? liveRun.events
+      : liveRun.events.filter((e) => (e.decision ?? "info") === decisionFilter))
+    : [];
+  const selectedWorkflow = savedWorkflows.find((workflow) => workflow.id === selectedWorkflowId);
 
   // Spend panel computed from already-fetched data — no new endpoint.
   const dbSpendCents = workflowRuns.reduce((sum, run) => sum + run.totalCostCents, 0);
@@ -240,7 +352,29 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
             ))}
           </div>
           <div className="opsFeedList">
-            {filteredFeed.length ? (
+            {liveRun ? (
+              <>
+                {liveRun.resultText && (
+                  <article className="finalDeliverable">
+                    <div>
+                      <span className="a2uiCaption">Final deliverable</span>
+                      <h3>Run result</h3>
+                    </div>
+                    <pre>{liveRun.resultText}</pre>
+                  </article>
+                )}
+                <div className="runContentSummary">
+                  <Pill tone="neutral">{liveRun.stepCount} model steps</Pill>
+                  <Pill tone="neutral">{liveRun.toolCallCount} tool checks</Pill>
+                  <Pill tone="neutral">{formatCents(liveRun.totalCostCents)} total</Pill>
+                </div>
+                {filteredLiveEvents.length ? (
+                  filteredLiveEvents.map((event) => <CapturedRunEvent key={event.id} event={event} />)
+                ) : (
+                  <EmptyState title="No matching live events" body="Adjust the filter to see the run timeline." />
+                )}
+              </>
+            ) : filteredFeed.length ? (
               filteredFeed.map((event) => <EventCard key={event.id} event={event} />)
             ) : (
               <EmptyState
@@ -252,13 +386,25 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
           </div>
           <p className="opsFooterNote">
             {liveRun
-              ? "Real run: model calls and web search execute for real and are metered. Other tools are gated and shown as simulated."
+              ? "Real run: model calls and web search execute for real and are metered. Unimplemented tools are shown as unavailable, never fake success."
               : "“Run for real” executes a real, governed run (real model calls, real cost, one real read-only tool). “Run preview” is simulated."}
           </p>
         </div>
 
         <div className="opsAside">
           <Card title="Active run" meta={liveRun ? liveRun.status.replaceAll("_", " ") : (session?.user ? "None yet" : "Demo ready")}>
+            {session?.user && (
+              <label className="flowSelector">
+                <span>Flow to run</span>
+                <select value={selectedWorkflowId} onChange={(event) => setSelectedWorkflowId(event.target.value)}>
+                  {savedWorkflows.length ? (
+                    savedWorkflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)
+                  ) : (
+                    <option value="">No saved flows</option>
+                  )}
+                </select>
+              </label>
+            )}
             {liveRun ? (
               <div className="runMetricGrid">
                 <div className="metric"><span>Real spend</span><strong className="data">${(liveRun.totalCostCents / 100).toFixed(2)} / ${(RUN_CAP_CENTS / 100).toFixed(2)}</strong></div>
@@ -267,7 +413,11 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
                 <div className="metric"><span>Status</span><strong className="data">{liveRun.status}</strong></div>
               </div>
             ) : (
-              <p className="inspectorNote">Run a saved flow for real on your BYO key. Real model calls, real cost, governed by the policy gate.</p>
+              <p className="inspectorNote">
+                {selectedWorkflow
+                  ? `${selectedWorkflow.name} is selected. Runs use the saved agents, tools, memory, and grants for that Flow.`
+                  : "Save a flow first, then select it here to run for real on your BYO key."}
+              </p>
             )}
             <div className="heroActions compactActions">
               <Button variant="primary" onClick={startReal} loading={startingReal} disabled={liveRunning}>Run for real</Button>
@@ -312,6 +462,24 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
                   </div>
                 ))}
               </div>
+            )}
+          </Card>
+
+          <Card title="Run history" meta={`${realRunHistory.length} real runs`}>
+            {realRunHistory.length ? (
+              <div className="runHistoryList">
+                {realRunHistory.slice(0, 6).map((run) => (
+                  <button key={run.id} className="runHistoryButton" onClick={() => openRun(run.id)} disabled={openingRunId === run.id}>
+                    <span>
+                      <strong>{run.status.replaceAll("_", " ")}</strong>
+                      <small>{compactDate(run.endedAt ?? run.createdAt)}</small>
+                    </span>
+                    <Data>{formatCents(run.totalCostCents)}</Data>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="No real runs yet" body="Select a saved Flow and run it to build history." />
             )}
           </Card>
         </div>

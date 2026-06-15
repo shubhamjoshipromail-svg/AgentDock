@@ -55,7 +55,7 @@ export async function GET() {
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },
     take: 20,
-    select: { id: true, status: true, totalCostCents: true, stepCount: true, toolCallCount: true, createdAt: true, endedAt: true }
+    select: { id: true, status: true, totalCostCents: true, stepCount: true, toolCallCount: true, resultText: true, createdAt: true, endedAt: true }
   });
   return NextResponse.json({ runs });
 }

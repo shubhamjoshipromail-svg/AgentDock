@@ -10,7 +10,8 @@ import type {
   PersistedMemoryPayload,
   PersistedWorkflow,
   PersistedWorkflowMcp,
-  PersistedWorkflowRun
+  PersistedWorkflowRun,
+  RunEventMeta
 } from "../types";
 import type {
   ApprovalResolveInput,
@@ -207,11 +208,17 @@ export function revokeCredential(id: string, fallbackMessage = "Unable to revoke
 export type RealRunEvent = {
   id: string; eventType: string; title: string; description: string; decision: string | null;
   costCents: number; actorType: string | null; resourceType: string | null; authorityRef: string | null;
-  untrusted: boolean; createdAt: string;
+  untrusted: boolean; createdAt: string; metadata: RunEventMeta;
 };
 export type RealRun = {
   id: string; status: string; totalCostCents: number; stepCount: number; toolCallCount: number;
+  resultText?: string | null; createdAt?: string; endedAt?: string | null;
   events: RealRunEvent[]; approvalRequests: PersistedApprovalRequest[];
+};
+
+export type RealRunSummary = {
+  id: string; status: string; totalCostCents: number; stepCount: number; toolCallCount: number;
+  resultText?: string | null; createdAt: string; endedAt?: string | null;
 };
 
 export function startRealRun(workflowId: string, fallbackMessage = "Unable to start run.") {
@@ -220,6 +227,10 @@ export function startRealRun(workflowId: string, fallbackMessage = "Unable to st
 
 export function getRealRun(id: string, fallbackMessage = "Unable to load run.") {
   return request<{ run: RealRun }>(`/api/runs/${id}`, fallbackMessage);
+}
+
+export function listRealRuns(fallbackMessage = "Unable to load real runs.") {
+  return request<{ runs: RealRunSummary[] }>("/api/runs", fallbackMessage);
 }
 
 export function killRealRun(id: string, fallbackMessage = "Unable to kill run.") {
