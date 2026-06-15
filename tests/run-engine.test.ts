@@ -80,6 +80,43 @@ describe("run engine — bounded, gated, killable", () => {
     expect((await events(run.id)).length).toBeGreaterThan(0);
   });
 
+  it("captures model output, tool I/O, and the completed run result", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+    llm.queue = [
+      { text: TOOL("web_search", "read", "site:example.com AI roles"), inputTokens: 44, outputTokens: 12, costCents: 2 },
+      { text: FINAL("Final deliverable built from search results."), inputTokens: 55, outputTokens: 20, costCents: 3 }
+    ];
+
+    const outcome = await startRun(user.id, workflow.id);
+    expect(outcome.ok && outcome.result.status).toBe("completed");
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    expect(run.resultText).toBe("Final deliverable built from search results.");
+
+    const evs = await events(run.id);
+    const modelEvent = evs.find((e) => e.title === "Job Discovery Agent step");
+    expect(modelEvent?.metadata).toMatchObject({
+      modelOutput: TOOL("web_search", "read", "site:example.com AI roles"),
+      envelopeType: "tool_call",
+      inputTokens: 44,
+      outputTokens: 12
+    });
+
+    const toolEvent = evs.find((e) => e.eventType === "mcp_tool_use");
+    expect(toolEvent?.metadata).toMatchObject({
+      toolName: "web_search",
+      toolInput: "site:example.com AI roles",
+      toolOutput: "mock search results",
+      real: true
+    });
+
+    const finalEvent = evs.find((e) => e.title === "Job Discovery Agent result");
+    expect(finalEvent?.metadata).toMatchObject({
+      modelOutput: "Final deliverable built from search results.",
+      envelopeType: "final"
+    });
+  });
+
   it("DENY-BY-DEFAULT: a non-allowed tool is NOT executed; a blocked event is logged", async () => {
     const user = await createTestUser();
     const { workflow } = await seedFlow(user.id);

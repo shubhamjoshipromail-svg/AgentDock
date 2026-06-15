@@ -6,6 +6,7 @@ import { authorizeToolCall, effectiveGrantPermission, type ActionKind } from "./
 import { getExecutor, isRealTool } from "./tools/registry";
 import { getRunProvider } from "./provider";
 import { buildStepContext } from "./memory";
+import type { RunEventMeta } from "../types";
 
 // ============================================================================
 // THE RUN ENGINE — executes a saved flow for real, step by step, bounded,
@@ -34,6 +35,13 @@ function caps() {
 
 const MAX_TOOL_ITERS_PER_STEP = 3;
 const MAX_OUTPUT_TOKENS = 1200;
+const MODEL_OUTPUT_META_LIMIT = 8000;
+const TOOL_INPUT_META_LIMIT = 1000;
+const TOOL_OUTPUT_META_LIMIT = 4000;
+
+function capText(value: string, limit: number): string {
+  return value.length > limit ? value.slice(0, limit) : value;
+}
 
 // The model addresses tools by a friendly name; the gate/executor use the
 // McpServer.name. Search is the one real tool, exposed as "web_search".
@@ -156,7 +164,7 @@ type EventInput = {
   resourceId?: string;
   authorityRef?: string;
   untrusted?: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: RunEventMeta;
 };
 
 // Append-only: this is the ONLY write path for run events. Nothing updates or
@@ -236,7 +244,7 @@ function buildUser(goal: string, memoryContext: string, toolResults: string[]): 
 // --- Step executor -----------------------------------------------------------
 
 type StepOutcome =
-  | { kind: "done" }
+  | { kind: "done"; finalText?: string }
   | { kind: "paused"; approvalId: string }
   | { kind: "halted"; status: "halted_cost" | "halted_error" }
   | { kind: "killed" };
@@ -303,19 +311,30 @@ async function runStep(
       await haltError(ctx, "model call failed or timed out");
       return { kind: "halted", status: "halted_error" };
     }
+    const envelope = parseEnvelope(completion.text);
     await meter(ctx.runId, completion.costCents);
     await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { stepCount: { increment: 1 } } });
     await appendEvent({
       runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "orchestration",
       title: `${agent.name} step`, description: `Model call for ${agent.name}.`, decision: "info",
       costCents: completion.costCents, actorType: "agent", actorId: agent.agentId,
-      metadata: { inputTokens: completion.usage.inputTokens, outputTokens: completion.usage.outputTokens }
+      metadata: {
+        inputTokens: completion.usage.inputTokens,
+        outputTokens: completion.usage.outputTokens,
+        modelOutput: capText(completion.text, MODEL_OUTPUT_META_LIMIT),
+        envelopeType: envelope.type
+      }
     });
 
-    const envelope = parseEnvelope(completion.text);
     if (envelope.type === "final") {
-      await appendEvent({ runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "orchestration", title: `${agent.name} result`, description: envelope.text.slice(0, 500), decision: "info", actorType: "agent", actorId: agent.agentId });
-      return { kind: "done" };
+      const finalText = envelope.text;
+      await appendEvent({
+        runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "orchestration",
+        title: `${agent.name} result`, description: finalText.slice(0, 500), decision: "info",
+        actorType: "agent", actorId: agent.agentId,
+        metadata: { modelOutput: capText(finalText, MODEL_OUTPUT_META_LIMIT), envelopeType: "final" }
+      });
+      return { kind: "done", finalText };
     }
 
     // --- tool call requested → THE POLICY GATE (pre-action) ---
@@ -400,7 +419,12 @@ async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedT
     description: `${agent.name} used ${tool.toolName} (${action}). ${reason}`,
     decision: "allowed", costCents, actorType: "agent", actorId: agent.agentId,
     resourceType: "tool", resourceId: tool.server.id, authorityRef: tool.grant.id, untrusted: true,
-    metadata: { real: isRealTool(tool.server.name) }
+    metadata: {
+      real: isRealTool(tool.server.name),
+      toolName: tool.toolName,
+      toolInput: capText(input, TOOL_INPUT_META_LIMIT),
+      toolOutput: capText(output, TOOL_OUTPUT_META_LIMIT)
+    }
   });
   // Result re-enters context tagged untrusted.
   return `${tool.toolName} result: ${output}`;
@@ -428,15 +452,20 @@ async function haltError(ctx: Ctx, reason: string) {
 // --- Drivers -----------------------------------------------------------------
 
 async function drive(ctx: Ctx, fromStep: number, firstStepSeed: string[], firstApprovedCall: { toolName: string; serverId: string; action: ActionKind; input: string } | null): Promise<RunResult> {
+  let lastFinalText: string | null = null;
   for (let i = fromStep; i < ctx.agents.length; i++) {
     const agent = ctx.agents[i];
     const outcome = await runStep(ctx, agent, i === fromStep ? firstStepSeed : [], i === fromStep ? firstApprovedCall : null);
     if (outcome.kind === "paused") return { runId: ctx.runId, status: "paused_for_approval" };
     if (outcome.kind === "killed") return { runId: ctx.runId, status: "killed" };
     if (outcome.kind === "halted") return { runId: ctx.runId, status: outcome.status };
+    if (outcome.finalText) lastFinalText = outcome.finalText;
   }
   await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "workflow_completed", title: "Run completed", description: "All agent steps finished.", decision: "info", actorType: "system" });
-  await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "completed", completedAt: new Date(), endedAt: new Date() } });
+  await prisma.workflowRun.update({
+    where: { id: ctx.runId },
+    data: { status: "completed", completedAt: new Date(), endedAt: new Date(), resultText: lastFinalText }
+  });
   return { runId: ctx.runId, status: "completed" };
 }
 
