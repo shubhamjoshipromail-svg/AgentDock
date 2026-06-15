@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useToast } from "../layout/Toast";
 
-import { listFlows, listRuns, resolveApproval, simulateRun } from "../../lib/api/client";
+import { getRealRun, killRealRun, listFlows, listRuns, resolveApproval, simulateRun, startRealRun, type RealRun } from "../../lib/api/client";
 import type {
   AuditEvent,
   Decision,
@@ -48,6 +48,10 @@ export function ControlPlane({
   const [runningControlSimulation, setRunningControlSimulation] = useState(false);
   const [resolvingApprovalId, setResolvingApprovalId] = useState("");
   const [decisionFilter, setDecisionFilter] = useState<Decision | "all">("all");
+  // Real governed run (Chunk 4).
+  const [liveRun, setLiveRun] = useState<RealRun | null>(null);
+  const [startingReal, setStartingReal] = useState(false);
+  const [killing, setKilling] = useState(false);
 
   const loadControlPlaneData = async () => {
     if (!session?.user) {
@@ -113,13 +117,93 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
     }
   };
 
+  // --- Real governed run ---
+  const realEventToA2UI = (e: RealRun["events"][number]): A2UIEvent => ({
+    id: e.id,
+    who: e.actorType === "agent" ? "Agent" : e.actorType === "human" ? "You" : "System",
+    what: e.title,
+    resource: e.resourceType ?? undefined,
+    authority: e.authorityRef ?? undefined,
+    decision: (e.decision ?? "info") as Decision,
+    timestamp: e.createdAt,
+    costCents: e.costCents,
+    eventType: e.eventType
+  });
+
+  const refreshLiveRun = async (id: string) => {
+    try {
+      const data = await getRealRun(id);
+      setLiveRun(data.run);
+      if (["paused_for_approval"].includes(data.run.status)) await loadControlPlaneData();
+    } catch {
+      /* keep last state */
+    }
+  };
+
+  const startReal = async () => {
+    if (!session?.user) return toast("Sign in and add a provider key in Profile to run for real.", "warn");
+    const workflow = savedWorkflows.find((w) => w.name === "Job Search Automation") ?? savedWorkflows[0];
+    if (!workflow?.id) return toast("Save a flow first to run it.", "warn");
+    setStartingReal(true);
+    try {
+      const data = await startRealRun(workflow.id);
+      toast(`Run ${data.run.status.replaceAll("_", " ")}.`, data.run.status === "completed" ? "ok" : "info");
+      await refreshLiveRun(data.run.runId);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to start run.", "danger");
+    } finally {
+      setStartingReal(false);
+    }
+  };
+
+  const killLive = async () => {
+    if (!liveRun) return;
+    setKilling(true);
+    try {
+      await killRealRun(liveRun.id);
+      toast("Run killed.", "warn");
+      await refreshLiveRun(liveRun.id);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to kill run.", "danger");
+    } finally {
+      setKilling(false);
+    }
+  };
+
+  // TODO(stream): poll while a run is in flight. SSE event-streaming replaces this later.
+  useEffect(() => {
+    if (!liveRun || !["running", "queued", "paused_for_approval"].includes(liveRun.status)) return;
+    const id = window.setInterval(() => refreshLiveRun(liveRun.id), 1500);
+    return () => window.clearInterval(id);
+  }, [liveRun?.id, liveRun?.status]);
+
+  const resolveLiveApproval = async (approvalId: string, status: "approved" | "denied" | "edited") => {
+    setResolvingApprovalId(approvalId);
+    try {
+      await resolveApproval(approvalId, status, "Unable to resolve approval.");
+      toast(status === "denied" ? "Denied — run halted." : "Approved — run resumed.", status === "denied" ? "warn" : "ok");
+      if (liveRun) await refreshLiveRun(liveRun.id);
+      await loadControlPlaneData();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to resolve approval.", "danger");
+    } finally {
+      setResolvingApprovalId("");
+    }
+  };
+
+  const RUN_CAP_CENTS = 50;
+  const liveRunning = liveRun ? ["running", "queued", "paused_for_approval"].includes(liveRun.status) : false;
+
   // Unify the feed: DB run events when signed in, mock audit events otherwise.
   const feed: A2UIEvent[] = useMemo(() => {
+    // A live real run takes the timeline; its events show newest-last like the demo feed.
+    if (liveRun) return liveRun.events.map(realEventToA2UI);
     if (session?.user) {
       return workflowRuns.flatMap((run) => run.events.map(runEventToA2UI));
     }
     return events.map(auditEventToA2UI);
-  }, [session?.user, workflowRuns, events]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user, workflowRuns, events, liveRun]);
 
   const filteredFeed = decisionFilter === "all" ? feed : feed.filter((e) => e.decision === decisionFilter);
 
@@ -166,23 +250,40 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
               />
             )}
           </div>
-          <p className="opsFooterNote">Execution is off in this build. Events come from flow-plan calls and simulated runs.</p>
+          <p className="opsFooterNote">
+            {liveRun
+              ? "Real run: model calls and web search execute for real and are metered. Other tools are gated and shown as simulated."
+              : "“Run for real” executes a real, governed run (real model calls, real cost, one real read-only tool). “Run preview” is simulated."}
+          </p>
         </div>
 
         <div className="opsAside">
-          <Card title="Active run" meta={workflowRuns[0]?.status?.replaceAll("_", " ") ?? (session?.user ? "None yet" : "Demo ready")}>
-            <div className="runMetricGrid">
-              <div className="metric"><span>Spend</span><strong className="data">${(todaySpendCents / 100).toFixed(2)} / $5.00</strong></div>
-              <div className="metric"><span>Pending</span><strong className="data">{pendingCount}</strong></div>
-            </div>
+          <Card title="Active run" meta={liveRun ? liveRun.status.replaceAll("_", " ") : (session?.user ? "None yet" : "Demo ready")}>
+            {liveRun ? (
+              <div className="runMetricGrid">
+                <div className="metric"><span>Real spend</span><strong className="data">${(liveRun.totalCostCents / 100).toFixed(2)} / ${(RUN_CAP_CENTS / 100).toFixed(2)}</strong></div>
+                <div className="metric"><span>Steps</span><strong className="data">{liveRun.stepCount}</strong></div>
+                <div className="metric"><span>Tool calls</span><strong className="data">{liveRun.toolCallCount}</strong></div>
+                <div className="metric"><span>Status</span><strong className="data">{liveRun.status}</strong></div>
+              </div>
+            ) : (
+              <p className="inspectorNote">Run a saved flow for real on your BYO key. Real model calls, real cost, governed by the policy gate.</p>
+            )}
             <div className="heroActions compactActions">
-              <Button variant="primary" onClick={runControlPlaneWorkflow} loading={runningControlSimulation}>Run preview</Button>
-              <Button variant="secondary" onClick={() => onOpenSection("Build")}>Open Build</Button>
+              <Button variant="primary" onClick={startReal} loading={startingReal} disabled={liveRunning}>Run for real</Button>
+              {liveRunning && <Button variant="danger" onClick={killLive} loading={killing}>Kill run</Button>}
+              <Button variant="secondary" onClick={runControlPlaneWorkflow} loading={runningControlSimulation}>Run preview (simulated)</Button>
             </div>
           </Card>
 
-          <Card title="Approval inbox" meta={`${pendingCount} pending`}>
-            {dbApprovals.length ? (
+          <Card title="Approval inbox" meta={`${(liveRun?.approvalRequests.length ?? 0) || pendingCount} pending`}>
+            {(liveRun?.approvalRequests.length ?? 0) > 0 ? (
+              <div className="opsFeedList">
+                {liveRun!.approvalRequests.map((approval) => (
+                  <ApprovalCard key={approval.id} approval={approval} onResolve={resolveLiveApproval} resolving={resolvingApprovalId === approval.id} />
+                ))}
+              </div>
+            ) : dbApprovals.length ? (
               <div className="opsFeedList">
                 {dbApprovals.map((approval) => (
                   <ApprovalCard

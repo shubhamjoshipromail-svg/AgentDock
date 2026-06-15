@@ -202,3 +202,26 @@ export function addCredential(provider: "anthropic" | "openai", key: string, fal
 export function revokeCredential(id: string, fallbackMessage = "Unable to revoke provider key.") {
   return request<{ ok: boolean }>(`/api/credentials/${id}/revoke`, fallbackMessage, { method: "POST" });
 }
+
+// --- Chunk 4: real governed runs ---
+export type RealRunEvent = {
+  id: string; eventType: string; title: string; description: string; decision: string | null;
+  costCents: number; actorType: string | null; resourceType: string | null; authorityRef: string | null;
+  untrusted: boolean; createdAt: string;
+};
+export type RealRun = {
+  id: string; status: string; totalCostCents: number; stepCount: number; toolCallCount: number;
+  events: RealRunEvent[]; approvalRequests: PersistedApprovalRequest[];
+};
+
+export function startRealRun(workflowId: string, fallbackMessage = "Unable to start run.") {
+  return request<{ run: { runId: string; status: string } }>("/api/runs", fallbackMessage, jsonInit("POST", { workflowId }));
+}
+
+export function getRealRun(id: string, fallbackMessage = "Unable to load run.") {
+  return request<{ run: RealRun }>(`/api/runs/${id}`, fallbackMessage);
+}
+
+export function killRealRun(id: string, fallbackMessage = "Unable to kill run.") {
+  return request<{ ok: boolean }>(`/api/runs/${id}/kill`, fallbackMessage, { method: "POST" });
+}
