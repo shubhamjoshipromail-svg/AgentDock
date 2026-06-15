@@ -4,6 +4,7 @@ import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
 import { parseJsonBody } from "../../../../../lib/validation/parse";
 import { approvalResolveSchema } from "../../../../../lib/validation/schemas";
+import { resumeAfterApproval } from "../../../../../lib/execution/run-engine";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -72,7 +73,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return updated;
     });
 
-    return NextResponse.json({ approvalRequest: updatedApproval });
+    // Chunk 4: if this approval pauses a real run, resume (approve/edited) or
+    // halt (deny) the live run from the paused step.
+    let run: { runId: string; status: string } | null = null;
+    if (approval.workflowRun.status === "paused_for_approval") {
+      run = await resumeAfterApproval(user.id, approval.id, body.status !== "denied");
+    }
+
+    return NextResponse.json({ approvalRequest: updatedApproval, run });
   } catch (error) {
     console.error("Approval resolution failed", error);
     return NextResponse.json({ message: "Unable to resolve approval request." }, { status: 500 });
