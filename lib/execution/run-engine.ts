@@ -308,8 +308,12 @@ async function runStep(
 
     // --- approved tool execution (resume path) ---
     if (pending) {
-      const executed = await executeApprovedTool(ctx, agent, pending);
-      toolResults.push(executed);
+      const approved = await executeApprovedTool(ctx, agent, pending, {
+        ingestedUntrusted: toolResults.length > 0 || Boolean(handoffContent),
+        hasSensitiveMemory: memoryContext.includes("[restricted]")
+      });
+      if (approved.kind === "blocked") return { kind: "halted", status: "halted_error" };
+      toolResults.push(approved.result);
       pending = null;
       continue;
     }
@@ -443,13 +447,51 @@ async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedT
   return `${tool.toolName} result: ${output}`;
 }
 
-async function executeApprovedTool(ctx: Ctx, agent: RunnableAgent, pending: { toolName: string; serverId: string; action: ActionKind; input: string }): Promise<string> {
+async function executeApprovedTool(
+  ctx: Ctx,
+  agent: RunnableAgent,
+  pending: { toolName: string; serverId: string; action: ActionKind; input: string },
+  step: { ingestedUntrusted: boolean; hasSensitiveMemory: boolean }
+): Promise<{ kind: "executed"; result: string } | { kind: "blocked" }> {
   const tool = agent.allowedTools.find((t) => t.server.id === pending.serverId) ?? agent.allowedTools.find((t) => t.toolName === pending.toolName);
   if (!tool) {
     await appendEvent({ runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "action_blocked", title: "Approved tool no longer granted", description: pending.toolName, decision: "blocked", actorType: "system" });
-    return `[policy] ${pending.toolName} is no longer granted.`;
+    await haltError(ctx, "approved action blocked: tool is no longer granted");
+    return { kind: "blocked" };
   }
-  return executeAllowedTool(ctx, agent, tool, pending.action, pending.input, "human-approved");
+
+  const gate = authorizeToolCall({
+    inAllowList: true,
+    grant: { permission: effectiveGrantPermission(tool.grant), revokedAt: tool.grant.revokedAt },
+    server: tool.server,
+    action: { kind: pending.action, isExternalSend: tool.isExternalSend },
+    step
+  });
+
+  if (gate.decision === "blocked") {
+    await appendEvent({
+      runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "action_blocked",
+      title: "Approved action blocked after re-check",
+      description: `${pending.toolName} (${pending.action}) was not executed: ${gate.reason}`,
+      decision: "blocked", actorType: "system", resourceType: "tool",
+      resourceId: tool.server.id, authorityRef: tool.grant.id,
+      metadata: { toolName: pending.toolName, toolInput: capText(pending.input, TOOL_INPUT_META_LIMIT) }
+    });
+    await haltError(ctx, `approved action failed current policy re-check: ${gate.reason}`);
+    return { kind: "blocked" };
+  }
+
+  await appendEvent({
+    runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "orchestration",
+    title: "Approved action re-checked",
+    description: `${pending.toolName} (${pending.action}) passed current policy as ${gate.decision}.`,
+    decision: gate.decision === "approval_required" ? "approved" : "allowed",
+    actorType: "system", resourceType: "tool", resourceId: tool.server.id,
+    authorityRef: tool.grant.id
+  });
+
+  const result = await executeAllowedTool(ctx, agent, tool, pending.action, pending.input, "human-approved after policy re-check");
+  return { kind: "executed", result };
 }
 
 async function haltCost(ctx: Ctx) {

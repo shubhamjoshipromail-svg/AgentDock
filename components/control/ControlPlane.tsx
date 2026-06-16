@@ -337,7 +337,12 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
               <h3>Timeline</h3>
               <span className="a2uiCaption">A2UI · agent-to-user interface</span>
             </div>
-            <Pill tone="neutral">{filteredFeed.length} events</Pill>
+            <div className="buttonPair">
+              <Pill tone={liveRun ? "ok" : session?.user ? "warn" : "neutral"}>
+                {liveRun ? "Real run" : session?.user ? "Simulated preview" : "Local demo"}
+              </Pill>
+              <Pill tone="neutral">{filteredFeed.length} events</Pill>
+            </div>
           </div>
           <div className="opsFilters" role="group" aria-label="Filter timeline by decision">
             {DECISION_FILTERS.map((filter) => (
@@ -365,7 +370,8 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
                 )}
                 <div className="runContentSummary">
                   <Pill tone="neutral">{liveRun.stepCount} model steps</Pill>
-                  <Pill tone="neutral">{liveRun.toolCallCount} tool checks</Pill>
+                  <Pill tone="neutral">{liveRun.toolCallCount} tools executed</Pill>
+                  <Pill tone="neutral">{liveRun.approvalRequests.length} approvals pending</Pill>
                   <Pill tone="neutral">{formatCents(liveRun.totalCostCents)} total</Pill>
                 </div>
                 {filteredLiveEvents.length ? (
@@ -409,7 +415,7 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
               <div className="runMetricGrid">
                 <div className="metric"><span>Real spend</span><strong className="data">${(liveRun.totalCostCents / 100).toFixed(2)} / ${(RUN_CAP_CENTS / 100).toFixed(2)}</strong></div>
                 <div className="metric"><span>Steps</span><strong className="data">{liveRun.stepCount}</strong></div>
-                <div className="metric"><span>Tool calls</span><strong className="data">{liveRun.toolCallCount}</strong></div>
+                <div className="metric"><span>Tools executed</span><strong className="data">{liveRun.toolCallCount}</strong></div>
                 <div className="metric"><span>Status</span><strong className="data">{liveRun.status}</strong></div>
               </div>
             ) : (

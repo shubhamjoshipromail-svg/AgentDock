@@ -56,6 +56,7 @@ export function effectiveGrantPermission(grant: {
   canDelete: boolean;
   requiresApproval: boolean;
 }): McpDefaultPermission {
+  if (!grant.canRead && !grant.canWrite && !grant.canExecute && !grant.canDelete) return "blocked";
   if (grant.requiresApproval) return "approval_required";
   if (grant.canWrite || grant.canExecute || grant.canDelete) return "draft_only";
   if (grant.canRead) return "read_only";

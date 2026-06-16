@@ -127,6 +127,51 @@ describe("red-team — guarantees hold under attack", () => {
     expect(["killed", "halted_error"]).toContain(after.status);
   });
 
+  it("MCP revoke endpoint sets revokedAt, logs activity, and prevents resume execution", async () => {
+    const { POST: revokeGrantRoute } = await import("../app/api/mcp/grants/[id]/revoke/route");
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow, search } = await baseAgentFlow(user.id);
+    await prisma.mcpAccessGrant.updateMany({ where: { userId: user.id, mcpServerId: search.id }, data: { requiresApproval: true } });
+    llm.queue = [{ text: TOOL("web_search", "read", "q") }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+    const grant = await prisma.mcpAccessGrant.findFirstOrThrow({ where: { userId: user.id, mcpServerId: search.id } });
+
+    const res = await revokeGrantRoute(new Request("http://localhost/api/mcp/grants/x/revoke", { method: "POST" }), {
+      params: Promise.resolve({ id: grant.id })
+    });
+    expect(res.status).toBe(200);
+
+    const revoked = await prisma.mcpAccessGrant.findFirstOrThrow({ where: { id: grant.id } });
+    expect(revoked.revokedAt).toBeInstanceOf(Date);
+    expect(revoked.canRead).toBe(false);
+    const log = await prisma.activityLog.findFirst({ where: { userId: user.id, title: "MCP access revoked" } });
+    expect(log).toBeTruthy();
+
+    llm.queue = [{ text: FINAL("should not run") }];
+    const resumed = await resumeAfterApproval(user.id, approval.id, true);
+    expect(resumed?.status).toBe("killed");
+    const events = await evs(run.id);
+    expect(events.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
+    expect(llm.queue).toHaveLength(1);
+  });
+
+  it("a grant revoked before run start stops the run before model/tool work", async () => {
+    const user = await createTestUser();
+    const { workflow, search } = await baseAgentFlow(user.id);
+    await prisma.mcpAccessGrant.updateMany({ where: { userId: user.id, mcpServerId: search.id }, data: { revokedAt: new Date() } });
+    llm.queue = [{ text: TOOL("web_search", "read", "q") }];
+
+    const out = await startRun(user.id, workflow.id);
+    expect(out.ok && out.result.status).toBe("killed");
+    expect(llm.calls).toBe(0);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const events = await evs(run.id);
+    expect(events.some((e) => e.title === "Run killed")).toBe(true);
+  });
+
   it("SECRET-LEAK: no credential plaintext appears in any run event after a run", async () => {
     const user = await createTestUser();
     const { workflow } = await baseAgentFlow(user.id);

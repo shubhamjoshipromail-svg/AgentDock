@@ -105,6 +105,7 @@ describe("effectiveGrantPermission — DB booleans → permission", () => {
     [{ canRead: true, canWrite: false, canExecute: false, canDelete: false, requiresApproval: false }, "read_only"],
     [{ canRead: true, canWrite: true, canExecute: false, canDelete: false, requiresApproval: false }, "draft_only"],
     [{ canRead: true, canWrite: true, canExecute: false, canDelete: false, requiresApproval: true }, "approval_required"],
+    [{ canRead: false, canWrite: false, canExecute: false, canDelete: false, requiresApproval: true }, "blocked"],
     [{ canRead: false, canWrite: false, canExecute: false, canDelete: false, requiresApproval: false }, "blocked"]
   ];
   it.each(cases)("maps %o → %s", (grant, expected) => {

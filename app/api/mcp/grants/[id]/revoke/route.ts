@@ -40,6 +40,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
           canExecute: false,
           canDelete: false,
           requiresApproval: true,
+          revokedAt: new Date(),
           allowedActions: [],
           blockedActions: ["read", "write", "execute", "delete"]
         },

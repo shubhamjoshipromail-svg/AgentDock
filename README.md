@@ -12,7 +12,10 @@ The product is deliberately split into two modes:
 
 AgentDock has a real identity and policy-data plane. It can persist users,
 Flows, agents, tool grants, memory grants, model-planning costs, preview runs,
-approvals, and activity. It does **not** execute agents or MCP tools yet.
+approvals, and activity. It also has an early real-run path: a signed-in user can
+store an encrypted BYO Anthropic/OpenAI key, run saved Flow agents through real
+model calls, and use one real read-only tool (`search-mcp`). All other tools
+remain metadata/gated/unavailable until an executor exists.
 
 ## Current Product Surface
 
@@ -47,6 +50,11 @@ Timeline.
 - Saving the exact generated or manually assembled Flow, including agents,
   tools, memory attachments, permission choices, and serialized layout.
 - Generic database-backed run previews based on the saved Flow.
+- Real governed runs using encrypted BYO provider keys.
+- Real read-only Search MCP execution through DuckDuckGo Instant Answer.
+- Re-gated approval resume semantics: approval does not bypass current policy.
+- MCP revocation with `revokedAt` kill-switch semantics.
+- Memory approval-required grants are skipped and logged, not silently injected.
 - Approval resolution with persisted audit events.
 - Memory grant editing and revocation.
 - Official MCP Registry metadata ingestion plus AgentDock-curated entries.
@@ -57,17 +65,18 @@ Timeline.
 
 ## What Is Still Simulated or Disabled
 
-- Agent execution.
-- MCP server installation or tool invocation.
+- External/third-party agent execution.
+- MCP server installation.
+- MCP tool invocation beyond the built-in read-only Search MCP executor.
 - Gmail, Calendar, Drive, GitHub, or Stripe account connections.
-- Per-agent model calls during a run.
+- Gmail, Calendar, Drive, GitHub, Stripe, or other write-capable tool execution.
 - Runtime containers or sandbox hosting.
 - Real credential minting and provider-key proxying.
 - Billing and payment collection.
 - Embedding generation and semantic memory retrieval.
 
-`POST /api/flows/plan` is the only real model-call surface. It produces a plan;
-it does not run the plan.
+`POST /api/flows/plan` is the model-backed planning surface. `/api/runs` is the
+real governed run surface for saved Flows with a user BYO provider key.
 
 ## Architecture
 

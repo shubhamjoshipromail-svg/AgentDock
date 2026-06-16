@@ -110,6 +110,7 @@ export function ApprovalCard({
           <Button variant="danger" size="sm" disabled={resolving} onClick={() => onResolve?.(approval.id, "denied")}>Deny</Button>
           <Button variant="ghost" size="sm" disabled={resolving} onClick={() => onResolve?.(approval.id, "edited")}>Edit policy</Button>
         </div>
+        <p className="ecRationale">Approve resumes only after a fresh policy check. Edit policy does not execute the action.</p>
       </div>
       <div className="ecAside">
         <Badge tone="warn">approval required</Badge>

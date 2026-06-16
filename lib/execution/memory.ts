@@ -22,6 +22,18 @@ export async function buildStepContext(userId: string, agentId: string, runId: s
     // Expired grant → not loaded.
     if (grant.expiresAt && grant.expiresAt.getTime() < now) continue;
     const partition = grant.partition;
+    if (grant.requiresApproval) {
+      await prisma.workflowRunEvent.create({
+        data: {
+          workflowRunId: runId, userId, agentId, eventType: "memory_access",
+          title: `Approval required for ${partition.name}`,
+          description: `${agentId} was not given ${partition.name}; the memory grant requires approval.`,
+          decision: "approval_required", memoryPartitionId: partition.id, actorType: "agent", actorId: agentId,
+          resourceType: "memory", resourceId: partition.id, authorityRef: grant.id, untrusted: false, schemaVersion: 1
+        }
+      });
+      continue;
+    }
     const restricted = partition.sensitivityLevel === "restricted";
     const tag = restricted ? "[restricted] " : "";
 

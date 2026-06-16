@@ -73,11 +73,35 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return updated;
     });
 
-    // Chunk 4: if this approval pauses a real run, resume (approve/edited) or
-    // halt (deny) the live run from the paused step.
+    if (body.status === "edited" && approval.workflowRun.status === "paused_for_approval") {
+      await prisma.workflowRunEvent.create({
+        data: {
+          workflowRunId: approval.workflowRunId,
+          userId: user.id,
+          agentId: approval.agentId,
+          eventType: "approval_requested",
+          title: "Approval edited",
+          description: "User edited policy/details. The pending action was not executed.",
+          decision: "info",
+          actorType: "human",
+          actorId: user.id,
+          authorityRef: approval.id,
+          schemaVersion: 1,
+          metadata: {
+            source: "approval_resolution",
+            approvalRequestId: approval.id,
+            status: "edited",
+            executed: false
+          }
+        }
+      });
+    }
+
+    // Chunk 6: only an explicit approval can resume a live run. "edited" is a
+    // policy-edit signal, not execution consent.
     let run: { runId: string; status: string } | null = null;
-    if (approval.workflowRun.status === "paused_for_approval") {
-      run = await resumeAfterApproval(user.id, approval.id, body.status !== "denied");
+    if (approval.workflowRun.status === "paused_for_approval" && body.status !== "edited") {
+      run = await resumeAfterApproval(user.id, approval.id, body.status === "approved");
     }
 
     return NextResponse.json({ approvalRequest: updatedApproval, run });

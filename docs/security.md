@@ -1,10 +1,10 @@
-# AgentDock Security Model (Chunks 4–5)
+# AgentDock Security Model (Chunks 4–6)
 
 This documents the threat model and the layered defenses that make a real,
 governed, killable agent run safe — and the residual risks deliberately deferred
 to later chunks.
 
-## What is real after Chunk 4
+## What is real after Chunk 6
 
 A signed-in user with a BYO provider key can run a saved flow for real: each
 agent step is a real model call, agent outputs hand off to the next agent as
@@ -14,6 +14,18 @@ the run at a cap, every action writes an immutable audit event, and a kill switc
 terminates an in-flight run. Exactly one real tool exists (read-only web search);
 all other policy-allowed tools are reported honestly as unavailable until an
 executor exists.
+
+Chunk 6 hardens the governance state machine:
+
+- Revoking an MCP grant sets `revokedAt` and disables every capability. The run
+  engine checks depended-on grant revocation at each boundary before model/tool
+  work.
+- `edited` approvals are policy-edit signals only. They write activity/timeline
+  evidence but do not execute the pending action or resume the run.
+- `approved` actions are re-gated against current policy before execution.
+  Approval is consent, not a bypass.
+- Memory grants with `requiresApproval` are not injected silently. The memory is
+  skipped and a `memory_access` event with `approval_required` is written.
 
 ## Threat model
 
@@ -32,7 +44,7 @@ Out of scope this chunk (see Residual risks): a malicious *tool implementation*
 (only one safe read-only tool is wired), external/third-party agent executors,
 and OS-level sandbox escapes.
 
-## The seven-layer defense
+## The eight-layer defense
 
 1. **Input handling.** The goal and all retrieved content (prior-agent handoffs,
    tool outputs, memory) enter the model context inside
@@ -62,6 +74,11 @@ and OS-level sandbox escapes.
    append-only event (actor, action, resource, authority ref, decision, cost,
    `schemaVersion`). The kill switch (run killed or a depended-on grant revoked)
    is checked at every loop boundary and terminates before the next call.
+8. **Approval re-gating.** A human approval does not skip authorization. Before
+   an approved pending tool executes, AgentDock re-checks run status, cost caps,
+   grant existence, `revokedAt`, effective permission, server risk,
+   verification, and untrusted/sensitive context rules. If current policy blocks
+   the action, no tool runs and the run is halted with an audit event.
 
 ## Handoff trust model
 
@@ -79,6 +96,29 @@ That output is always treated as attacker-controlled data.
   tool output or memory.
 - Upstream agents cannot approve or authorize downstream actions. Only the DB
   grant, deterministic gate, and human approval can do that.
+
+## Approval semantics
+
+- `approved`: the user explicitly approved the pending action. AgentDock then
+  re-runs the policy gate before execution.
+- `denied`: the user denied the action. The run halts and no tool executes.
+- `edited`: the user changed policy/details. The action is not executed. The run
+  remains paused until a future review path creates a new pending action.
+
+The UI copy reflects this: “Edit policy” is not a softer approve button.
+
+## Memory approval behavior
+
+For Chunk 6, memory approvals use the conservative skip-and-log behavior:
+
+- `canRead=true` and `requiresApproval=false`: memory loads and a read event is
+  written.
+- `canRead=true` and `requiresApproval=true`: memory does not load; an
+  `approval_required` memory event is written.
+- `canRead=false`: memory does not load.
+
+A later chunk can create first-class memory approval requests before injecting
+approval-required memory.
 
 ## Observability and no fabricated output
 

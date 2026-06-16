@@ -314,6 +314,78 @@ describe("run engine — bounded, gated, killable", () => {
     expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
   });
 
+  it("APPROVAL edited does not resume or execute the pending action", async () => {
+    const { POST: resolveApprovalRoute } = await import("../app/api/approvals/[id]/resolve/route");
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow } = await seedFlow(user.id, { requiresApproval: true });
+    llm.queue = [{ text: TOOL("web_search", "read", "q") }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    llm.queue = [{ text: FINAL("should not be consumed") }];
+    const res = await resolveApprovalRoute(
+      new Request("http://localhost/api/approvals/x/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "edited" })
+      }),
+      { params: Promise.resolve({ id: approval.id }) }
+    );
+
+    expect(res.status).toBe(200);
+    const afterRun = await prisma.workflowRun.findFirstOrThrow({ where: { id: run.id } });
+    expect(afterRun.status).toBe("paused_for_approval");
+    const afterApproval = await prisma.approvalRequest.findFirstOrThrow({ where: { id: approval.id } });
+    expect(afterApproval.status).toBe("edited");
+    const evs = await events(run.id);
+    expect(evs.some((e) => e.title === "Approval edited" && e.decision === "info")).toBe(true);
+    expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
+    expect(llm.queue).toHaveLength(1);
+  });
+
+  it("APPROVED action is re-gated and blocked if grant permissions changed before resume", async () => {
+    const user = await createTestUser();
+    const { workflow, server } = await seedFlow(user.id, { requiresApproval: true });
+    llm.queue = [{ text: TOOL("web_search", "read", "q") }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    await prisma.mcpAccessGrant.updateMany({
+      where: { userId: user.id, mcpServerId: server.id },
+      data: { canRead: false, canWrite: false, canExecute: false, canDelete: false, requiresApproval: true }
+    });
+
+    llm.queue = [{ text: FINAL("should not run") }];
+    const resumed = await resumeAfterApproval(user.id, approval.id, true);
+    expect(resumed?.status).toBe("halted_error");
+
+    const evs = await events(run.id);
+    expect(evs.some((e) => e.title === "Approved action blocked after re-check")).toBe(true);
+    expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
+    expect(llm.queue).toHaveLength(1);
+  });
+
+  it("APPROVED action is not executed if cost cap is already exceeded before resume", async () => {
+    vi.stubEnv("RUN_MAX_COST_CENTS", "3");
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id, { requiresApproval: true });
+    llm.queue = [{ text: TOOL("web_search", "read", "q"), costCents: 1 }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+    await prisma.workflowRun.update({ where: { id: run.id }, data: { totalCostCents: 3 } });
+
+    llm.queue = [{ text: FINAL("should not run") }];
+    const resumed = await resumeAfterApproval(user.id, approval.id, true);
+    expect(resumed?.status).toBe("halted_cost");
+    const evs = await events(run.id);
+    expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
+    expect(llm.queue).toHaveLength(1);
+  });
+
   it("CAP: exceeding RUN_MAX_COST_CENTS halts the run (halted_cost)", async () => {
     vi.stubEnv("RUN_MAX_COST_CENTS", "3");
     const user = await createTestUser();

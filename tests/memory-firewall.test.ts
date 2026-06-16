@@ -94,4 +94,32 @@ describe("memory firewall — runtime context bounding", () => {
     const ctx = await buildStepContext(user.id, agent.id, run.id);
     expect(ctx).not.toContain(PUBLIC_TEXT);
   });
+
+  it("requiresApproval memory does not load silently and writes an approval_required event", async () => {
+    const { user, agent, run, partition } = await scaffold();
+    const granted = await partition("Company Preferences", "medium", PUBLIC_TEXT);
+    const grant = await prisma.memoryAccessGrant.create({
+      data: { userId: user.id, partitionId: granted.id, agentId: agent.id, canRead: true, requiresApproval: true }
+    });
+
+    const ctx = await buildStepContext(user.id, agent.id, run.id);
+    expect(ctx).not.toContain(PUBLIC_TEXT);
+
+    const ev = await prisma.workflowRunEvent.findFirstOrThrow({
+      where: { workflowRunId: run.id, eventType: "memory_access", decision: "approval_required" }
+    });
+    expect(ev.authorityRef).toBe(grant.id);
+    expect(ev.memoryPartitionId).toBe(granted.id);
+  });
+
+  it("revoked memory grants with read disabled do not load", async () => {
+    const { user, agent, run, partition } = await scaffold();
+    const granted = await partition("Job Search Memory", "low", PUBLIC_TEXT);
+    await prisma.memoryAccessGrant.create({
+      data: { userId: user.id, partitionId: granted.id, agentId: agent.id, canRead: false, requiresApproval: true }
+    });
+
+    const ctx = await buildStepContext(user.id, agent.id, run.id);
+    expect(ctx).not.toContain(PUBLIC_TEXT);
+  });
 });
