@@ -109,8 +109,19 @@ async function resolveWorkflowAgents(userId: string, agentInputs: WorkflowAgentI
 
 // Resolve tool attachments to workflowMcp rows + per-tool access grants. Unknown
 // mcpServerIds are skipped (reported back) rather than failing the whole save.
-async function resolveWorkflowTools(workflowId: string, userId: string, tools: NonNullable<CreateWorkflowInput["tools"]>, tx: Prisma.TransactionClient) {
+async function resolveWorkflowTools(workflowId: string, userId: string, tools: CreateWorkflowInput["tools"], tx: Prisma.TransactionClient) {
   const skippedTools: string[] = [];
+
+  // Only reconcile when the payload explicitly carries a tool set. Canvas saves
+  // omit `tools` entirely — tools attach through the dedicated
+  // /api/workflows/[workflowId]/mcps endpoint — so an omitted payload must NOT
+  // wipe separately-attached tools. An explicit [] DOES reconcile to "no tools".
+  if (tools === undefined) return { skippedTools };
+
+  // The set of servers actually authored on the canvas (resolved to a real
+  // server). Anything not in here is stale and must be removed so the executed
+  // set equals the authored set.
+  const savedServerIds: string[] = [];
 
   for (const tool of tools) {
     const mcpServer = await tx.mcpServer.findUnique({ where: { id: tool.mcpServerId } });
@@ -119,6 +130,8 @@ async function resolveWorkflowTools(workflowId: string, userId: string, tools: N
       skippedTools.push(tool.mcpServerId);
       continue;
     }
+
+    savedServerIds.push(mcpServer.id);
 
     const permission = tool.defaultPermission ?? defaultPermissionForRisk(mcpServer.riskLevel);
     const grantTemplate = grantTemplateForPermission(permission, mcpServer.riskLevel);
@@ -129,28 +142,30 @@ async function resolveWorkflowTools(workflowId: string, userId: string, tools: N
       create: { workflowId, mcpServerId: mcpServer.id, purpose: tool.purpose, defaultPermission: permission }
     });
 
-    const existingGrant = await tx.mcpAccessGrant.findFirst({
-      where: { userId, workflowId, mcpServerId: mcpServer.id }
+    // One grant per (user, workflow, server) — keyed on the Chunk 8 unique
+    // constraint, so re-saves update in place instead of accumulating dupes.
+    await tx.mcpAccessGrant.upsert({
+      where: { userId_workflowId_mcpServerId: { userId, workflowId, mcpServerId: mcpServer.id } },
+      update: { ...grantTemplate, allowedActions: grantTemplate.allowedActions, blockedActions: grantTemplate.blockedActions },
+      create: {
+        userId,
+        workflowId,
+        mcpServerId: mcpServer.id,
+        ...grantTemplate,
+        allowedActions: grantTemplate.allowedActions,
+        blockedActions: grantTemplate.blockedActions
+      }
     });
-
-    if (existingGrant) {
-      await tx.mcpAccessGrant.update({
-        where: { id: existingGrant.id },
-        data: { ...grantTemplate, allowedActions: grantTemplate.allowedActions, blockedActions: grantTemplate.blockedActions }
-      });
-    } else {
-      await tx.mcpAccessGrant.create({
-        data: {
-          userId,
-          workflowId,
-          mcpServerId: mcpServer.id,
-          ...grantTemplate,
-          allowedActions: grantTemplate.allowedActions,
-          blockedActions: grantTemplate.blockedActions
-        }
-      });
-    }
   }
+
+  // Reconcile removals: drop the workflow's tool attachments and their access
+  // grants for any server no longer on the canvas. Deleting a stale grant on a
+  // save is stricter (deny-by-default), never looser. An empty canvas removes
+  // every tool + grant for this flow (handled explicitly rather than relying on
+  // `notIn: []` semantics).
+  const staleServerFilter = savedServerIds.length ? { mcpServerId: { notIn: savedServerIds } } : {};
+  await tx.workflowMcp.deleteMany({ where: { workflowId, ...staleServerFilter } });
+  await tx.mcpAccessGrant.deleteMany({ where: { userId, workflowId, ...staleServerFilter } });
 
   return { skippedTools };
 }
@@ -220,7 +235,7 @@ async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
           }
         });
 
-    const { skippedTools } = await resolveWorkflowTools(saved.id, userId, body.tools ?? [], tx);
+    const { skippedTools } = await resolveWorkflowTools(saved.id, userId, body.tools, tx);
     const { skippedMemory } = await attachWorkflowMemory(saved.id, userId, body.memory ?? [], tx);
 
     const workflow = await tx.workflow.findUniqueOrThrow({

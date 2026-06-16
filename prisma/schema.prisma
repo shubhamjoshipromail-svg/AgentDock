@@ -534,6 +534,10 @@ model McpAccessGrant {
   agent            Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   mcpServer        McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
 
+  // Chunk 8: one grant per (user, workflow, server) so policy resolution is
+  // unambiguous and save can upsert deterministically. NULL workflowId grants
+  // (user/agent-scoped) are exempt — Postgres treats NULLs as distinct.
+  @@unique([userId, workflowId, mcpServerId])
   @@index([userId])
   @@index([workflowId])
   @@index([agentId])
