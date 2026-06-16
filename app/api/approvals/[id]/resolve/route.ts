@@ -73,35 +73,46 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return updated;
     });
 
-    if (body.status === "edited" && approval.workflowRun.status === "paused_for_approval") {
-      await prisma.workflowRunEvent.create({
-        data: {
-          workflowRunId: approval.workflowRunId,
-          userId: user.id,
-          agentId: approval.agentId,
-          eventType: "approval_requested",
-          title: "Approval edited",
-          description: "User edited policy/details. The pending action was not executed.",
-          decision: "info",
-          actorType: "human",
-          actorId: user.id,
-          authorityRef: approval.id,
-          schemaVersion: 1,
-          metadata: {
-            source: "approval_resolution",
-            approvalRequestId: approval.id,
-            status: "edited",
-            executed: false
-          }
-        }
-      });
-    }
-
     // Chunk 6: only an explicit approval can resume a live run. "edited" is a
     // policy-edit signal, not execution consent.
+    // Chunk 7: "edited" no longer leaves the run paused in limbo — it cleanly
+    // terminates the paused run (terminal status, honest event) without
+    // executing the pending action. The user re-runs the flow to apply the
+    // updated policy/grants.
     let run: { runId: string; status: string } | null = null;
-    if (approval.workflowRun.status === "paused_for_approval" && body.status !== "edited") {
-      run = await resumeAfterApproval(user.id, approval.id, body.status === "approved");
+    if (approval.workflowRun.status === "paused_for_approval") {
+      if (body.status === "edited") {
+        await prisma.$transaction(async (tx) => {
+          await tx.workflowRunEvent.create({
+            data: {
+              workflowRunId: approval.workflowRunId,
+              userId: user.id,
+              agentId: approval.agentId,
+              eventType: "action_blocked",
+              title: "Run halted — policy edited",
+              description: "Policy edited; pending action not executed; run halted. Re-run to apply the updated policy.",
+              decision: "blocked",
+              actorType: "human",
+              actorId: user.id,
+              authorityRef: approval.id,
+              schemaVersion: 1,
+              metadata: {
+                source: "approval_resolution",
+                approvalRequestId: approval.id,
+                status: "edited",
+                executed: false
+              }
+            }
+          });
+          await tx.workflowRun.update({
+            where: { id: approval.workflowRunId },
+            data: { status: "halted_error", endedAt: new Date() }
+          });
+        });
+        run = { runId: approval.workflowRunId, status: "halted_error" };
+      } else {
+        run = await resumeAfterApproval(user.id, approval.id, body.status === "approved");
+      }
     }
 
     return NextResponse.json({ approvalRequest: updatedApproval, run });

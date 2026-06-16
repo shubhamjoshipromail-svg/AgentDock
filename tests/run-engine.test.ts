@@ -314,7 +314,7 @@ describe("run engine — bounded, gated, killable", () => {
     expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
   });
 
-  it("APPROVAL edited does not resume or execute the pending action", async () => {
+  it("APPROVAL edited terminates the run cleanly without executing the pending action", async () => {
     const { POST: resolveApprovalRoute } = await import("../app/api/approvals/[id]/resolve/route");
     const user = await createTestUser();
     setCurrentUser(user);
@@ -336,11 +336,23 @@ describe("run engine — bounded, gated, killable", () => {
 
     expect(res.status).toBe(200);
     const afterRun = await prisma.workflowRun.findFirstOrThrow({ where: { id: run.id } });
-    expect(afterRun.status).toBe("paused_for_approval");
+    // Chunk 7: edited cleanly terminates the run — no permanent paused limbo.
+    expect(afterRun.status).not.toBe("paused_for_approval");
+    expect(afterRun.status).toBe("halted_error");
+    expect(afterRun.endedAt).toBeInstanceOf(Date);
     const afterApproval = await prisma.approvalRequest.findFirstOrThrow({ where: { id: approval.id } });
     expect(afterApproval.status).toBe("edited");
     const evs = await events(run.id);
-    expect(evs.some((e) => e.title === "Approval edited" && e.decision === "info")).toBe(true);
+    // Honest event recorded: action not executed, run halted.
+    expect(
+      evs.some(
+        (e) =>
+          e.title === "Run halted — policy edited" &&
+          e.decision === "blocked" &&
+          e.description?.includes("not executed")
+      )
+    ).toBe(true);
+    // Pending tool never executed; queued final completion never consumed.
     expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
     expect(llm.queue).toHaveLength(1);
   });
