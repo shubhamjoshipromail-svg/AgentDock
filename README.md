@@ -6,9 +6,13 @@ monitoring multi-agent Flows across model providers and MCP tools.
 The product is deliberately split into two modes:
 
 - **Build:** describe an outcome, generate or load a Flow, inspect its agents,
-  tools, memory, approvals, and budget, then save it.
-- **Control:** preview a saved Flow, resolve approvals, inspect policy decisions,
-  monitor spend, and review the unified Timeline.
+  tools, memory, approvals, and budget, save it, and run a preview
+  (`/api/workflow-runs/simulate`) of the flow you are authoring.
+- **Control:** a calm board of your real governed runs. Each run is a card;
+  open one to see its **Output** (the deliverable) separated from its
+  **Process** (the collapsible step log), resolve approvals, inspect policy
+  decisions, and monitor spend. Control shows real runs only — no simulated
+  previews or demo data.
 
 AgentDock has a real identity and policy-data plane. It can persist users,
 Flows, agents, tool grants, memory grants, model-planning costs, preview runs,
@@ -27,8 +31,11 @@ The main navigation is:
   filters, pagination, and Flow attachment.
 - **Flows** — saved Flows, their agents, attached tools, graph detail, and
   scoped-access controls.
-- **Control** — A2UI-style event cards, approval inbox, run history, policy
-  blocks, and spend.
+- **Control** — a board of real-run cards (flow name, status, cost, step/tool
+  counts, output preview). Opening a run separates Output (the deliverable)
+  from a collapsed Process log of per-agent steps; heavy payloads sit behind a
+  per-step "Show details". Plus an approval inbox and spend, computed from real
+  runs only.
 - **Profile** — identity, policy defaults, budget defaults, and Memory Zones.
 
 The interface uses a dark control-tower design. Monospace text marks
@@ -53,6 +60,9 @@ Timeline.
 - Real governed runs using encrypted BYO provider keys.
 - Real read-only Search MCP execution through DuckDuckGo Instant Answer.
 - Re-gated approval resume semantics: approval does not bypass current policy.
+- Resolving an approval as **edited** cleanly halts the paused run (it does not
+  execute the pending action and does not silently resume); re-run the flow to
+  apply the updated policy.
 - MCP revocation with `revokedAt` kill-switch semantics.
 - Memory approval-required grants are skipped and logged, not silently injected.
 - Approval resolution with persisted audit events.
@@ -351,8 +361,9 @@ Saving a Flow persists:
 - Memory attachments
 - Serialized graph/layout metadata
 
-Run Preview is generic. It walks the saved agents in route order and evaluates
-each attached tool grant:
+Run Preview lives in **Build** (run a preview of the flow you are authoring);
+Control is reserved for real runs. Run Preview is generic: it walks the saved
+agents in route order and evaluates each attached tool grant:
 
 - No capability: `blocked`
 - Approval gate: `approval_required`
@@ -407,8 +418,11 @@ Read routes such as `GET /api/workflows` and `GET /api/memory` are pure reads.
 | POST | `/api/flows/plan` | Real model-backed, policy-clamped Flow plan |
 | GET/POST | `/api/workflows` | Load and save user Flows |
 | GET | `/api/workflow-runs` | Recent persisted previews |
-| POST | `/api/workflow-runs/simulate` | Generic metadata-only Run Preview |
-| POST | `/api/approvals/[id]/resolve` | Approve, deny, or edit a request |
+| POST | `/api/workflow-runs/simulate` | Generic metadata-only Run Preview (from Build) |
+| GET/POST | `/api/runs` | List real runs (with flow name + output preview) / start a real run |
+| GET | `/api/runs/[id]` | Real run detail: events with agent names + workflow name |
+| POST | `/api/runs/[id]/kill` | Kill an in-flight real run |
+| POST | `/api/approvals/[id]/resolve` | Approve (resume after re-check), deny (halt), or edit (halt; re-run to apply) |
 | GET | `/api/activity` | Unified Timeline |
 | GET | `/api/memory` | Memory Zones, grants, items, and logs |
 | PATCH | `/api/memory/grants/[id]` | Edit memory access |
