@@ -18,7 +18,7 @@ import {
   recommendedBuilderNodes,
   stepDisplayNames
 } from "../mock-data";
-import { serializeBuilderFlow } from "./serialize";
+import { serializeBuilderFlow, workflowToBuilderNodes } from "./serialize";
 import { FlowGraph } from "./FlowGraph";
 import { builderNodesToGraph, plannedFlowToGraph } from "./flow-graph";
 import type {
@@ -51,6 +51,7 @@ export function Builder({
   onRecommend,
   onAddNode,
   onRemoveNode,
+  onLoadWorkflow,
   onSave,
   onViewLogs
 }: {
@@ -63,6 +64,7 @@ export function Builder({
   onRecommend: () => void;
   onAddNode: (node: BuilderNode) => void;
   onRemoveNode: (id: string) => void;
+  onLoadWorkflow: (nodes: BuilderNode[]) => void;
   onSave: () => void;
   onViewLogs: () => void;
   onSetDefault: (agent: string) => void;
@@ -198,6 +200,8 @@ export function Builder({
       onSave();
       setBuilderMode("saved");
       setSavedWorkflowId(data.workflow?.id ?? "");
+      // Reconcile the canvas to exactly what persisted (flow truth).
+      if (data.workflow) onLoadWorkflow(workflowToBuilderNodes(data.workflow));
       toast("Planned flow saved to Flows.", "ok");
       await loadSavedWorkflows();
     } catch (error) {
@@ -217,6 +221,8 @@ export function Builder({
       onSave();
       setBuilderMode("saved");
       setSavedWorkflowId(data.workflow?.id ?? "");
+      // Reconcile the canvas to exactly what persisted (flow truth).
+      if (data.workflow) onLoadWorkflow(workflowToBuilderNodes(data.workflow));
       toast("Flow saved to Flows.", "ok");
       await loadSavedWorkflows();
     } catch (error) {
@@ -243,6 +249,25 @@ export function Builder({
       toast(error instanceof Error ? error.message : "Run preview failed.", "danger");
     } finally {
       setRunningSimulation(false);
+    }
+  };
+
+  // Reopen the saved flow onto the canvas from PERSISTED state (agents, tools,
+  // grants, scoped memory) — never the layout blob. Proves "what runs is what's
+  // stored": a removed tool is gone, not lingering. (Chunk 8 flow truth.)
+  const reloadFromSaved = async () => {
+    if (!session?.user) return toast("Sign in to open a saved flow.", "warn");
+    try {
+      const data = await listFlows("Unable to load saved Flows.");
+      const fresh = (data.workflows ?? []).find((w) => w.id === (savedWorkflowId || currentWorkflow?.id));
+      if (!fresh) return toast("Save this flow first to reopen it.", "warn");
+      setSavedWorkflows(data.workflows ?? []);
+      setSavedWorkflowId(fresh.id);
+      setBuilderMode("saved");
+      onLoadWorkflow(workflowToBuilderNodes(fresh));
+      toast(`Reopened ${fresh.name} from saved state.`, "ok");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to load saved Flows.", "danger");
     }
   };
 
@@ -526,6 +551,7 @@ export function Builder({
                 <div className="inspectorActions">
                   <Button variant="primary" onClick={saveDraftFlow} loading={savingWorkflow}>Save flow</Button>
                   {builderMode === "saved" && <Button variant="secondary" onClick={runPreview} loading={runningSimulation}>Run preview</Button>}
+                  {builderMode === "saved" && <Button variant="ghost" onClick={reloadFromSaved}>Reopen from saved</Button>}
                 </div>
               </div>
             ) : (

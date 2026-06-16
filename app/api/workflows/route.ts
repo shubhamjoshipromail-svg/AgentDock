@@ -29,6 +29,12 @@ const workflowInclude = {
       agent: true
     },
     orderBy: { createdAt: "desc" }
+  },
+  // Memory partitions currently scoped to this flow — so the Builder can hydrate
+  // the canvas from persisted state (Chunk 8 flow-truth) rather than a layout blob.
+  memoryPartitions: {
+    select: { id: true, name: true, sensitivityLevel: true },
+    orderBy: { name: "asc" }
   }
 } as const;
 

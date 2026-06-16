@@ -82,6 +82,7 @@ export type PersistedWorkflow = {
   }[];
   workflowMcps?: PersistedWorkflowMcp[];
   mcpAccessGrants?: PersistedMcpAccessGrant[];
+  memoryPartitions?: { id: string; name: string; sensitivityLevel?: string | null }[];
 };
 
 export type PersistedWorkflowRunEvent = {

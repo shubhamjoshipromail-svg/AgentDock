@@ -103,6 +103,14 @@ function AppInner() {
     setBuilderSaved(true);
   };
 
+  // Hydrate the canvas wholesale from a persisted flow (Chunk 8 flow truth).
+  const loadWorkflowNodes = (nodes: BuilderNode[]) => {
+    if (!nodes.length) return;
+    setBuilderNodes(nodes);
+    setSelectedBuilderNodeId(nodes[0].id);
+    setBuilderSaved(true);
+  };
+
   const commands: Command[] = useMemo(() => {
     const go = (section: Section): Command => ({
       id: `go-${section}`,
@@ -143,6 +151,7 @@ function AppInner() {
               onRecommend={recommendBuilderStack}
               onAddNode={addBuilderNode}
               onRemoveNode={removeBuilderNode}
+              onLoadWorkflow={loadWorkflowNodes}
               onSave={saveBuilderWorkflow}
               onViewLogs={() => setActiveSection("Control")}
               onSetDefault={setDefaultAgent}
