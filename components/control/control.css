@@ -244,6 +244,195 @@
   margin: 0;
 }
 
+/* Chunk 7 Phase 4: Output-first detail + collapsible Process */
+.outputBlock .deliverableBody {
+  color: var(--text-primary);
+  display: grid;
+  gap: 8px;
+}
+
+.deliverableBody h5 {
+  font-size: 0.95rem;
+  margin: 6px 0 0;
+}
+
+.deliverableBody p {
+  line-height: 1.55;
+  margin: 0;
+}
+
+.deliverableBody ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.processBlock {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+.processBlock > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-weight: 700;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 14px 16px;
+}
+
+.processBlock > summary::-webkit-details-marker {
+  display: none;
+}
+
+.processBlock > summary::before {
+  color: var(--text-tertiary);
+  content: "▸";
+  font-size: 0.8rem;
+  margin-right: -4px;
+}
+
+.processBlock[open] > summary::before {
+  content: "▾";
+}
+
+.processSummaryMeta {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.processBody {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.processBlocks {
+  display: grid;
+  gap: 10px;
+}
+
+.agentSection {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.agentSection > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 11px 14px;
+}
+
+.agentSection > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agentSectionName {
+  font-weight: 680;
+}
+
+.agentSectionMeta {
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+}
+
+.agentSectionBody {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.processStep {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.processStep.stripe-ok { border-left-color: var(--ok, #34d399); }
+.processStep.stripe-warn { border-left-color: var(--warn, #fbbf24); }
+.processStep.stripe-danger { border-left-color: var(--danger, #f87171); }
+.processStep.stripe-neutral { border-left-color: var(--line-strong); }
+
+.processStepRow {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.processStepTitle {
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.processStepAside {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.processStepDesc {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.payloadDisclosure > summary {
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 0.76rem;
+  width: fit-content;
+}
+
+.payloadDisclosure[open] > summary {
+  margin-bottom: 8px;
+}
+
+.payloadDisclosure .capturedPayload {
+  border-left: 1px solid var(--line-strong);
+  display: grid;
+  gap: 8px;
+  margin-left: 2px;
+  padding-left: 12px;
+}
+
+.handoffMarker {
+  align-items: center;
+  color: var(--text-tertiary);
+  display: flex;
+  gap: 10px;
+  font-size: 0.78rem;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.handoffMarker code {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
 .runTimeline {
   display: grid;
   gap: 10px;

@@ -25,7 +25,7 @@ import type {
   PersistedWorkflowRun,
   Section
 } from "../../lib/types";
-import { Button, Card, Data, EmptyState, PageHeader, Pill } from "../layout/primitives";
+import { Badge, Button, Card, Data, EmptyState, PageHeader, Pill } from "../layout/primitives";
 import { ApprovalCard, EventCard, auditEventToA2UI, runEventToA2UI, type A2UIEvent } from "../a2ui/EventCard";
 
 const DECISION_FILTERS: { key: Decision | "all"; label: string }[] = [
@@ -81,63 +81,142 @@ function boardLine(run: RealRunSummary): string {
   }
 }
 
-function CapturedRunEvent({
-  event
-}: {
-  event: RealRunEvent;
-}) {
+const DECISION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = {
+  allowed: "ok", approved: "ok", approval_required: "warn", blocked: "danger", denied: "danger", info: "neutral"
+};
+
+function formatTime(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// Render the deliverable as light markdown — headings, bullets, paragraphs —
+// without any HTML injection. Read-only, text-only.
+function DeliverableText({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const out: React.ReactNode[] = [];
+  let bullets: string[] = [];
+  const flush = (key: string) => {
+    if (bullets.length) {
+      out.push(<ul key={key}>{bullets.map((b, i) => <li key={i}>{b}</li>)}</ul>);
+      bullets = [];
+    }
+  };
+  lines.forEach((raw, i) => {
+    const line = raw.trimEnd();
+    const h = /^(#{1,3})\s+(.*)$/.exec(line);
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+    if (h) { flush(`f-${i}`); out.push(<h5 key={i}>{h[2]}</h5>); return; }
+    if (bullet) { bullets.push(bullet[1]); return; }
+    flush(`f-${i}`);
+    if (line.trim()) out.push(<p key={i}>{line}</p>);
+  });
+  flush("f-end");
+  return <div className="deliverableBody">{out}</div>;
+}
+
+// One process step: a compact row (who · what · decision · cost). Heavy payloads
+// stay hidden behind a per-row "Show details" disclosure — never inline.
+function ProcessStep({ event }: { event: RealRunEvent }) {
   const meta = event.metadata ?? {};
   const decision = (event.decision ?? "info") as Decision;
+  const tone = DECISION_TONE[decision] ?? "neutral";
+  const hasPayload = Boolean(meta.modelOutput || meta.toolInput || meta.toolOutput || meta.handoffContent);
   return (
-    <div className="capturedRunEvent">
-      <EventCard
-        event={{
-          id: event.id,
-          who: event.actorType === "agent" ? "Agent" : event.actorType === "human" ? "You" : "System",
-          what: event.title,
-          resource: event.resourceType ?? undefined,
-          authority: event.authorityRef ?? undefined,
-          decision,
-          timestamp: event.createdAt,
-          costCents: event.costCents,
-          eventType: event.eventType
-        }}
-      />
-      {(meta.modelOutput || meta.toolInput || meta.toolOutput || meta.handoffContent) && (
-        <div className="capturedPayload">
-          {meta.handoffFrom && meta.handoffTo && (
-            <div className="payloadRow">
-              <span>handoff</span>
-              <code>{meta.handoffFrom} → {meta.handoffTo}</code>
-            </div>
-          )}
-          {meta.toolInput && (
-            <div className="payloadRow">
-              <span>input</span>
-              <pre>{meta.toolInput}</pre>
-            </div>
-          )}
-          {meta.toolOutput && (
-            <div className="payloadRow">
-              <span>{event.untrusted ? "untrusted output" : "output"}</span>
-              <pre>{meta.toolOutput}</pre>
-            </div>
-          )}
-          {meta.handoffContent && (
-            <div className="payloadRow">
-              <span>untrusted handoff</span>
-              <pre>{meta.handoffContent}</pre>
-            </div>
-          )}
-          {meta.modelOutput && (
-            <div className="payloadRow">
-              <span>{meta.envelopeType === "final" ? "final" : "model envelope"}</span>
-              <pre>{meta.modelOutput}</pre>
-            </div>
-          )}
+    <div className={`processStep stripe-${tone}`}>
+      <div className="processStepRow">
+        <span className="processStepTitle">{event.title}</span>
+        <div className="processStepAside">
+          <Badge decision={decision} tone={tone}>{decision.replaceAll("_", " ")}</Badge>
+          {event.costCents > 0 && <Data>{formatCents(event.costCents)}</Data>}
+          <Data>{formatTime(event.createdAt)}</Data>
         </div>
+      </div>
+      {event.description && <p className="processStepDesc">{event.description}</p>}
+      {hasPayload && (
+        <details className="payloadDisclosure">
+          <summary>Show details</summary>
+          <div className="capturedPayload">
+            {meta.toolInput && (<div className="payloadRow"><span>input</span><pre>{meta.toolInput}</pre></div>)}
+            {meta.toolOutput && (<div className="payloadRow"><span>{event.untrusted ? "untrusted output" : "output"}</span><pre>{meta.toolOutput}</pre></div>)}
+            {meta.handoffContent && (<div className="payloadRow"><span>untrusted handoff</span><pre>{meta.handoffContent}</pre></div>)}
+            {meta.modelOutput && (<div className="payloadRow"><span>{meta.envelopeType === "final" ? "final" : "model envelope"}</span><pre>{meta.modelOutput}</pre></div>)}
+          </div>
+        </details>
       )}
     </div>
+  );
+}
+
+function HandoffMarker({ from, to }: { from?: string; to?: string }) {
+  return (
+    <div className="handoffMarker">
+      <span>handoff</span>
+      <code>{from ?? "previous"} → {to ?? "next"}</code>
+    </div>
+  );
+}
+
+type ProcessBlock =
+  | { type: "agent"; key: string; agentId: string; agentName: string; events: RealRunEvent[] }
+  | { type: "handoff"; key: string; from?: string; to?: string };
+
+// Group the flat event stream into ordered agent sections, with a2a_handoff
+// events surfaced as markers between sections.
+function buildProcessBlocks(events: RealRunEvent[]): ProcessBlock[] {
+  const blocks: ProcessBlock[] = [];
+  let current: Extract<ProcessBlock, { type: "agent" }> | null = null;
+  events.forEach((e, i) => {
+    if (e.eventType === "a2a_handoff") {
+      current = null;
+      blocks.push({ type: "handoff", key: `h-${e.id}-${i}`, from: e.metadata?.handoffFrom, to: e.metadata?.handoffTo });
+      return;
+    }
+    const agentId = e.agentId ?? "system";
+    const agentName = e.agentName ?? (e.actorType === "human" ? "You" : e.actorType === "system" ? "System" : "Agent");
+    if (!current || current.agentId !== agentId) {
+      current = { type: "agent", key: `a-${agentId}-${i}`, agentId, agentName, events: [] };
+      blocks.push(current);
+    }
+    current.events.push(e);
+  });
+  return blocks;
+}
+
+function AgentSection({
+  block,
+  approvals,
+  onResolve,
+  resolvingId
+}: {
+  block: Extract<ProcessBlock, { type: "agent" }>;
+  approvals: PersistedApprovalRequest[];
+  onResolve: (id: string, status: "approved" | "denied" | "edited") => void;
+  resolvingId: string;
+}) {
+  const cost = block.events.reduce((sum, e) => sum + e.costCents, 0);
+  const blocked = block.events.filter((e) => e.decision === "blocked" || e.decision === "denied").length;
+  const approvalsReq = block.events.filter((e) => e.decision === "approval_required").length;
+  const summary = [
+    `${block.events.length} step${block.events.length === 1 ? "" : "s"}`,
+    blocked ? `${blocked} blocked` : null,
+    approvalsReq ? `${approvalsReq} approval${approvalsReq === 1 ? "" : "s"}` : null
+  ].filter(Boolean).join(" · ");
+  const sectionApprovals = approvals.filter((a) => (a.agent?.name ?? "System") === block.agentName);
+  return (
+    <details className="agentSection">
+      <summary>
+        <span className="agentSectionName">{block.agentName}</span>
+        <span className="agentSectionMeta">{summary}{cost > 0 ? ` · ${formatCents(cost)}` : ""}</span>
+      </summary>
+      <div className="agentSectionBody">
+        {sectionApprovals.map((approval) => (
+          <ApprovalCard key={approval.id} approval={approval} onResolve={onResolve} resolving={resolvingId === approval.id} />
+        ))}
+        {block.events.map((event) => <ProcessStep key={event.id} event={event} />)}
+      </div>
+    </details>
   );
 }
 
@@ -147,6 +226,8 @@ function RunDetail({
   filters,
   onFilter,
   events,
+  onResolveApproval,
+  resolvingApprovalId,
   onBack
 }: {
   run: RealRun;
@@ -154,12 +235,15 @@ function RunDetail({
   filters: { key: Decision | "all"; label: string }[];
   onFilter: (key: Decision | "all") => void;
   events: RealRunEvent[];
+  onResolveApproval: (id: string, status: "approved" | "denied" | "edited") => void;
+  resolvingApprovalId: string;
   onBack: () => void;
 }) {
-  const agentCount = new Set(run.events.map((e) => e.agentId ?? "system")).size;
-  const toolCount = run.toolCallCount;
+  // "What happened" — computed from data, never a model call.
+  const agentCount = new Set(run.events.filter((e) => e.eventType !== "a2a_handoff").map((e) => e.agentId ?? "system")).size;
   const approvals = run.approvalRequests.length;
-  const summaryLine = `${run.status.replaceAll("_", " ")} · ${agentCount} agent${agentCount === 1 ? "" : "s"} · ${toolCount} tool${toolCount === 1 ? "" : "s"} · ${(run.totalCostCents / 100).toFixed(2)} spent${approvals ? ` · ${approvals} pending approval${approvals === 1 ? "" : "s"}` : ""}`;
+  const summaryLine = `${run.status.replaceAll("_", " ")} · ${agentCount} agent${agentCount === 1 ? "" : "s"} · ${run.toolCallCount} tool${run.toolCallCount === 1 ? "" : "s"} · ${formatCents(run.totalCostCents)} spent${approvals ? ` · ${approvals} pending approval${approvals === 1 ? "" : "s"}` : ""}`;
+  const blocks = buildProcessBlocks(events);
   return (
     <>
       <div className="opsFeedHead">
@@ -167,39 +251,53 @@ function RunDetail({
           <button className="backLink" onClick={onBack}>← All runs</button>
           <h3>{run.workflowName ?? "Run"}</h3>
         </div>
+        <Pill tone={statusTone(run.status)}>{statusLabel(run.status)}</Pill>
       </div>
 
-      <article className="finalDeliverable">
+      {/* OUTPUT — primary, top. The deliverable. */}
+      <article className="finalDeliverable outputBlock">
         <div>
           <span className="a2uiCaption">Output</span>
           <h3>What this run produced</h3>
         </div>
-        {run.resultText ? <pre>{run.resultText}</pre> : <p className="inspectorNote">No text deliverable was produced (the run did not reach a final answer).</p>}
+        {run.resultText
+          ? <DeliverableText text={run.resultText} />
+          : <p className="inspectorNote">No text deliverable was produced (the run did not reach a final answer).</p>}
         <p className="runSummaryLine">{summaryLine}</p>
       </article>
 
-      <div className="processHeader">
-        <h4>Process</h4>
-        <div className="opsFilters" role="group" aria-label="Filter process by decision">
-          {filters.map((filter) => (
-            <button
-              key={filter.key}
-              className={`filterChip${decisionFilter === filter.key ? " active" : ""}`}
-              onClick={() => onFilter(filter.key)}
-              aria-pressed={decisionFilter === filter.key}
-            >
-              {filter.label}
-            </button>
-          ))}
+      {/* PROCESS — secondary, collapsed by default. */}
+      <details className="processBlock">
+        <summary>
+          <span>Process</span>
+          <span className="processSummaryMeta">{run.stepCount} model step{run.stepCount === 1 ? "" : "s"} · {run.toolCallCount} tool{run.toolCallCount === 1 ? "" : "s"}</span>
+        </summary>
+        <div className="processBody">
+          <div className="opsFilters" role="group" aria-label="Filter process by decision">
+            {filters.map((filter) => (
+              <button
+                key={filter.key}
+                className={`filterChip${decisionFilter === filter.key ? " active" : ""}`}
+                onClick={() => onFilter(filter.key)}
+                aria-pressed={decisionFilter === filter.key}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          {blocks.length ? (
+            <div className="processBlocks">
+              {blocks.map((block) =>
+                block.type === "handoff"
+                  ? <HandoffMarker key={block.key} from={block.from} to={block.to} />
+                  : <AgentSection key={block.key} block={block} approvals={run.approvalRequests} onResolve={onResolveApproval} resolvingId={resolvingApprovalId} />
+              )}
+            </div>
+          ) : (
+            <EmptyState title="No matching steps" body="Adjust the filter to see the run process." />
+          )}
         </div>
-      </div>
-      <div className="opsFeedList">
-        {events.length ? (
-          events.map((event) => <CapturedRunEvent key={event.id} event={event} />)
-        ) : (
-          <EmptyState title="No matching steps" body="Adjust the filter to see the run process." />
-        )}
-      </div>
+      </details>
     </>
   );
 }
@@ -452,6 +550,8 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
               filters={DECISION_FILTERS}
               onFilter={setDecisionFilter}
               events={filteredLiveEvents}
+              onResolveApproval={resolveLiveApproval}
+              resolvingApprovalId={resolvingApprovalId}
               onBack={backToBoard}
             />
           ) : (
@@ -546,12 +646,12 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
           </Card>
 
           <Card title="Approval inbox" meta={`${(liveRun?.approvalRequests.length ?? 0) || pendingCount} pending`}>
-            {detailMode && (liveRun?.approvalRequests.length ?? 0) > 0 ? (
-              <div className="opsFeedList">
-                {liveRun!.approvalRequests.map((approval) => (
-                  <ApprovalCard key={approval.id} approval={approval} onResolve={resolveLiveApproval} resolving={resolvingApprovalId === approval.id} />
-                ))}
-              </div>
+            {detailMode ? (
+              (liveRun?.approvalRequests.length ?? 0) > 0 ? (
+                <p className="inspectorNote">{liveRun!.approvalRequests.length} approval{liveRun!.approvalRequests.length === 1 ? "" : "s"} for this run — resolve them inline in the Process section.</p>
+              ) : (
+                <EmptyState title="Inbox clear" body="No approvals waiting for this run." />
+              )
             ) : dbApprovals.length ? (
               <div className="opsFeedList">
                 {dbApprovals.map((approval) => (
