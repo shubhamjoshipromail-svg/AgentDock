@@ -105,7 +105,10 @@ export type RunResult = {
 
 // --- Loaders -----------------------------------------------------------------
 
-async function loadRunnable(userId: string, workflowId: string): Promise<{ workflow: { id: string; goal: string }; agents: RunnableAgent[] } | null> {
+// Exported for the flow-truth contract test: the set of tools the engine will
+// actually load for a run must equal the last-saved set (deny-by-default for the
+// rest). This stays the single source of "what can run".
+export async function loadRunnable(userId: string, workflowId: string): Promise<{ workflow: { id: string; goal: string }; agents: RunnableAgent[] } | null> {
   const workflow = await prisma.workflow.findFirst({
     where: { id: workflowId, userId },
     include: {
