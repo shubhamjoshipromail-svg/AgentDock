@@ -9,7 +9,7 @@ import { GET as getServers } from "../app/api/mcp/servers/route";
 import { GET as getWorkflowMcps, POST as attachMcp } from "../app/api/workflows/[workflowId]/mcps/route";
 import { POST as createWorkflow } from "../app/api/workflows/route";
 
-function params(p: Record<string, string>) {
+function params<T extends Record<string, string>>(p: T) {
   return { params: Promise.resolve(p) };
 }
 

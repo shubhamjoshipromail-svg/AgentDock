@@ -183,10 +183,10 @@ describe("POST /api/flows/plan", () => {
     llmState.provider = {
       name: "anthropic",
       model: "claude-sonnet-4-6",
-      completeJson: vi.fn((params: { signal?: AbortSignal }) =>
-        new Promise((_resolve, reject) => {
+      completeJson: vi.fn((params: unknown) =>
+        new Promise<{ text: string; usage: { inputTokens: number; outputTokens: number }; costCents: number }>((_resolve, reject) => {
           const timer = setTimeout(() => _resolve({ text: "{}", usage: { inputTokens: 0, outputTokens: 0 }, costCents: 5 }), 1000);
-          params.signal?.addEventListener("abort", () => {
+          (params as { signal?: AbortSignal }).signal?.addEventListener("abort", () => {
             clearTimeout(timer);
             reject(new Error("aborted"));
           });
