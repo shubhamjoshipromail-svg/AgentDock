@@ -139,6 +139,111 @@
   color: var(--text-tertiary);
 }
 
+/* Chunk 7: calm board of run cards */
+.runBoard {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+.runCard {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  text-align: left;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.runCard:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.runCard:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.runCardTop {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.runCardName {
+  font-size: 0.98rem;
+  line-height: 1.3;
+}
+
+.runCardLine {
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow: hidden;
+}
+
+.runCardMeta {
+  align-items: center;
+  color: var(--text-tertiary);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.76rem;
+  gap: 10px;
+}
+
+.runCardBadge {
+  background: var(--bg-overlay);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  padding: 2px 9px;
+}
+
+.backLink {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+  padding: 0;
+}
+
+.backLink:hover {
+  color: var(--text-secondary);
+}
+
+.runSummaryLine {
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.processHeader {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.processHeader h4 {
+  margin: 0;
+}
+
 .runTimeline {
   display: grid;
   gap: 10px;

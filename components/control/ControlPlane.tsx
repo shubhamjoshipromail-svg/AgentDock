@@ -46,6 +46,41 @@ function compactDate(iso?: string | null): string {
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function statusTone(status: string): "ok" | "warn" | "danger" | "accent" | "neutral" {
+  if (status === "completed") return "ok";
+  if (status === "paused_for_approval") return "warn";
+  if (status === "running" || status === "queued") return "accent";
+  if (status.startsWith("halted_") || status === "killed" || status === "failed" || status === "blocked") return "danger";
+  return "neutral";
+}
+
+function statusLabel(status: string): string {
+  return status.replaceAll("_", " ");
+}
+
+// The card's one-liner: the deliverable preview when there is one, otherwise a
+// status-derived line. Never a model call — purely computed.
+function boardLine(run: RealRunSummary): string {
+  if (run.resultPreview) return run.resultPreview;
+  switch (run.status) {
+    case "running":
+    case "queued":
+      return "Running…";
+    case "paused_for_approval":
+      return "Awaiting your approval";
+    case "halted_cost":
+      return "Halted — budget cap reached";
+    case "halted_error":
+      return "Halted";
+    case "killed":
+      return "Killed by you";
+    case "completed":
+      return "Completed — no text deliverable";
+    default:
+      return statusLabel(run.status);
+  }
+}
+
 function CapturedRunEvent({
   event
 }: {
@@ -106,6 +141,69 @@ function CapturedRunEvent({
   );
 }
 
+function RunDetail({
+  run,
+  decisionFilter,
+  filters,
+  onFilter,
+  events,
+  onBack
+}: {
+  run: RealRun;
+  decisionFilter: Decision | "all";
+  filters: { key: Decision | "all"; label: string }[];
+  onFilter: (key: Decision | "all") => void;
+  events: RealRunEvent[];
+  onBack: () => void;
+}) {
+  const agentCount = new Set(run.events.map((e) => e.agentId ?? "system")).size;
+  const toolCount = run.toolCallCount;
+  const approvals = run.approvalRequests.length;
+  const summaryLine = `${run.status.replaceAll("_", " ")} · ${agentCount} agent${agentCount === 1 ? "" : "s"} · ${toolCount} tool${toolCount === 1 ? "" : "s"} · ${(run.totalCostCents / 100).toFixed(2)} spent${approvals ? ` · ${approvals} pending approval${approvals === 1 ? "" : "s"}` : ""}`;
+  return (
+    <>
+      <div className="opsFeedHead">
+        <div>
+          <button className="backLink" onClick={onBack}>← All runs</button>
+          <h3>{run.workflowName ?? "Run"}</h3>
+        </div>
+      </div>
+
+      <article className="finalDeliverable">
+        <div>
+          <span className="a2uiCaption">Output</span>
+          <h3>What this run produced</h3>
+        </div>
+        {run.resultText ? <pre>{run.resultText}</pre> : <p className="inspectorNote">No text deliverable was produced (the run did not reach a final answer).</p>}
+        <p className="runSummaryLine">{summaryLine}</p>
+      </article>
+
+      <div className="processHeader">
+        <h4>Process</h4>
+        <div className="opsFilters" role="group" aria-label="Filter process by decision">
+          {filters.map((filter) => (
+            <button
+              key={filter.key}
+              className={`filterChip${decisionFilter === filter.key ? " active" : ""}`}
+              onClick={() => onFilter(filter.key)}
+              aria-pressed={decisionFilter === filter.key}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="opsFeedList">
+        {events.length ? (
+          events.map((event) => <CapturedRunEvent key={event.id} event={event} />)
+        ) : (
+          <EmptyState title="No matching steps" body="Adjust the filter to see the run process." />
+        )}
+      </div>
+    </>
+  );
+}
+
 export function ControlPlane({
   events,
   spend,
@@ -135,6 +233,8 @@ export function ControlPlane({
   const [decisionFilter, setDecisionFilter] = useState<Decision | "all">("all");
   // Real governed run (Chunk 4).
   const [liveRun, setLiveRun] = useState<RealRun | null>(null);
+  // Chunk 7: the board is the entry point; a run is only opened on click.
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [startingReal, setStartingReal] = useState(false);
   const [killing, setKilling] = useState(false);
   const [openingRunId, setOpeningRunId] = useState("");
@@ -240,6 +340,7 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
     try {
       const data = await startRealRun(workflow.id);
       toast(`Run ${data.run.status.replaceAll("_", " ")}.`, data.run.status === "completed" ? "ok" : "info");
+      setSelectedRunId(data.run.runId);
       await refreshLiveRun(data.run.runId);
       await loadControlPlaneData();
     } catch (error) {
@@ -254,12 +355,19 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
     try {
       const data = await getRealRun(runId);
       setLiveRun(data.run);
-      toast("Run history opened.", "info");
+      setSelectedRunId(runId);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Unable to open run.", "danger");
     } finally {
       setOpeningRunId("");
     }
+  };
+
+  const backToBoard = () => {
+    setSelectedRunId(null);
+    setLiveRun(null);
+    setDecisionFilter("all");
+    loadControlPlaneData();
   };
 
   const killLive = async () => {
@@ -278,10 +386,24 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
 
   // TODO(stream): poll while a run is in flight. SSE event-streaming replaces this later.
   useEffect(() => {
-    if (!liveRun || !["running", "queued", "paused_for_approval"].includes(liveRun.status)) return;
+    if (!selectedRunId || !liveRun || !["running", "queued", "paused_for_approval"].includes(liveRun.status)) return;
     const id = window.setInterval(() => refreshLiveRun(liveRun.id), 1500);
     return () => window.clearInterval(id);
-  }, [liveRun?.id, liveRun?.status]);
+  }, [selectedRunId, liveRun?.id, liveRun?.status]);
+
+  // Chunk 7: keep the board live while any run is active — poll the lightweight
+  // list endpoint (never each run's full detail), and stop when nothing runs.
+  const ACTIVE_STATUSES = ["running", "queued", "paused_for_approval"];
+  const boardHasActiveRun = realRunHistory.some((run) => ACTIVE_STATUSES.includes(run.status));
+  useEffect(() => {
+    if (selectedRunId || !session?.user || !boardHasActiveRun) return;
+    const id = window.setInterval(() => {
+      listRealRuns("Unable to load real runs.")
+        .then((data) => setRealRunHistory(data.runs ?? []))
+        .catch(() => undefined);
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, [selectedRunId, session?.user?.email, boardHasActiveRun]);
 
   const resolveLiveApproval = async (approvalId: string, status: "approved" | "denied" | "edited") => {
     setResolvingApprovalId(approvalId);
@@ -299,19 +421,8 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
 
   const RUN_CAP_CENTS = 50;
   const liveRunning = liveRun ? ["running", "queued", "paused_for_approval"].includes(liveRun.status) : false;
+  const detailMode = Boolean(selectedRunId && liveRun);
 
-  // Unify the feed: DB run events when signed in, mock audit events otherwise.
-  const feed: A2UIEvent[] = useMemo(() => {
-    // A live real run takes the timeline; its events show newest-last like the demo feed.
-    if (liveRun) return liveRun.events.map(realEventToA2UI);
-    if (session?.user) {
-      return workflowRuns.flatMap((run) => run.events.map(runEventToA2UI));
-    }
-    return events.map(auditEventToA2UI);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user, workflowRuns, events, liveRun]);
-
-  const filteredFeed = decisionFilter === "all" ? feed : feed.filter((e) => e.decision === decisionFilter);
   const filteredLiveEvents = liveRun
     ? (decisionFilter === "all"
       ? liveRun.events
@@ -322,83 +433,85 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
   // Spend panel computed from already-fetched data — no new endpoint.
   const dbSpendCents = workflowRuns.reduce((sum, run) => sum + run.totalCostCents, 0);
   const todaySpendCents = session?.user ? dbSpendCents : Math.round(spend * 100);
-  const recentCosts = feed.filter((e) => typeof e.costCents === "number" && (e.costCents ?? 0) > 0).slice(0, 5);
+  // Recent costs come straight from the run list — no per-run detail fetch.
+  const recentCosts = realRunHistory.filter((run) => run.totalCostCents > 0).slice(0, 5);
   const capCents = 500;
   const pendingCount = dbApprovals.length || pendingApprovals;
+  const activeRunCount = realRunHistory.filter((run) => ACTIVE_STATUSES.includes(run.status)).length;
 
   return (
     <section className="platformPage controlPlanePage">
-      <PageHeader eyebrow="Control" title="Control" copy="Approvals, blocks, spend, and timeline." />
+      <PageHeader eyebrow="Control" title="Control" copy="A calm board of your real governed runs. Open one to see its output and process." />
 
       <div className="opsRoom">
         <div className="opsFeed">
-          <div className="opsFeedHead">
-            <div>
-              <h3>Timeline</h3>
-              <span className="a2uiCaption">A2UI · agent-to-user interface</span>
-            </div>
-            <div className="buttonPair">
-              <Pill tone={liveRun ? "ok" : session?.user ? "warn" : "neutral"}>
-                {liveRun ? "Real run" : session?.user ? "Simulated preview" : "Local demo"}
-              </Pill>
-              <Pill tone="neutral">{filteredFeed.length} events</Pill>
-            </div>
-          </div>
-          <div className="opsFilters" role="group" aria-label="Filter timeline by decision">
-            {DECISION_FILTERS.map((filter) => (
-              <button
-                key={filter.key}
-                className={`filterChip${decisionFilter === filter.key ? " active" : ""}`}
-                onClick={() => setDecisionFilter(filter.key)}
-                aria-pressed={decisionFilter === filter.key}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <div className="opsFeedList">
-            {liveRun ? (
-              <>
-                {liveRun.resultText && (
-                  <article className="finalDeliverable">
-                    <div>
-                      <span className="a2uiCaption">Final deliverable</span>
-                      <h3>Run result</h3>
-                    </div>
-                    <pre>{liveRun.resultText}</pre>
-                  </article>
-                )}
-                <div className="runContentSummary">
-                  <Pill tone="neutral">{liveRun.stepCount} model steps</Pill>
-                  <Pill tone="neutral">{liveRun.toolCallCount} tools executed</Pill>
-                  <Pill tone="neutral">{liveRun.approvalRequests.length} approvals pending</Pill>
-                  <Pill tone="neutral">{formatCents(liveRun.totalCostCents)} total</Pill>
+          {detailMode ? (
+            <RunDetail
+              run={liveRun!}
+              decisionFilter={decisionFilter}
+              filters={DECISION_FILTERS}
+              onFilter={setDecisionFilter}
+              events={filteredLiveEvents}
+              onBack={backToBoard}
+            />
+          ) : (
+            <>
+              <div className="opsFeedHead">
+                <div>
+                  <h3>Runs</h3>
+                  <span className="a2uiCaption">Real governed runs · newest first</span>
                 </div>
-                {filteredLiveEvents.length ? (
-                  filteredLiveEvents.map((event) => <CapturedRunEvent key={event.id} event={event} />)
+                <div className="buttonPair">
+                  {activeRunCount > 0 && <Pill tone="accent">{activeRunCount} active</Pill>}
+                  <Pill tone="neutral">{realRunHistory.length} runs</Pill>
+                </div>
+              </div>
+              {session?.user ? (
+                realRunHistory.length ? (
+                  <div className="runBoard">
+                    {realRunHistory.map((run) => (
+                      <button
+                        key={run.id}
+                        className="runCard"
+                        onClick={() => openRun(run.id)}
+                        disabled={openingRunId === run.id}
+                        aria-busy={openingRunId === run.id}
+                      >
+                        <div className="runCardTop">
+                          <strong className="runCardName">{run.workflowName ?? "Untitled flow"}</strong>
+                          <Pill tone={statusTone(run.status)}>{statusLabel(run.status)}</Pill>
+                        </div>
+                        <p className="runCardLine">{boardLine(run)}</p>
+                        <div className="runCardMeta">
+                          <Data>{formatCents(run.totalCostCents)}</Data>
+                          <span>{run.stepCount} steps · {run.toolCallCount} tools</span>
+                          {run.status === "paused_for_approval" && <span className="runCardBadge">needs approval</span>}
+                          <small>{compactDate(run.endedAt ?? run.createdAt)}</small>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 ) : (
-                  <EmptyState title="No matching live events" body="Adjust the filter to see the run timeline." />
-                )}
-              </>
-            ) : filteredFeed.length ? (
-              filteredFeed.map((event) => <EventCard key={event.id} event={event} />)
-            ) : (
-              <EmptyState
-                title="No events yet"
-                body="Run a flow preview to see agent activity stream in here."
-                action={<Button variant="primary" onClick={runControlPlaneWorkflow} loading={runningControlSimulation}>Run preview</Button>}
-              />
-            )}
-          </div>
-          <p className="opsFooterNote">
-            {liveRun
-              ? "Real run: model calls and web search execute for real and are metered. Unimplemented tools are shown as unavailable, never fake success."
-              : "“Run for real” executes a real, governed run (real model calls, real cost, one real read-only tool). “Run preview” is simulated."}
-          </p>
+                  <EmptyState
+                    title="No real runs yet"
+                    body="Select a saved Flow in the panel and run it for real. Each run appears here as a card."
+                  />
+                )
+              ) : (
+                <EmptyState
+                  title="Sign in to run real flows"
+                  body="Control shows your real governed runs. Sign in with Google and add a provider key in Profile to start one."
+                />
+              )}
+              <p className="opsFooterNote">
+                Real runs only: model calls and web search execute for real and are metered. Unimplemented tools are shown as unavailable, never fake success. Open a card to see its output and full process.
+              </p>
+            </>
+          )}
         </div>
 
         <div className="opsAside">
-          <Card title="Active run" meta={liveRun ? liveRun.status.replaceAll("_", " ") : (session?.user ? "None yet" : "Demo ready")}>
+          <Card title="Start a run" meta={session?.user ? `${activeRunCount} active` : "Sign in to run"}>
             {session?.user && (
               <label className="flowSelector">
                 <span>Flow to run</span>
@@ -411,12 +524,12 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
                 </select>
               </label>
             )}
-            {liveRun ? (
+            {detailMode ? (
               <div className="runMetricGrid">
-                <div className="metric"><span>Real spend</span><strong className="data">${(liveRun.totalCostCents / 100).toFixed(2)} / ${(RUN_CAP_CENTS / 100).toFixed(2)}</strong></div>
-                <div className="metric"><span>Steps</span><strong className="data">{liveRun.stepCount}</strong></div>
-                <div className="metric"><span>Tools executed</span><strong className="data">{liveRun.toolCallCount}</strong></div>
-                <div className="metric"><span>Status</span><strong className="data">{liveRun.status}</strong></div>
+                <div className="metric"><span>Real spend</span><strong className="data">${(liveRun!.totalCostCents / 100).toFixed(2)} / ${(RUN_CAP_CENTS / 100).toFixed(2)}</strong></div>
+                <div className="metric"><span>Steps</span><strong className="data">{liveRun!.stepCount}</strong></div>
+                <div className="metric"><span>Tools executed</span><strong className="data">{liveRun!.toolCallCount}</strong></div>
+                <div className="metric"><span>Status</span><strong className="data">{statusLabel(liveRun!.status)}</strong></div>
               </div>
             ) : (
               <p className="inspectorNote">
@@ -427,13 +540,13 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
             )}
             <div className="heroActions compactActions">
               <Button variant="primary" onClick={startReal} loading={startingReal} disabled={liveRunning}>Run for real</Button>
-              {liveRunning && <Button variant="danger" onClick={killLive} loading={killing}>Kill run</Button>}
-              <Button variant="secondary" onClick={runControlPlaneWorkflow} loading={runningControlSimulation}>Run preview (simulated)</Button>
+              {detailMode && liveRunning && <Button variant="danger" onClick={killLive} loading={killing}>Kill run</Button>}
+              {detailMode && <Button variant="secondary" onClick={backToBoard}>Back to board</Button>}
             </div>
           </Card>
 
           <Card title="Approval inbox" meta={`${(liveRun?.approvalRequests.length ?? 0) || pendingCount} pending`}>
-            {(liveRun?.approvalRequests.length ?? 0) > 0 ? (
+            {detailMode && (liveRun?.approvalRequests.length ?? 0) > 0 ? (
               <div className="opsFeedList">
                 {liveRun!.approvalRequests.map((approval) => (
                   <ApprovalCard key={approval.id} approval={approval} onResolve={resolveLiveApproval} resolving={resolvingApprovalId === approval.id} />
@@ -461,31 +574,13 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
             <div className="meter"><span style={{ width: `${Math.min(100, (todaySpendCents / capCents) * 100)}%` }} /></div>
             {recentCosts.length > 0 && (
               <div className="spendRows">
-                {recentCosts.map((event) => (
-                  <div className="spendRow" key={event.id}>
-                    <span>{event.what}</span>
-                    <Data>${((event.costCents ?? 0) / 100).toFixed(2)}</Data>
+                {recentCosts.map((run) => (
+                  <div className="spendRow" key={run.id}>
+                    <span>{run.workflowName ?? "Untitled flow"}</span>
+                    <Data>{formatCents(run.totalCostCents)}</Data>
                   </div>
                 ))}
               </div>
-            )}
-          </Card>
-
-          <Card title="Run history" meta={`${realRunHistory.length} real runs`}>
-            {realRunHistory.length ? (
-              <div className="runHistoryList">
-                {realRunHistory.slice(0, 6).map((run) => (
-                  <button key={run.id} className="runHistoryButton" onClick={() => openRun(run.id)} disabled={openingRunId === run.id}>
-                    <span>
-                      <strong>{run.status.replaceAll("_", " ")}</strong>
-                      <small>{compactDate(run.endedAt ?? run.createdAt)}</small>
-                    </span>
-                    <Data>{formatCents(run.totalCostCents)}</Data>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="No real runs yet" body="Select a saved Flow and run it to build history." />
             )}
           </Card>
         </div>
