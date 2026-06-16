@@ -36,7 +36,8 @@ vi.mock("../lib/execution/provider", () => ({
 }));
 
 import { startRun, resumeAfterApproval, killRun } from "../lib/execution/run-engine";
-import { POST as startRunRoute } from "../app/api/runs/route";
+import { POST as startRunRoute, GET as listRunsRoute } from "../app/api/runs/route";
+import { GET as runDetailRoute } from "../app/api/runs/[id]/route";
 
 const FINAL = (text = "done") => JSON.stringify({ type: "final", text });
 const TOOL = (tool: string, action = "read", input = "q") => JSON.stringify({ type: "tool_call", tool, action, input });
@@ -442,5 +443,44 @@ describe("run engine — bounded, gated, killable", () => {
     const res = await startRunRoute(new Request("http://localhost/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workflowId: workflow.id }) }));
     expect(res.status).toBe(429);
     expect(llm.calls).toBe(0);
+  });
+
+  it("LEGIBILITY: GET /api/runs includes workflowName and a resultText preview per run", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow } = await seedFlow(user.id);
+    const longAnswer = `Here are the roles I found.\n\n${"x".repeat(300)}`;
+    llm.queue = [{ text: FINAL(longAnswer), costCents: 2 }];
+    await startRun(user.id, workflow.id);
+
+    const res = await listRunsRoute();
+    expect(res.status).toBe(200);
+    const { runs } = await res.json();
+    expect(runs).toHaveLength(1);
+    expect(runs[0].workflowName).toBe("Flow");
+    // Preview is present, single-line, capped (~140 chars), and not the full text.
+    expect(typeof runs[0].resultPreview).toBe("string");
+    expect(runs[0].resultPreview.length).toBeLessThanOrEqual(140);
+    expect(runs[0].resultPreview).not.toContain("\n");
+    expect(runs[0].resultPreview.length).toBeLessThan(longAnswer.length);
+  });
+
+  it("LEGIBILITY: GET /api/runs/[id] resolves agentName per event and includes workflowName", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow, agent } = await seedFlow(user.id);
+    llm.queue = [{ text: FINAL("Found 3 roles."), costCents: 2 }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+
+    const res = await runDetailRoute(new Request(`http://localhost/api/runs/${run.id}`), {
+      params: Promise.resolve({ id: run.id })
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.run.workflowName).toBe("Flow");
+    const agentEvents = body.run.events.filter((e: { agentId: string | null }) => e.agentId === agent.id);
+    expect(agentEvents.length).toBeGreaterThan(0);
+    expect(agentEvents.every((e: { agentName: string | null }) => e.agentName === agent.name)).toBe(true);
   });
 });

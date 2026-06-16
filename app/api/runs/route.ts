@@ -12,6 +12,15 @@ function intEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+// A short, single-line, self-contained preview of the run deliverable. Computed
+// from existing data — never a model call.
+function previewText(text: string | null, max: number): string | null {
+  if (!text) return null;
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (!flat) return null;
+  return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
+}
+
 // Start a real, governed run for a saved flow. Explicit + auth + daily-cap
 // pre-check (which makes ZERO model calls when over the cap).
 export async function POST(request: Request) {
@@ -51,11 +60,23 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
   }
-  const runs = await prisma.workflowRun.findMany({
+  const rows = await prisma.workflowRun.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },
     take: 20,
-    select: { id: true, status: true, totalCostCents: true, stepCount: true, toolCallCount: true, resultText: true, createdAt: true, endedAt: true }
+    select: {
+      id: true, status: true, totalCostCents: true, stepCount: true, toolCallCount: true,
+      resultText: true, createdAt: true, endedAt: true,
+      workflow: { select: { name: true } }
+    }
   });
+  // Board cards (Phase 3) need a flow name and a short, self-contained preview
+  // of the deliverable — never the full result text.
+  const runs = rows.map(({ workflow, resultText, ...run }) => ({
+    ...run,
+    resultText,
+    workflowName: workflow?.name ?? "Untitled flow",
+    resultPreview: previewText(resultText, 140)
+  }));
   return NextResponse.json({ runs });
 }

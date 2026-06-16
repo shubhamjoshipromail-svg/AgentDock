@@ -209,16 +209,18 @@ export type RealRunEvent = {
   id: string; eventType: string; title: string; description: string; decision: string | null;
   costCents: number; actorType: string | null; resourceType: string | null; authorityRef: string | null;
   untrusted: boolean; createdAt: string; metadata: RunEventMeta;
+  agentId?: string | null; agentName?: string | null;
 };
 export type RealRun = {
   id: string; status: string; totalCostCents: number; stepCount: number; toolCallCount: number;
-  resultText?: string | null; createdAt?: string; endedAt?: string | null;
+  resultText?: string | null; createdAt?: string; endedAt?: string | null; workflowName?: string;
   events: RealRunEvent[]; approvalRequests: PersistedApprovalRequest[];
 };
 
 export type RealRunSummary = {
   id: string; status: string; totalCostCents: number; stepCount: number; toolCallCount: number;
-  resultText?: string | null; createdAt: string; endedAt?: string | null;
+  resultText?: string | null; resultPreview?: string | null; workflowName?: string;
+  createdAt: string; endedAt?: string | null;
 };
 
 export function startRealRun(workflowId: string, fallbackMessage = "Unable to start run.") {
