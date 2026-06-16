@@ -64,8 +64,6 @@ export function Builder({
   onAddNode: (node: BuilderNode) => void;
   onRemoveNode: (id: string) => void;
   onSave: () => void;
-  onSimulate: () => void;
-  onUnsafeSimulate: () => void;
   onViewLogs: () => void;
   onSetDefault: (agent: string) => void;
 }) {

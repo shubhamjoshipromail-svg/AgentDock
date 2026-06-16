@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useToast } from "../layout/Toast";
 
@@ -9,24 +9,19 @@ import {
   killRealRun,
   listFlows,
   listRealRuns,
-  listRuns,
   resolveApproval,
-  simulateRun,
   startRealRun,
   type RealRun,
   type RealRunEvent,
   type RealRunSummary
 } from "../../lib/api/client";
 import type {
-  AuditEvent,
   Decision,
   PersistedApprovalRequest,
-  PersistedWorkflow,
-  PersistedWorkflowRun,
-  Section
+  PersistedWorkflow
 } from "../../lib/types";
 import { Badge, Button, Card, Data, EmptyState, PageHeader, Pill } from "../layout/primitives";
-import { ApprovalCard, EventCard, auditEventToA2UI, runEventToA2UI, type A2UIEvent } from "../a2ui/EventCard";
+import { ApprovalCard } from "../a2ui/EventCard";
 
 const DECISION_FILTERS: { key: Decision | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -302,31 +297,15 @@ function RunDetail({
   );
 }
 
-export function ControlPlane({
-  events,
-  spend,
-  pendingApprovals,
-  defaultAgent,
-  runHistory,
-  onRun,
-  onOpenSection
-}: {
-  events: AuditEvent[];
-  spend: number;
-  pendingApprovals: number;
-  defaultAgent: string;
-  runHistory: string[];
-  onRun: () => void;
-  onOpenSection: (section: Section) => void;
-}) {
+// Control is real-runs-only (Chunk 7). It is self-contained: it loads the
+// signed-in user's saved flows and real governed runs, and shows nothing
+// simulated or demo. Run previews live in Build (/api/workflow-runs/simulate).
+export function ControlPlane() {
   const { data: session } = useSession();
   const toast = useToast();
   const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
-  const [workflowRuns, setWorkflowRuns] = useState<PersistedWorkflowRun[]>([]);
   const [realRunHistory, setRealRunHistory] = useState<RealRunSummary[]>([]);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
-  const [dbApprovals, setDbApprovals] = useState<PersistedApprovalRequest[]>([]);
-  const [runningControlSimulation, setRunningControlSimulation] = useState(false);
   const [resolvingApprovalId, setResolvingApprovalId] = useState("");
   const [decisionFilter, setDecisionFilter] = useState<Decision | "all">("all");
   // Real governed run (Chunk 4).
@@ -340,85 +319,29 @@ export function ControlPlane({
   const loadControlPlaneData = async () => {
     if (!session?.user) {
       setSavedWorkflows([]);
-      setWorkflowRuns([]);
       setRealRunHistory([]);
       setSelectedWorkflowId("");
-      setDbApprovals([]);
       return;
     }
 
     try {
-      const [workflowsData, runsData, realRunsData] = await Promise.all([
+      const [workflowsData, realRunsData] = await Promise.all([
         listFlows("Unable to load saved Flows."),
-        listRuns("Unable to load runs."),
         listRealRuns("Unable to load real runs.")
       ]);
 
-      const runs: PersistedWorkflowRun[] = runsData.workflowRuns ?? [];
       const workflows = workflowsData.workflows ?? [];
       setSavedWorkflows(workflows);
-      setWorkflowRuns(runs);
       setRealRunHistory(realRunsData.runs ?? []);
       setSelectedWorkflowId((current) => current || workflows[0]?.id || "");
-      setDbApprovals(runs.flatMap((run) => run.approvalRequests).filter((approval) => approval.status === "pending"));
     } catch (error) {
-toast(error instanceof Error ? error.message : "Unable to load Control data.", "danger");
+      toast(error instanceof Error ? error.message : "Unable to load Control data.", "danger");
     }
   };
 
   useEffect(() => {
     loadControlPlaneData();
   }, [session?.user?.email]);
-
-  const runControlPlaneWorkflow = async () => {
-    if (!session?.user) {
-      onRun();
-      return;
-    }
-
-    const workflow = savedWorkflows.find((item) => item.id === selectedWorkflowId) ?? savedWorkflows[0];
-    if (!workflow?.id) {
-toast("Save a Flow first to run a preview.", "warn");
-      return;
-    }
-
-    setRunningControlSimulation(true);
-    try {
-      const data = await simulateRun(workflow.id, "Run preview failed.");
-toast(`Run created: ${data.workflowRun.events.length} events, ${data.workflowRun.approvalRequests.length} approvals.`, "ok");
-      await loadControlPlaneData();
-    } catch (error) {
-toast(error instanceof Error ? error.message : "Run preview failed.", "danger");
-    } finally {
-      setRunningControlSimulation(false);
-    }
-  };
-
-  const resolveControlApproval = async (approvalId: string, status: "approved" | "denied" | "edited") => {
-    setResolvingApprovalId(approvalId);
-    try {
-      await resolveApproval(approvalId, status, "Unable to resolve approval.");
-toast(`Approval ${status} and written to timeline.`, "ok");
-      await loadControlPlaneData();
-    } catch (error) {
-toast(error instanceof Error ? error.message : "Unable to resolve approval.", "danger");
-    } finally {
-      setResolvingApprovalId("");
-    }
-  };
-
-  // --- Real governed run ---
-  const realEventToA2UI = (e: RealRun["events"][number]): A2UIEvent => ({
-    id: e.id,
-    who: e.actorType === "agent" ? "Agent" : e.actorType === "human" ? "You" : "System",
-    what: e.title,
-    resource: e.resourceType ?? undefined,
-    authority: e.authorityRef ?? undefined,
-    decision: (e.decision ?? "info") as Decision,
-    timestamp: e.createdAt,
-    costCents: e.costCents,
-    eventType: e.eventType
-  });
 
   const refreshLiveRun = async (id: string) => {
     try {
@@ -528,13 +451,14 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
     : [];
   const selectedWorkflow = savedWorkflows.find((workflow) => workflow.id === selectedWorkflowId);
 
-  // Spend panel computed from already-fetched data — no new endpoint.
-  const dbSpendCents = workflowRuns.reduce((sum, run) => sum + run.totalCostCents, 0);
-  const todaySpendCents = session?.user ? dbSpendCents : Math.round(spend * 100);
+  // Spend + approvals computed from the real-run list only — no new endpoint,
+  // nothing simulated.
+  const todaySpendCents = realRunHistory.reduce((sum, run) => sum + run.totalCostCents, 0);
   // Recent costs come straight from the run list — no per-run detail fetch.
   const recentCosts = realRunHistory.filter((run) => run.totalCostCents > 0).slice(0, 5);
   const capCents = 500;
-  const pendingCount = dbApprovals.length || pendingApprovals;
+  const pausedRuns = realRunHistory.filter((run) => run.status === "paused_for_approval");
+  const pendingCount = pausedRuns.length;
   const activeRunCount = realRunHistory.filter((run) => ACTIVE_STATUSES.includes(run.status)).length;
 
   return (
@@ -645,26 +569,27 @@ toast(error instanceof Error ? error.message : "Unable to resolve approval.", "d
             </div>
           </Card>
 
-          <Card title="Approval inbox" meta={`${(liveRun?.approvalRequests.length ?? 0) || pendingCount} pending`}>
+          <Card title="Approval inbox" meta={`${detailMode ? (liveRun?.approvalRequests.length ?? 0) : pendingCount} pending`}>
             {detailMode ? (
               (liveRun?.approvalRequests.length ?? 0) > 0 ? (
                 <p className="inspectorNote">{liveRun!.approvalRequests.length} approval{liveRun!.approvalRequests.length === 1 ? "" : "s"} for this run — resolve them inline in the Process section.</p>
               ) : (
                 <EmptyState title="Inbox clear" body="No approvals waiting for this run." />
               )
-            ) : dbApprovals.length ? (
-              <div className="opsFeedList">
-                {dbApprovals.map((approval) => (
-                  <ApprovalCard
-                    key={approval.id}
-                    approval={approval}
-                    onResolve={resolveControlApproval}
-                    resolving={resolvingApprovalId === approval.id}
-                  />
+            ) : pausedRuns.length ? (
+              <div className="runHistoryList">
+                {pausedRuns.map((run) => (
+                  <button key={run.id} className="runHistoryButton" onClick={() => openRun(run.id)} disabled={openingRunId === run.id}>
+                    <span>
+                      <strong>{run.workflowName ?? "Untitled flow"}</strong>
+                      <small>needs your approval — open to resolve</small>
+                    </span>
+                    <Data>{formatCents(run.totalCostCents)}</Data>
+                  </button>
                 ))}
               </div>
             ) : (
-              <EmptyState title="Inbox clear" body="No approvals waiting. New ones appear here the moment an agent needs you." />
+              <EmptyState title="Inbox clear" body="No approvals waiting. A run that needs you will appear here." />
             )}
           </Card>
 

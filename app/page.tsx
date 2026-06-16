@@ -12,14 +12,8 @@ import { Profile } from "../components/profile/Profile";
 import { Store } from "../components/store/Store";
 import { CommandPalette, type Command } from "../components/layout/CommandPalette";
 import { ToastProvider } from "../components/layout/Toast";
-import {
-  builderSimulateEvents,
-  baseAuditEvents,
-  recommendedBuilderNodes,
-  simulatedRunEvents
-} from "../components/mock-data";
+import { recommendedBuilderNodes } from "../components/mock-data";
 import type {
-  AuditEvent,
   BuilderNode,
   BuilderPaletteTab,
   LibraryTab,
@@ -77,36 +71,8 @@ function AppInner() {
   const [builderSaved, setBuilderSaved] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState("Job Search Memory");
   const [defaultAgent, setDefaultAgent] = useState("Job Discovery Agent");
-  const [events, setEvents] = useState<AuditEvent[]>(baseAuditEvents);
-  const [spend, setSpend] = useState(2.15);
-  const [runCount, setRunCount] = useState(0);
+  const [spend] = useState(2.15);
   const [cmdkOpen, setCmdkOpen] = useState(false);
-  const [runHistory, setRunHistory] = useState<string[]>([
-    "Initial demo run: 12 roles searched, 3 companies summarized, 2 approval gates opened."
-  ]);
-
-  const pendingApprovals = useMemo(
-    () => events.filter((event) => event.decision === "approval_required").length + 3,
-    [events]
-  );
-
-  const runDemoWorkflow = () => {
-    setRunCount((count) => count + 1);
-    setSpend((value) => Number((value + 0.64).toFixed(2)));
-    setRunHistory((current) => [
-      `Run ${runCount + 1}: 12 roles searched, 3 companies summarized, resume draft and 3 Gmail drafts queued for approval.`,
-      ...current
-    ]);
-    setEvents((current) => [
-      ...simulatedRunEvents.map((event, index) => ({
-        ...event,
-        event: runCount > 0 ? `${event.event} (run ${runCount + 1})` : event.event,
-        cost: index === 0 && runCount > 0 ? "$0.10" : event.cost
-      })),
-      ...current
-    ]);
-    setActiveSection("Control");
-  };
 
   const recommendBuilderStack = () => {
     setBuilderNodes(recommendedBuilderNodes);
@@ -135,44 +101,6 @@ function AppInner() {
 
   const saveBuilderWorkflow = () => {
     setBuilderSaved(true);
-    setRunHistory((current) => [
-      `Builder saved Job Search Automation with ${builderNodes.length} components, $5/week cap, and approval-gated sends/applications.`,
-      ...current
-    ]);
-  };
-
-  const simulateBuilderRun = () => {
-    setBuilderSaved(true);
-    setSpend((value) => Number((value + 0.71).toFixed(2)));
-    setRunCount((count) => count + 1);
-    setRunHistory((current) => [
-      `Builder simulation ${runCount + 1}: recommended stack ran through search, research, resume memory, Gmail draft access, and policy blocks.`,
-      ...current
-    ]);
-    setEvents((current) => [
-      ...builderSimulateEvents.map((event) => ({
-        ...event,
-        event: runCount > 0 ? `${event.event} (builder run ${runCount + 1})` : event.event
-      })),
-      ...current
-    ]);
-  };
-
-  const simulateUnsafeAction = () => {
-    setEvents((current) => [
-      {
-        event: "Outreach Draft Agent attempted to send email - blocked by Policy Engine and added to Approval Inbox",
-        type: "blocked action",
-        agent: "Outreach Draft Agent",
-        workflow: "Job Search Automation",
-        tool: "Gmail Draft MCP",
-        permission: "send email",
-        memory: "Job Search Memory",
-        cost: "$0.00",
-        decision: "approval_required"
-      },
-      ...current
-    ]);
   };
 
   const commands: Command[] = useMemo(() => {
@@ -203,17 +131,7 @@ function AppInner() {
         onOpenCommand={() => setCmdkOpen(true)}
       >
         <BootstrapGate>
-          {activeSection === "Control" && (
-            <ControlPlane
-              events={events}
-              spend={spend}
-              pendingApprovals={pendingApprovals}
-              defaultAgent={defaultAgent}
-              runHistory={runHistory}
-              onRun={runDemoWorkflow}
-              onOpenSection={setActiveSection}
-            />
-          )}
+          {activeSection === "Control" && <ControlPlane />}
           {activeSection === "Build" && (
             <Builder
               prompt={builderPrompt}
@@ -226,8 +144,6 @@ function AppInner() {
               onAddNode={addBuilderNode}
               onRemoveNode={removeBuilderNode}
               onSave={saveBuilderWorkflow}
-              onSimulate={simulateBuilderRun}
-              onUnsafeSimulate={simulateUnsafeAction}
               onViewLogs={() => setActiveSection("Control")}
               onSetDefault={setDefaultAgent}
             />
