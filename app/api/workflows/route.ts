@@ -171,8 +171,15 @@ async function resolveWorkflowTools(workflowId: string, userId: string, tools: C
 }
 
 // Memory attachments scope an existing user partition to this flow by name.
-async function attachWorkflowMemory(workflowId: string, userId: string, memory: NonNullable<CreateWorkflowInput["memory"]>, tx: Prisma.TransactionClient) {
+async function attachWorkflowMemory(workflowId: string, userId: string, memory: CreateWorkflowInput["memory"], tx: Prisma.TransactionClient) {
   const skippedMemory: string[] = [];
+
+  // As with tools: only reconcile when the payload explicitly carries a memory
+  // set. An omitted payload leaves existing scoping untouched; an explicit []
+  // un-scopes everything previously attached to this flow.
+  if (memory === undefined) return { skippedMemory };
+
+  const scopedNames: string[] = [];
 
   for (const attachment of memory) {
     const partition = await tx.memoryPartition.findFirst({
@@ -184,11 +191,24 @@ async function attachWorkflowMemory(workflowId: string, userId: string, memory: 
       continue;
     }
 
+    scopedNames.push(partition.name);
+
     await tx.memoryPartition.update({
       where: { id: partition.id },
       data: { workflowId }
     });
   }
+
+  // Reconcile removals: un-scope any partition still pointing at this flow whose
+  // name is no longer in the authored memory set. This only changes which
+  // partitions are scoped — it never alters how grants are enforced at runtime
+  // (the Chunk 6 memory firewall is untouched). An empty memory set un-scopes
+  // every partition previously attached to this flow.
+  const stillScopedFilter = scopedNames.length ? { name: { notIn: scopedNames } } : {};
+  await tx.memoryPartition.updateMany({
+    where: { userId, workflowId, ...stillScopedFilter },
+    data: { workflowId: null }
+  });
 
   return { skippedMemory };
 }
@@ -236,7 +256,7 @@ async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
         });
 
     const { skippedTools } = await resolveWorkflowTools(saved.id, userId, body.tools, tx);
-    const { skippedMemory } = await attachWorkflowMemory(saved.id, userId, body.memory ?? [], tx);
+    const { skippedMemory } = await attachWorkflowMemory(saved.id, userId, body.memory, tx);
 
     const workflow = await tx.workflow.findUniqueOrThrow({
       where: { id: saved.id },

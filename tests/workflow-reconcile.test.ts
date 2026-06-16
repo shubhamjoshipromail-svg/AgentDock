@@ -126,4 +126,26 @@ describe("Chunk 8 — save reconciles removed tools, grants, and memory", () => 
     expect(await prisma.mcpAccessGrant.count({ where: { workflowId } })).toBe(1);
   });
 
+  it("removing a memory partition on re-save un-scopes it from the flow", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const p1 = await prisma.memoryPartition.create({
+      data: { userId: user.id, name: "Partition One", type: "workflow", sensitivityLevel: "medium", description: "d", defaultAccessPolicy: "workflow_scoped" }
+    });
+    const p2 = await prisma.memoryPartition.create({
+      data: { userId: user.id, name: "Partition Two", type: "workflow", sensitivityLevel: "medium", description: "d", defaultAccessPolicy: "workflow_scoped" }
+    });
+
+    const first = await save(flowPayload([], [{ partitionName: "Partition One" }, { partitionName: "Partition Two" }]));
+    const workflowId = first.workflow.id as string;
+
+    expect((await prisma.memoryPartition.findUniqueOrThrow({ where: { id: p1.id } })).workflowId).toBe(workflowId);
+    expect((await prisma.memoryPartition.findUniqueOrThrow({ where: { id: p2.id } })).workflowId).toBe(workflowId);
+
+    // Re-save with only P1.
+    await save(flowPayload([], [{ partitionName: "Partition One" }]));
+
+    expect((await prisma.memoryPartition.findUniqueOrThrow({ where: { id: p1.id } })).workflowId).toBe(workflowId);
+    expect((await prisma.memoryPartition.findUniqueOrThrow({ where: { id: p2.id } })).workflowId).toBeNull();
+  });
 });
