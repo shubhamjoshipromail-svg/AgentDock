@@ -56,7 +56,12 @@ and OS-level sandbox escapes.
    else is treated as a final answer, never executed.
 3. **Capability allow-listing.** An agent can only request tools on its
    allow-list (its DB grants). A request for any other tool is `blocked` before
-   execution. This is the single most reliable injection defense.
+   execution. This is the single most reliable injection defense. Saving a flow
+   reconciles this allow-list: a tool removed from the authored flow has its
+   `workflowMcp` row and `mcpAccessGrant` deleted in the same transaction, so a
+   removed permission cannot survive and be honored on a later run. A
+   `@@unique(userId, workflowId, mcpServerId)` constraint keeps grants
+   deterministic (one per tool) so policy resolution is never ambiguous.
 4. **Privilege separation.** Permissions live in DB grants and the deterministic
    gate — never in the prompt. Injection cannot escalate privilege because the
    model has no authority to grant itself anything. Permissions are clamped

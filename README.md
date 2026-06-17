@@ -361,6 +361,21 @@ Saving a Flow persists:
 - Memory attachments
 - Serialized graph/layout metadata
 
+**Flow truth (what you build is what runs).** Saving is fully reconciling, not
+add-only: when a tool is removed from the authored flow, its `workflowMcp` row
+**and** its `mcpAccessGrant` are deleted in the same transaction, so a removed
+permission can never linger and be honored at runtime (deleting a stale grant is
+stricter, never looser). Memory scoping is reconciled the same way — a partition
+dropped from the flow is un-scoped. Reconciliation only runs for a payload that
+explicitly carries the set: an omitted `tools`/`memory` key leaves existing rows
+untouched (canvas saves attach tools through a separate endpoint), while an
+explicit empty array reconciles to none. A `@@unique(userId, workflowId,
+mcpServerId)` constraint on `McpAccessGrant` makes the grant write a single
+deterministic `upsert`, so duplicates never accumulate and policy resolution is
+unambiguous. Reopening a saved flow hydrates the canvas from the **persisted**
+rows (agents, tools, grants, scoped memory) — never a stale layout blob — so the
+executed set equals the stored set equals the authored set.
+
 Run Preview lives in **Build** (run a preview of the flow you are authoring);
 Control is reserved for real runs. Run Preview is generic: it walks the saved
 agents in route order and evaluates each attached tool grant:
