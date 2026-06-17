@@ -81,15 +81,27 @@ instance with **zero** Gmail-specific code; a second server requires only
 registration, no new execution code. Governance (gate, trifecta, caps, kill,
 revoke/re-gate) unchanged.
 
-### A-6 / F-2 — Legacy web-search executor (parallel path)
+### A-6 / F-2 — Legacy web-search executor (parallel path) — DECISION RECORDED
 
 `lib/execution/tools/registry.ts` runs web search via a bespoke
-`(input: string) => {output, costCents}` executor — a second, non-MCP execution
-path alongside `tools/call`. **Action (Phase 3):** prefer reaching search through
-an MCP server via the generic path. **F-2 judgement:** if no suitable MCP search
-server is available without new external dependencies/risk, keep search behind
-the *same* generic interface (no second special-case branch) and record the
-decision here. To be finalized in Phase 3.
+`(input: string) => {output, costCents}` executor.
+
+**F-2 decision (Phase 3): keep search behind the generic interface; do not add a
+dependency-bearing MCP search server in this pass.** Rationale:
+
+- No first-party or vetted MCP search server is available without introducing a
+  new external dependency and a new trust surface (arbitrary third-party MCP
+  registration is explicitly out of scope this chunk).
+- The legacy path is **not a per-server special-case**: `executeAllowedTool`
+  routes by a **registry lookup** (`getExecutor(server.name)`), the same generic
+  "is there an executor for this tool" interface — there is no `if name === ...`
+  branch. The MCP path and the executor path are two implementations behind one
+  dispatch, not a special-cased server.
+- Search behavior is unchanged and still green (web-search + red-team tests).
+
+**Follow-up (future chunk):** when a trusted MCP search server exists, register
+it like Gmail and delete the bespoke executor so only `tools/call` remains.
+Status: **deferred (recorded F-decision).**
 
 ### C-1 / F-1 — Two model-key systems
 
