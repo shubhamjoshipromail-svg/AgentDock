@@ -4,26 +4,20 @@ import type { LlmProvider } from "../llm/types";
 import { prisma } from "../prisma";
 import { authorizeToolCall, effectiveGrantPermission, type ActionKind } from "./policy-gate";
 import { getExecutor, isRealTool } from "./tools/registry";
-import { callMcpTool, isMcpToolServer, parseMcpServerName } from "./mcp-client";
-import { loadGoogleAccessToken } from "./credentials";
+import { callMcpTool, mcpTokenEnvVar } from "./mcp-client";
+import { loadBrokeredCredential } from "./credential-broker";
 import { getRunProvider } from "./provider";
 import { buildStepContext } from "./memory";
 import type { RunEventMeta } from "../types";
 
-// First-party MCP tools that perform an EXTERNAL write (real outbound effect).
-// These ride the send/approval path and the lethal-trifecta guard. Everything
-// else an MCP server exposes (e.g. create_draft, which writes only to the user's
-// own mailbox) is a safe, reversible, non-external op for gating purposes.
-const MCP_EXTERNAL_SEND_TOOLS = new Set(["send_email"]);
-
-// Governance classification for an MCP tool, by tool name. Note: create_draft is
-// classified as a read-class action because a draft has no external side effect
-// and is reversible — it is NOT auto-allowing a write to the outside world. The
+// Governance classification for an MCP tool, derived generically from the
+// server's `isExternalSend` column — no tool-name special-casing. An external
+// send (real outbound effect) rides the send/approval path and the lethal-
+// trifecta guard. Everything else (e.g. a draft, which writes only to the user's
+// own mailbox) is a safe, reversible, non-external op for gating purposes; the
 // real tool name is always recorded in the audit event, so nothing is hidden.
-function classifyMcpTool(toolName: string): { action: ActionKind; isExternalSend: boolean } {
-  return MCP_EXTERNAL_SEND_TOOLS.has(toolName)
-    ? { action: "send", isExternalSend: true }
-    : { action: "read", isExternalSend: false };
+function classifyMcpTool(isExternalSend: boolean): { action: ActionKind; isExternalSend: boolean } {
+  return isExternalSend ? { action: "send", isExternalSend: true } : { action: "read", isExternalSend: false };
 }
 
 // ============================================================================
@@ -61,12 +55,13 @@ function capText(value: string, limit: number): string {
   return value.length > limit ? value.slice(0, limit) : value;
 }
 
-// The model addresses tools by a friendly name; the gate/executor use the
-// McpServer.name. Search is the one real tool, exposed as "web_search".
+// The model addresses tools by a friendly name. For MCP servers the friendly
+// name is the discovered tool name (the `mcpToolName` column); this fallback
+// covers non-MCP rows. Search is the one legacy real tool, exposed as
+// "web_search".
 function toolNameFor(serverName: string): string {
   if (serverName === "search-mcp") return "web_search";
-  const parsed = parseMcpServerName(serverName);
-  return parsed ? parsed.tool : serverName;
+  return serverName;
 }
 
 // Untrusted-content framing: tool outputs and memory are DATA, never commands.
@@ -112,11 +107,25 @@ function parseEnvelope(text: string): Envelope {
 
 type AllowedTool = {
   toolName: string;
-  server: { id: string; name: string; verificationStatus: "verified" | "community" | "unverified"; riskLevel: "low" | "medium" | "high" | "restricted"; recommendedPermission: "read_only" | "draft_only" | "approval_required" | "blocked" };
+  server: {
+    id: string;
+    name: string;
+    verificationStatus: "verified" | "community" | "unverified";
+    riskLevel: "low" | "medium" | "high" | "restricted";
+    recommendedPermission: "read_only" | "draft_only" | "approval_required" | "blocked";
+    // Generic MCP execution identity (null for non-MCP rows like legacy search).
+    mcpServerKey: string | null;
+    mcpToolName: string | null;
+    credentialProvider: string | null;
+  };
   grant: { id: string; canRead: boolean; canWrite: boolean; canExecute: boolean; canDelete: boolean; requiresApproval: boolean; revokedAt: Date | null };
   // An external-send tool (write to the outside). Web search is never this.
   isExternalSend: boolean;
 };
+
+function isMcpTool(tool: AllowedTool): boolean {
+  return Boolean(tool.server.mcpServerKey && tool.server.mcpToolName);
+}
 
 type RunnableAgent = {
   index: number;
@@ -154,22 +163,32 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
 
   const agents: RunnableAgent[] = workflow.workflowAgents.map((wa, index) => {
     const applicable = grants.filter((g) => g.agentId === wa.agentId || (g.agentId === null && g.workflowId === workflowId));
-    const allowedTools: AllowedTool[] = applicable.map((g) => ({
-      toolName: toolNameFor(g.mcpServer.name),
-      server: {
-        id: g.mcpServer.id,
-        name: g.mcpServer.name,
-        verificationStatus: g.mcpServer.verificationStatus,
-        riskLevel: g.mcpServer.riskLevel,
-        recommendedPermission: g.mcpServer.recommendedPermission
-      },
-      grant: {
-        id: g.id, canRead: g.canRead, canWrite: g.canWrite, canExecute: g.canExecute,
-        canDelete: g.canDelete, requiresApproval: g.requiresApproval, revokedAt: g.revokedAt
-      },
-      // Heuristic: a write-capable, non-search tool is treated as external-send.
-      isExternalSend: g.mcpServer.name !== "search-mcp" && (g.canWrite || g.canExecute || g.canDelete)
-    }));
+    const allowedTools: AllowedTool[] = applicable.map((g) => {
+      const isMcp = Boolean(g.mcpServer.mcpServerKey && g.mcpServer.mcpToolName);
+      return {
+        // MCP rows are addressed by their discovered tool name; legacy rows by name.
+        toolName: g.mcpServer.mcpToolName ?? toolNameFor(g.mcpServer.name),
+        server: {
+          id: g.mcpServer.id,
+          name: g.mcpServer.name,
+          verificationStatus: g.mcpServer.verificationStatus,
+          riskLevel: g.mcpServer.riskLevel,
+          recommendedPermission: g.mcpServer.recommendedPermission,
+          mcpServerKey: g.mcpServer.mcpServerKey,
+          mcpToolName: g.mcpServer.mcpToolName,
+          credentialProvider: g.mcpServer.credentialProvider
+        },
+        grant: {
+          id: g.id, canRead: g.canRead, canWrite: g.canWrite, canExecute: g.canExecute,
+          canDelete: g.canDelete, requiresApproval: g.requiresApproval, revokedAt: g.revokedAt
+        },
+        // MCP rows declare external-send via the server column; legacy heuristic
+        // (a write-capable, non-search tool) covers non-MCP rows.
+        isExternalSend: isMcp
+          ? g.mcpServer.isExternalSend
+          : g.mcpServer.name !== "search-mcp" && (g.canWrite || g.canExecute || g.canDelete)
+      };
+    });
     return {
       index,
       agentId: wa.agentId,
@@ -390,7 +409,7 @@ async function runStep(
     // MCP tools are classified by tool name (send_email = external write →
     // approval; create_draft = safe). Legacy/string tools use the model's action
     // and the loadRunnable external-send heuristic.
-    const classified = tool && isMcpToolServer(tool.server.name) ? classifyMcpTool(tool.toolName) : null;
+    const classified = tool && isMcpTool(tool) ? classifyMcpTool(tool.isExternalSend) : null;
     const actionKind: ActionKind = classified ? classified.action : envelope.action;
     const isExternalSend = classified ? classified.isExternalSend : tool?.isExternalSend ?? true;
     const gate = authorizeToolCall({
@@ -455,20 +474,21 @@ async function runStep(
 
 async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedTool, action: ActionKind, input: string, reason: string, args?: Record<string, unknown>): Promise<string> {
   const executor = getExecutor(tool.server.name);
-  const mcp = parseMcpServerName(tool.server.name);
   let output: string;
   let costCents = 0;
   let real = false;
   let toolInputForAudit = input;
 
-  if (mcp && isMcpToolServer(tool.server.name)) {
-    // Route through the real governed MCP client with STRUCTURED arguments. The
-    // first-party Gmail server reads the user's token from its own env — the
-    // token is set here server-side and never reaches the agent.
+  if (isMcpTool(tool)) {
+    // Route through the real governed MCP client with STRUCTURED arguments, using
+    // the generic server identity (mcpServerKey + mcpToolName). A server that
+    // needs auth declares a credentialProvider; the broker loads the token and it
+    // is set ONLY in the server's process env — never reaching the agent. No
+    // server-specific code here.
     const structuredArgs = args ?? {};
     toolInputForAudit = JSON.stringify(structuredArgs);
-    const env = await mcpServerEnv(mcp.server, ctx.userId);
-    const res = await callMcpTool(mcp.server, mcp.tool, structuredArgs, { userId: ctx.userId, env });
+    const env = await mcpServerEnv(tool.server, ctx.userId);
+    const res = await callMcpTool(tool.server.mcpServerKey!, tool.server.mcpToolName!, structuredArgs, { userId: ctx.userId, env });
     output = res.isError ? `[tool error] ${res.text}` : res.text;
     real = true;
   } else if (executor) {
@@ -500,15 +520,19 @@ async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedT
   return `${tool.toolName} result: ${output}`;
 }
 
-// Build the server-side environment for an MCP server connection. For Gmail this
-// injects the user's decrypted OAuth access token — set ONLY in the server's
-// process env, never exposed to the agent or returned to any client.
-async function mcpServerEnv(serverName: string, userId: string): Promise<Record<string, string>> {
-  if (serverName === "gmail") {
-    const token = await loadGoogleAccessToken(userId);
-    return token ? { GMAIL_ACCESS_TOKEN: token } : {};
-  }
-  return {};
+// Build the server-side environment for an MCP server connection. Generic: a
+// server that declares a credentialProvider gets its brokered token injected into
+// the env var its registration expects — set ONLY in the server's process env,
+// never exposed to the agent or returned to any client. No server-specific code.
+async function mcpServerEnv(
+  server: { mcpServerKey: string | null; credentialProvider: string | null },
+  userId: string
+): Promise<Record<string, string>> {
+  if (!server.mcpServerKey || !server.credentialProvider) return {};
+  const envVar = mcpTokenEnvVar(server.mcpServerKey);
+  if (!envVar) return {};
+  const token = await loadBrokeredCredential(server.credentialProvider, userId);
+  return token ? { [envVar]: token } : {};
 }
 
 async function executeApprovedTool(
@@ -524,9 +548,9 @@ async function executeApprovedTool(
     return { kind: "blocked" };
   }
 
-  // Re-classify MCP tools by name so the re-gate uses the same external-send /
-  // action semantics as the initial gate (send_email stays an external send).
-  const classified = isMcpToolServer(tool.server.name) ? classifyMcpTool(tool.toolName) : null;
+  // Re-classify MCP tools so the re-gate uses the same external-send / action
+  // semantics as the initial gate (an external send stays an external send).
+  const classified = isMcpTool(tool) ? classifyMcpTool(tool.isExternalSend) : null;
   const gate = authorizeToolCall({
     inAllowList: true,
     grant: { permission: effectiveGrantPermission(tool.grant), revokedAt: tool.grant.revokedAt },

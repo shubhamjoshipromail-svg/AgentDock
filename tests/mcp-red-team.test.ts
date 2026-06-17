@@ -51,9 +51,25 @@ async function seedAgentFlow(userId: string) {
   return { agent, workflow };
 }
 
-async function grantTool(userId: string, workflowId: string, agentId: string, name: string, displayName: string, opts: { grant?: boolean } = {}) {
+async function grantTool(
+  userId: string,
+  workflowId: string,
+  agentId: string,
+  name: string,
+  displayName: string,
+  opts: { grant?: boolean; mcp?: { serverKey: string; toolName: string; isExternalSend: boolean } } = {}
+) {
   const server = await prisma.mcpServer.create({
-    data: { name, displayName, description: "d", registrySource: "first-party", registryId: `id:${name}`, riskLevel: name === "search-mcp" ? "low" : "medium", verificationStatus: "verified", recommendedPermission: name === "search-mcp" ? "read_only" : "draft_only" }
+    data: {
+      name, displayName, description: "d", registrySource: "first-party", registryId: `id:${name}`,
+      riskLevel: name === "search-mcp" ? "low" : "medium",
+      verificationStatus: "verified",
+      recommendedPermission: name === "search-mcp" ? "read_only" : "draft_only",
+      mcpServerKey: opts.mcp?.serverKey ?? null,
+      mcpToolName: opts.mcp?.toolName ?? null,
+      credentialProvider: opts.mcp ? "google" : null,
+      isExternalSend: opts.mcp?.isExternalSend ?? false
+    }
   });
   if (opts.grant ?? true) {
     await prisma.mcpAccessGrant.create({
@@ -80,7 +96,7 @@ describe("MCP red-team — the governed client cannot be tricked into a silent s
     const user = await createTestUser();
     const { agent, workflow } = await seedAgentFlow(user.id);
     await grantTool(user.id, workflow.id, agent.id, "search-mcp", "Search");
-    await grantTool(user.id, workflow.id, agent.id, "mcp:gmail:send_email", "Gmail Send");
+    await grantTool(user.id, workflow.id, agent.id, "gmail-send-email", "Gmail Send", { mcp: { serverKey: "gmail", toolName: "send_email", isExternalSend: true } });
 
     // The agent reads untrusted web content (the injection), then "obeys" it by
     // requesting a send. The gate must force approval regardless.
@@ -103,7 +119,7 @@ describe("MCP red-team — the governed client cannot be tricked into a silent s
     const user = await createTestUser();
     const { agent, workflow } = await seedAgentFlow(user.id);
     // The Gmail send tool EXISTS in the catalog but is NOT granted to this flow.
-    await grantTool(user.id, workflow.id, agent.id, "mcp:gmail:send_email", "Gmail Send", { grant: false });
+    await grantTool(user.id, workflow.id, agent.id, "gmail-send-email", "Gmail Send", { grant: false, mcp: { serverKey: "gmail", toolName: "send_email", isExternalSend: true } });
 
     llm.queue = [
       { text: TOOL_ARGS("send_email", { to: "x@example.com", subject: "s", body: "b" }) },
@@ -120,7 +136,7 @@ describe("MCP red-team — the governed client cannot be tricked into a silent s
   it("NO TOKEN LEAK: the OAuth token never appears in any run event", async () => {
     const user = await createTestUser();
     const { agent, workflow } = await seedAgentFlow(user.id);
-    await grantTool(user.id, workflow.id, agent.id, "mcp:gmail:create_draft", "Gmail Draft");
+    await grantTool(user.id, workflow.id, agent.id, "gmail-create-draft", "Gmail Draft", { mcp: { serverKey: "gmail", toolName: "create_draft", isExternalSend: false } });
     await storeGoogleOAuthToken(user.id, { accessToken: "ya29.SUPER-SECRET-TOKEN", expiresAt: Date.now() + 3_600_000 });
 
     llm.queue = [

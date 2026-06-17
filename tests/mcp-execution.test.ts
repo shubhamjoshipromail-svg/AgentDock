@@ -45,18 +45,23 @@ async function seedGmailFlow(userId: string) {
   });
   await prisma.workflowAgent.create({ data: { workflowId: workflow.id, agentId: agent.id, roleInWorkflow: "outreach", routeOrder: 1, defaultMode: "auto" } });
 
-  // Each discovered Gmail tool is its own grantable McpServer row.
+  // Each discovered Gmail tool is its own grantable McpServer row, identified by
+  // the generic execution columns (no name hack).
   for (const tool of ["create_draft", "send_email"]) {
     const server = await prisma.mcpServer.create({
       data: {
-        name: `mcp:gmail:${tool}`,
+        name: `gmail-${tool.replace("_", "-")}`,
         displayName: `Gmail: ${tool}`,
         description: `Gmail ${tool}`,
         registrySource: "first-party",
         registryId: `agentdock:gmail:${tool}`,
         riskLevel: "medium",
         verificationStatus: "verified",
-        recommendedPermission: "draft_only"
+        recommendedPermission: "draft_only",
+        mcpServerKey: "gmail",
+        mcpToolName: tool,
+        credentialProvider: "google",
+        isExternalSend: tool === "send_email"
       }
     });
     // draft_only grant (canWrite, no approval flag): create_draft → allowed,

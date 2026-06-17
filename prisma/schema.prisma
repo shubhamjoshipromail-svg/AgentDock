@@ -460,6 +460,16 @@ model McpServer {
   installCommand       String?               @map("install_command")
   registryRaw          Json?                 @map("registry_raw")
   metadata             Json                  @default("{}")
+  // Chunk 10: generic MCP execution identity. A row with mcpServerKey set is a
+  // real, connectable MCP tool — mcpServerKey is the registered server (transport
+  // + auth config live in the connection registry), mcpToolName is the tool
+  // discovered via tools/list, credentialProvider keys the generic token broker,
+  // and isExternalSend drives action classification. No server-specific code:
+  // identity flows by these columns, not by a name-prefix hack.
+  mcpServerKey         String?               @map("mcp_server_key")
+  mcpToolName          String?               @map("mcp_tool_name")
+  credentialProvider   String?               @map("credential_provider")
+  isExternalSend       Boolean               @default(false) @map("is_external_send")
   lastSyncedAt         DateTime?             @map("last_synced_at")
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")

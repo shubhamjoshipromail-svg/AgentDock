@@ -26,42 +26,50 @@ export type McpConnectContext = {
   env?: Record<string, string>;
 };
 
-// Only first-party, allowlisted servers may be connected this chunk. There is no
-// arbitrary-URL path — connecting untrusted third-party servers is a separate
-// trust/vetting chunk. A server absent from this set cannot be reached at all.
-const ALLOWLIST = new Set(["gmail"]);
+// A registered MCP server: how to launch/reach it (transport) and which env var
+// its credential broker fills. This is server *registration* — config data, not
+// per-server control flow. Connectability is "is this server registered", not a
+// hardcoded allowlist of names with special execution. Adding a server is a new
+// registration entry; no execution code changes.
+export type McpServerRegistration = {
+  // stdio launch config (the SDK keeps this transport-agnostic; remote transports
+  // can be added here later without touching callers).
+  command: string;
+  args: string[];
+  // The env var the brokered credential is injected into, if the server needs one.
+  tokenEnvVar?: string;
+};
 
-export function isConnectableMcpServer(serverName: string): boolean {
-  return ALLOWLIST.has(serverName);
-}
-
-// AgentDock represents each discovered MCP tool as its own grantable McpServer
-// row whose `name` encodes both the backing server and the tool, so the existing
-// one-row-one-tool grant model works unchanged: `mcp:<server>:<tool>`.
-// e.g. "mcp:gmail:create_draft", "mcp:gmail:send_email".
-export function isMcpToolServer(serverName: string): boolean {
-  return serverName.startsWith("mcp:");
-}
-
-export function parseMcpServerName(serverName: string): { server: string; tool: string } | null {
-  const match = /^mcp:([^:]+):(.+)$/.exec(serverName);
-  return match ? { server: match[1], tool: match[2] } : null;
-}
-
-export type TransportFactory = (serverName: string, ctx?: McpConnectContext) => Transport | Promise<Transport>;
-
-// The real transport spawns the first-party server over stdio. Tests inject an
-// in-memory transport instead (no child process), exercising the exact same
-// client code path.
-function defaultStdioTransport(serverName: string, ctx?: McpConnectContext): Transport {
-  if (serverName !== "gmail") {
-    throw new Error(`No transport configured for MCP server '${serverName}'.`);
+const SERVER_REGISTRY: Record<string, McpServerRegistration> = {
+  gmail: {
+    command: process.env.GMAIL_MCP_COMMAND ?? process.execPath,
+    args: (process.env.GMAIL_MCP_ARGS ?? "servers/gmail/dist/index.js").split(" ").filter(Boolean),
+    tokenEnvVar: "GMAIL_ACCESS_TOKEN"
   }
-  const command = process.env.GMAIL_MCP_COMMAND ?? process.execPath;
-  const args = (process.env.GMAIL_MCP_ARGS ?? "servers/gmail/dist/index.js").split(" ").filter(Boolean);
+};
+
+export function isConnectableMcpServer(serverKey: string): boolean {
+  return serverKey in SERVER_REGISTRY;
+}
+
+// The env var name a registered server expects its brokered credential in (if any).
+export function mcpTokenEnvVar(serverKey: string): string | null {
+  return SERVER_REGISTRY[serverKey]?.tokenEnvVar ?? null;
+}
+
+export type TransportFactory = (serverKey: string, ctx?: McpConnectContext) => Transport | Promise<Transport>;
+
+// The real transport spawns the registered server over stdio from its
+// registration config. Tests inject an in-memory transport instead (no child
+// process), exercising the exact same client code path.
+function defaultStdioTransport(serverKey: string, ctx?: McpConnectContext): Transport {
+  const registration = SERVER_REGISTRY[serverKey];
+  if (!registration) {
+    throw new Error(`MCP server '${serverKey}' is not registered.`);
+  }
   return new StdioClientTransport({
-    command,
-    args,
+    command: registration.command,
+    args: registration.args,
     env: { ...(process.env as Record<string, string>), ...(ctx?.env ?? {}) }
   });
 }
@@ -85,7 +93,7 @@ function connectionKey(serverName: string, ctx?: McpConnectContext): string {
 // run reuses one initialized session instead of re-handshaking per tool call.
 async function getClient(serverName: string, ctx?: McpConnectContext): Promise<Client> {
   if (!isConnectableMcpServer(serverName)) {
-    throw new Error(`MCP server '${serverName}' is not allowlisted for connection.`);
+    throw new Error(`MCP server '${serverName}' is not registered for connection.`);
   }
   const key = connectionKey(serverName, ctx);
   const existing = connections.get(key);

@@ -38,7 +38,7 @@ describe("governed MCP client — discovery + invocation over the real protocol"
     setMcpTransportFactory(null);
   });
 
-  it("only allowlisted first-party servers are connectable", () => {
+  it("only registered first-party servers are connectable", () => {
     expect(isConnectableMcpServer("gmail")).toBe(true);
     expect(isConnectableMcpServer("evil.example.com")).toBe(false);
     expect(isConnectableMcpServer("stripe")).toBe(false);
@@ -68,6 +68,6 @@ describe("governed MCP client — discovery + invocation over the real protocol"
   });
 
   it("refuses to connect a non-allowlisted server", async () => {
-    await expect(listMcpTools("evil.example.com")).rejects.toThrow(/not allowlisted/);
+    await expect(listMcpTools("evil.example.com")).rejects.toThrow(/not registered/);
   });
 });
