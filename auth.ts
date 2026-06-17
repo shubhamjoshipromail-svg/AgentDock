@@ -3,6 +3,16 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
 import { prisma } from "./lib/prisma";
+import { storeGoogleOAuthToken } from "./lib/execution/credentials";
+
+// Gmail scopes for the first-party Gmail MCP server: compose (drafts) + send.
+const GMAIL_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/gmail.compose",
+  "https://www.googleapis.com/auth/gmail.send"
+].join(" ");
 
 if (!process.env.NEXTAUTH_URL && process.env.AUTH_URL) {
   process.env.NEXTAUTH_URL = process.env.AUTH_URL;
@@ -23,7 +33,11 @@ export const authOptions: NextAuthOptions = {
           clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
           authorization: {
             params: {
-              scope: "openid email profile"
+              scope: GMAIL_SCOPES,
+              // Needed to receive a refresh token so the Gmail server can act
+              // server-side after the access token expires.
+              access_type: "offline",
+              prompt: "consent"
             }
           }
         })
@@ -40,6 +54,19 @@ export const authOptions: NextAuthOptions = {
       }
 
       return session;
+    }
+  },
+  events: {
+    // Capture the Google OAuth token on sign-in and store it ENCRYPTED, keyed to
+    // the user. The token is never returned to the client or the agent; only the
+    // run engine reads it (decrypted) to hand to the Gmail MCP server's env.
+    async signIn({ user, account }) {
+      if (account?.provider !== "google" || !account.access_token || !user.id) return;
+      await storeGoogleOAuthToken(user.id, {
+        accessToken: account.access_token,
+        refreshToken: account.refresh_token ?? null,
+        expiresAt: account.expires_at ? account.expires_at * 1000 : null
+      });
     }
   }
 };
