@@ -2,6 +2,17 @@ import { createAnthropicProvider } from "./anthropic";
 import { createOpenAiProvider } from "./openai";
 import type { LlmProvider } from "./types";
 
+// PROTOCOL_AUDIT C-1 / F-1 — DELIBERATE two-source model-key design (documented,
+// not accidental drift):
+//   • getProvider() (here) = the SYSTEM provider from env keys. It powers ONLY
+//     flow *planning* (`POST /api/flows/plan`), so a user can plan a flow before
+//     adding their own key — an onboarding capability.
+//   • getRunProvider() (lib/execution/provider.ts) = the per-user BYO key, used
+//     for real *runs*. Inference cost on a run is always the user's own.
+// These are kept as two paths on purpose; collapsing them would remove
+// plan-before-BYO onboarding. Founder decision F-1 in docs/PROTOCOL_AUDIT.md
+// confirms keeping env-key planning as the system fallback.
+//
 // Selects a provider from env. ORCHESTRATOR_PROVIDER ("anthropic" | "openai")
 // forces a choice; otherwise it defaults to whichever key is present, preferring
 // Anthropic when both are set. Returns null when no key is configured — callers

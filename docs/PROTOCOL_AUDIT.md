@@ -103,15 +103,29 @@ dependency-bearing MCP search server in this pass.** Rationale:
 it like Gmail and delete the bespoke executor so only `tools/call` remains.
 Status: **deferred (recorded F-decision).**
 
-### C-1 / F-1 — Two model-key systems
+### C-1 / F-1 — Two model-key systems — DOCUMENTED (one deliberate design)
 
-`lib/llm/index.ts` `getProvider()` reads **env** keys (`ANTHROPIC_API_KEY` /
-`OPENAI_API_KEY`) and powers the planning endpoint; `lib/execution/provider.ts`
-`getRunProvider()` reads the user's **BYO** key for real runs. These are two
-systems for the same job. Removing env-key planning would break "plan a flow
-before adding your own key." **Action (Phase 5):** unify behind one interface and
-**document** the two deliberate sources, rather than delete either; founder to
-confirm (F-1).
+`lib/llm/index.ts` `getProvider()` reads **env** keys and powers ONLY flow
+*planning* (`POST /api/flows/plan` — confirmed the sole caller);
+`lib/execution/provider.ts` `getRunProvider()` reads the user's **BYO** key for
+real *runs*. **Phase 5 action taken:** documented the two sources as a deliberate
+design at `lib/llm/index.ts` (planning = system env fallback so a user can plan
+before adding a key; runs = the user's own key, so inference cost is always
+theirs). Not consolidated to a single key, because that would remove
+plan-before-BYO onboarding. Status: **resolved (documented); F-1 confirms keeping
+env-key planning as the system fallback.**
+
+### B — Dead / demo / orphaned code — INVESTIGATED, no safe deletions this pass
+
+Per the rubric, a candidate is Category B only if it has **no live caller**.
+- `app/api/workflow-runs/simulate/route.ts` → **live** (Build → "Run preview" via
+  `components/build/Builder.tsx`). Category **E**, kept.
+- `components/mock-data.ts` (demo seeds/labels) → **live** (imported by Shell,
+  Builder, Store, Library, palette, MemorySection, etc.). Not orphaned; the
+  mislabeled strings in it were handled under D-1/D-2.
+No export was found with zero live callers that could be deleted safely in this
+pass. A dedicated dead-code sweep (cross-file export usage) is a better tool for
+this than the conformance audit; recorded as a future cleanup, not forced here.
 
 ### D-1 — "A2A handoff" is not A2A
 
