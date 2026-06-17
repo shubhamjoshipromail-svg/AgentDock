@@ -4,9 +4,27 @@ import type { LlmProvider } from "../llm/types";
 import { prisma } from "../prisma";
 import { authorizeToolCall, effectiveGrantPermission, type ActionKind } from "./policy-gate";
 import { getExecutor, isRealTool } from "./tools/registry";
+import { callMcpTool, isMcpToolServer, parseMcpServerName } from "./mcp-client";
+import { loadGoogleAccessToken } from "./credentials";
 import { getRunProvider } from "./provider";
 import { buildStepContext } from "./memory";
 import type { RunEventMeta } from "../types";
+
+// First-party MCP tools that perform an EXTERNAL write (real outbound effect).
+// These ride the send/approval path and the lethal-trifecta guard. Everything
+// else an MCP server exposes (e.g. create_draft, which writes only to the user's
+// own mailbox) is a safe, reversible, non-external op for gating purposes.
+const MCP_EXTERNAL_SEND_TOOLS = new Set(["send_email"]);
+
+// Governance classification for an MCP tool, by tool name. Note: create_draft is
+// classified as a read-class action because a draft has no external side effect
+// and is reversible — it is NOT auto-allowing a write to the outside world. The
+// real tool name is always recorded in the audit event, so nothing is hidden.
+function classifyMcpTool(toolName: string): { action: ActionKind; isExternalSend: boolean } {
+  return MCP_EXTERNAL_SEND_TOOLS.has(toolName)
+    ? { action: "send", isExternalSend: true }
+    : { action: "read", isExternalSend: false };
+}
 
 // ============================================================================
 // THE RUN ENGINE — executes a saved flow for real, step by step, bounded,
@@ -46,7 +64,9 @@ function capText(value: string, limit: number): string {
 // The model addresses tools by a friendly name; the gate/executor use the
 // McpServer.name. Search is the one real tool, exposed as "web_search".
 function toolNameFor(serverName: string): string {
-  return serverName === "search-mcp" ? "web_search" : serverName;
+  if (serverName === "search-mcp") return "web_search";
+  const parsed = parseMcpServerName(serverName);
+  return parsed ? parsed.tool : serverName;
 }
 
 // Untrusted-content framing: tool outputs and memory are DATA, never commands.
@@ -60,11 +80,13 @@ const SECURITY_PREAMBLE =
   "Do NOT return a bare acknowledgement, a status line, raw tool output pasted verbatim, or a nested JSON object as the " +
   "answer; synthesize what you found into a clear, self-contained result the user can read on its own. " +
   'Respond with ONLY a JSON object: either {"type":"final","text":"<your answer>"} ' +
-  'or {"type":"tool_call","tool":"<tool name>","action":"read|write|send|delete|execute","input":"<string>"}.';
+  'or {"type":"tool_call","tool":"<tool name>","action":"read|write|send|delete|execute","input":"<string>"}. ' +
+  'For tools that declare an input schema (e.g. email tools), put the structured fields in an "arguments" object ' +
+  'matching that schema, e.g. {"type":"tool_call","tool":"send_email","arguments":{"to":"...","subject":"...","body":"..."}}.';
 
 type Envelope =
   | { type: "final"; text: string }
-  | { type: "tool_call"; tool: string; action: ActionKind; input: string };
+  | { type: "tool_call"; tool: string; action: ActionKind; input: string; arguments?: Record<string, unknown> };
 
 function parseEnvelope(text: string): Envelope {
   let body = text.trim();
@@ -73,7 +95,13 @@ function parseEnvelope(text: string): Envelope {
     const json = JSON.parse(body);
     if (json && json.type === "tool_call" && typeof json.tool === "string") {
       const action: ActionKind = ["read", "write", "send", "delete", "execute"].includes(json.action) ? json.action : "read";
-      return { type: "tool_call", tool: String(json.tool), action, input: String(json.input ?? "") };
+      // MCP tools take a structured `arguments` object matching their input
+      // schema; legacy string tools (web search) keep `input`.
+      const args =
+        json.arguments && typeof json.arguments === "object" && !Array.isArray(json.arguments)
+          ? (json.arguments as Record<string, unknown>)
+          : undefined;
+      return { type: "tool_call", tool: String(json.tool), action, input: String(json.input ?? ""), arguments: args };
     }
     if (json && json.type === "final") return { type: "final", text: String(json.text ?? "") };
   } catch {
@@ -284,7 +312,7 @@ async function runStep(
   agent: RunnableAgent,
   seedResults: string[],
   handoffContent: string | null,
-  approvedCall: { toolName: string; serverId: string; action: ActionKind; input: string } | null
+  approvedCall: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null } | null
 ): Promise<StepOutcome> {
   const toolResults = [...seedResults];
   const memoryContext = await buildStepContext(ctx.userId, agent.agentId, ctx.runId);
@@ -359,11 +387,17 @@ async function runStep(
 
     // --- tool call requested → THE POLICY GATE (pre-action) ---
     const tool = agent.allowedTools.find((x) => x.toolName === envelope.tool);
+    // MCP tools are classified by tool name (send_email = external write →
+    // approval; create_draft = safe). Legacy/string tools use the model's action
+    // and the loadRunnable external-send heuristic.
+    const classified = tool && isMcpToolServer(tool.server.name) ? classifyMcpTool(tool.toolName) : null;
+    const actionKind: ActionKind = classified ? classified.action : envelope.action;
+    const isExternalSend = classified ? classified.isExternalSend : tool?.isExternalSend ?? true;
     const gate = authorizeToolCall({
       inAllowList: Boolean(tool),
       grant: tool ? { permission: effectiveGrantPermission(tool.grant), revokedAt: tool.grant.revokedAt } : null,
       server: tool ? tool.server : { verificationStatus: "unverified", riskLevel: "high", recommendedPermission: "blocked" },
-      action: { kind: envelope.action, isExternalSend: tool?.isExternalSend ?? true },
+      action: { kind: actionKind, isExternalSend },
       step: { ingestedUntrusted: toolResults.length > 0 || Boolean(handoffContent), hasSensitiveMemory: memoryContext.includes("[restricted]") }
     });
 
@@ -388,10 +422,10 @@ async function runStep(
           description: `${agent.name} requested ${envelope.tool} (${envelope.action}): ${gate.reason}`,
           actionType: tool?.isExternalSend ? "email_send" : "tool_scope_change",
           riskLevel: tool?.server.riskLevel ?? "high",
-          status: "pending", stepIndex: agent.index, scope: `${envelope.tool}:${envelope.action}`,
+          status: "pending", stepIndex: agent.index, scope: `${envelope.tool}:${actionKind}`,
           metadata: {
-            toolName: envelope.tool, serverId: tool?.server.id ?? "", action: envelope.action,
-            input: envelope.input, seedResults: toolResults, handoffContent
+            toolName: envelope.tool, serverId: tool?.server.id ?? "", action: actionKind,
+            input: envelope.input, arguments: envelope.arguments ?? null, seedResults: toolResults, handoffContent
           } as Prisma.InputJsonObject
         }
       });
@@ -411,7 +445,7 @@ async function runStep(
       await haltError(ctx, "tool-call ceiling reached");
       return { kind: "halted", status: "halted_error" };
     }
-    const executed = await executeAllowedTool(ctx, agent, tool!, envelope.action, envelope.input, gate.reason);
+    const executed = await executeAllowedTool(ctx, agent, tool!, actionKind, envelope.input, gate.reason, envelope.arguments);
     toolResults.push(executed);
   }
 
@@ -419,20 +453,34 @@ async function runStep(
   return { kind: "done" };
 }
 
-async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedTool, action: ActionKind, input: string, reason: string): Promise<string> {
+async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedTool, action: ActionKind, input: string, reason: string, args?: Record<string, unknown>): Promise<string> {
   const executor = getExecutor(tool.server.name);
+  const mcp = parseMcpServerName(tool.server.name);
   let output: string;
   let costCents = 0;
-  if (executor) {
+  let real = false;
+  let toolInputForAudit = input;
+
+  if (mcp && isMcpToolServer(tool.server.name)) {
+    // Route through the real governed MCP client with STRUCTURED arguments. The
+    // first-party Gmail server reads the user's token from its own env — the
+    // token is set here server-side and never reaches the agent.
+    const structuredArgs = args ?? {};
+    toolInputForAudit = JSON.stringify(structuredArgs);
+    const env = await mcpServerEnv(mcp.server, ctx.userId);
+    const res = await callMcpTool(mcp.server, mcp.tool, structuredArgs, { userId: ctx.userId, env });
+    output = res.isError ? `[tool error] ${res.text}` : res.text;
+    real = true;
+  } else if (executor) {
     const res = await executor(input);
     output = res.output;
     costCents = res.costCents;
+    real = isRealTool(tool.server.name);
   } else {
     // Allowed by policy, but no executor is implemented. Be explicit and never
     // fabricate success; the unavailable note re-enters context as untrusted data.
     output = `[unavailable] no real executor for this tool`;
   }
-  const real = Boolean(executor) && isRealTool(tool.server.name);
   await meter(ctx.runId, costCents);
   await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { toolCallCount: { increment: 1 } } });
   await appendEvent({
@@ -444,7 +492,7 @@ async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedT
     metadata: {
       real,
       toolName: tool.toolName,
-      toolInput: capText(input, TOOL_INPUT_META_LIMIT),
+      toolInput: capText(toolInputForAudit, TOOL_INPUT_META_LIMIT),
       toolOutput: capText(output, TOOL_OUTPUT_META_LIMIT)
     }
   });
@@ -452,10 +500,21 @@ async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedT
   return `${tool.toolName} result: ${output}`;
 }
 
+// Build the server-side environment for an MCP server connection. For Gmail this
+// injects the user's decrypted OAuth access token — set ONLY in the server's
+// process env, never exposed to the agent or returned to any client.
+async function mcpServerEnv(serverName: string, userId: string): Promise<Record<string, string>> {
+  if (serverName === "gmail") {
+    const token = await loadGoogleAccessToken(userId);
+    return token ? { GMAIL_ACCESS_TOKEN: token } : {};
+  }
+  return {};
+}
+
 async function executeApprovedTool(
   ctx: Ctx,
   agent: RunnableAgent,
-  pending: { toolName: string; serverId: string; action: ActionKind; input: string },
+  pending: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null },
   step: { ingestedUntrusted: boolean; hasSensitiveMemory: boolean }
 ): Promise<{ kind: "executed"; result: string } | { kind: "blocked" }> {
   const tool = agent.allowedTools.find((t) => t.server.id === pending.serverId) ?? agent.allowedTools.find((t) => t.toolName === pending.toolName);
@@ -465,11 +524,14 @@ async function executeApprovedTool(
     return { kind: "blocked" };
   }
 
+  // Re-classify MCP tools by name so the re-gate uses the same external-send /
+  // action semantics as the initial gate (send_email stays an external send).
+  const classified = isMcpToolServer(tool.server.name) ? classifyMcpTool(tool.toolName) : null;
   const gate = authorizeToolCall({
     inAllowList: true,
     grant: { permission: effectiveGrantPermission(tool.grant), revokedAt: tool.grant.revokedAt },
     server: tool.server,
-    action: { kind: pending.action, isExternalSend: tool.isExternalSend },
+    action: { kind: classified ? classified.action : pending.action, isExternalSend: classified ? classified.isExternalSend : tool.isExternalSend },
     step
   });
 
@@ -495,7 +557,15 @@ async function executeApprovedTool(
     authorityRef: tool.grant.id
   });
 
-  const result = await executeAllowedTool(ctx, agent, tool, pending.action, pending.input, "human-approved after policy re-check");
+  const result = await executeAllowedTool(
+    ctx,
+    agent,
+    tool,
+    classified ? classified.action : pending.action,
+    pending.input,
+    "human-approved after policy re-check",
+    pending.arguments ?? undefined
+  );
   return { kind: "executed", result };
 }
 
@@ -516,7 +586,7 @@ async function drive(
   fromStep: number,
   firstStepSeed: string[],
   firstStepHandoff: string | null,
-  firstApprovedCall: { toolName: string; serverId: string; action: ActionKind; input: string } | null
+  firstApprovedCall: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null } | null
 ): Promise<RunResult> {
   let lastFinalText: string | null = null;
   let handoff: { from: string; content: string } | null = firstStepHandoff
@@ -614,9 +684,9 @@ export async function resumeAfterApproval(userId: string, approvalId: string, ap
   }
   await prisma.workflowRun.update({ where: { id: runId }, data: { status: "running" } });
 
-  const meta = (approval.metadata ?? {}) as { toolName?: string; serverId?: string; action?: ActionKind; input?: string; seedResults?: string[]; handoffContent?: string | null };
+  const meta = (approval.metadata ?? {}) as { toolName?: string; serverId?: string; action?: ActionKind; input?: string; arguments?: Record<string, unknown> | null; seedResults?: string[]; handoffContent?: string | null };
   const approvedCall = meta.toolName
-    ? { toolName: meta.toolName, serverId: meta.serverId ?? "", action: (meta.action ?? "read") as ActionKind, input: meta.input ?? "" }
+    ? { toolName: meta.toolName, serverId: meta.serverId ?? "", action: (meta.action ?? "read") as ActionKind, input: meta.input ?? "", arguments: meta.arguments ?? null }
     : null;
   const fromStep = approval.stepIndex ?? 0;
   return drive(ctx, fromStep, meta.seedResults ?? [], meta.handoffContent ?? null, approvedCall);

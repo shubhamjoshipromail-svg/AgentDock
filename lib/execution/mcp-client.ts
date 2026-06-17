@@ -35,6 +35,19 @@ export function isConnectableMcpServer(serverName: string): boolean {
   return ALLOWLIST.has(serverName);
 }
 
+// AgentDock represents each discovered MCP tool as its own grantable McpServer
+// row whose `name` encodes both the backing server and the tool, so the existing
+// one-row-one-tool grant model works unchanged: `mcp:<server>:<tool>`.
+// e.g. "mcp:gmail:create_draft", "mcp:gmail:send_email".
+export function isMcpToolServer(serverName: string): boolean {
+  return serverName.startsWith("mcp:");
+}
+
+export function parseMcpServerName(serverName: string): { server: string; tool: string } | null {
+  const match = /^mcp:([^:]+):(.+)$/.exec(serverName);
+  return match ? { server: match[1], tool: match[2] } : null;
+}
+
 export type TransportFactory = (serverName: string, ctx?: McpConnectContext) => Transport | Promise<Transport>;
 
 // The real transport spawns the first-party server over stdio. Tests inject an
