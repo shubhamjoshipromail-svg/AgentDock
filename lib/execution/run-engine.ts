@@ -620,6 +620,10 @@ async function drive(
     const agent = ctx.agents[i];
     const stepHandoff = handoff?.content ?? null;
     if (stepHandoff) {
+      // ROADMAP (Chunk 10, D-1): this is a bespoke linear handoff — the previous
+      // agent's output forwarded as untrusted data — NOT the A2A protocol. The DB
+      // enum value `a2a_handoff` is retained to avoid a migration; real **A2A**
+      // adoption is a future chunk.
       await appendEvent({
         runId: ctx.runId, userId: ctx.userId, eventType: "a2a_handoff",
         title: `${handoff!.from} → ${agent.name}`,

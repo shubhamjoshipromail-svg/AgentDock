@@ -7,7 +7,11 @@ export type BuilderNodeType = "goal" | "agent" | "mcp" | "memory" | "control";
 export type BuilderMode = "empty" | "draft" | "saved" | "running" | "approval_pending";
 export type RuntimeModeName = "Provider API Mode" | "AgentDock Sandbox Mode" | "User Cloud Mode" | "Local Mode";
 export type Decision = "allowed" | "blocked" | "approval_required" | "approved" | "denied" | "info";
-export type EventType = "memory access" | "credential minting" | "A2A handoff" | "MCP/tool use" | "approval request" | "blocked action" | "spend event";
+// ROADMAP (Chunk 10, finding D-1): "Agent handoff" is AgentDock's bespoke linear
+// inter-agent handoff (the previous agent's output forwarded as untrusted data),
+// NOT the A2A protocol (no AgentCard, task lifecycle, or transport). Honest name
+// kept here; real **A2A** adoption is a future protocol chunk.
+export type EventType = "memory access" | "credential minting" | "Agent handoff" | "MCP/tool use" | "approval request" | "blocked action" | "spend event";
 
 export type RunEventMeta = {
   modelOutput?: string;

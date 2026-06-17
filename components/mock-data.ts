@@ -97,7 +97,7 @@ export const stepDisplayNames: Record<string, string> = {
   "Company Research Agent": "Research",
   "Resume Tailoring Agent": "Resume",
   "Outreach Draft Agent": "Outreach",
-  "A2UI Approval Gate": "Approval Gate"
+  "Approval Gate": "Approval Gate"
 };
 
 export const workflowTemplates = [
@@ -233,7 +233,7 @@ export const baseAuditEvents: AuditEvent[] = [
 
 export const simulatedRunEvents: AuditEvent[] = [
   { event: "Job Discovery Agent searched 12 roles", type: "MCP/tool use", agent: "Job Discovery Agent", workflow: "Job Search Automation", tool: "Search MCP", permission: "search", memory: "Job Search Memory", cost: "$0.09", decision: "allowed" },
-  { event: "Company Research Agent summarized 3 companies", type: "A2A handoff", agent: "Company Research Agent", workflow: "Job Search Automation", tool: "Search MCP", permission: "write notes", memory: "Research Memory", cost: "$0.18", decision: "allowed" },
+  { event: "Company Research Agent summarized 3 companies", type: "Agent handoff", agent: "Company Research Agent", workflow: "Job Search Automation", tool: "Search MCP", permission: "write notes", memory: "Research Memory", cost: "$0.18", decision: "allowed" },
   { event: "Resume Tailoring Agent read Resume Memory", type: "memory access", agent: "Resume Tailoring Agent", workflow: "Job Search Automation", tool: "Memory Firewall", permission: "read", memory: "Resume Memory", cost: "$0.02", decision: "allowed" },
   { event: "Resume Tailoring Agent created a resume draft and requires approval", type: "approval request", agent: "Resume Tailoring Agent", workflow: "Job Search Automation", tool: "Docs / Notion MCP", permission: "create draft", memory: "Resume Memory", cost: "$0.24", decision: "approval_required" },
   { event: "Outreach Draft Agent created 3 Gmail drafts and requires approval", type: "approval request", agent: "Outreach Draft Agent", workflow: "Job Search Automation", tool: "Gmail draft-only MCP", permission: "create drafts", memory: "Research Memory", cost: "$0.11", decision: "approval_required" },
@@ -286,7 +286,7 @@ export const runtimeModes: RuntimeMode[] = [
 ];
 
 export const builderControls: ControlComponent[] = [
-  { name: "A2UI Approval Gate", riskLevel: "Low", permissions: "Approves drafts, sends, exports, and applications", memoryAccess: "Reads policy context only", budgetImpact: "$0.00", approvalMode: "Human approval required" },
+  { name: "Approval Gate", riskLevel: "Low", permissions: "Approves drafts, sends, exports, and applications", memoryAccess: "Reads policy context only", budgetImpact: "$0.00", approvalMode: "Human approval required" },
   { name: "Budget Cap", riskLevel: "Low", permissions: "Pauses workflow before spend limit", memoryAccess: "No memory access", budgetImpact: "$5/week", approvalMode: "Automatic enforcement" },
   { name: "Human Review", riskLevel: "Low", permissions: "Queues artifacts before external action", memoryAccess: "Scoped artifact preview", budgetImpact: "$0.00", approvalMode: "Manual review" },
   { name: "Blocked Action", riskLevel: "Medium", permissions: "Blocks sends, payments, broad exports, and applications", memoryAccess: "No memory access", budgetImpact: "$0.00", approvalMode: "Always blocked" },
@@ -300,13 +300,13 @@ export const recommendedBuilderNodes: BuilderNode[] = [
   { id: "agent-company-research", name: "Company Research Agent", type: "agent", provider: "Claude", category: "Research", permissions: "Summarize companies, write research notes", memoryAccess: "Research Memory: read/write", budgetImpact: "Metadata only", approvalMode: "Human-reviewed notes", attachments: ["Search MCP", "Research Memory"] },
   { id: "agent-resume-tailoring", name: "Resume Tailoring Agent", type: "agent", provider: "OpenAI", category: "Documents", permissions: "Create resume drafts", memoryAccess: "Resume Memory: read/write", budgetImpact: "Metadata only", approvalMode: "Approval before export", attachments: ["Docs / Notion MCP", "Resume Memory"] },
   { id: "agent-outreach-draft", name: "Outreach Draft Agent", type: "agent", provider: "Gemini", category: "Communications", permissions: "Create Gmail drafts only", memoryAccess: "Job Search Memory: read, Outreach History: write", budgetImpact: "Metadata only", approvalMode: "Never send without approval", attachments: ["Gmail Draft MCP", "Job Search Memory"] },
-  { id: "control-approval-gate", name: "A2UI Approval Gate", type: "control", category: "Control", riskLevel: "Low", permissions: "Send/apply actions require user approval", memoryAccess: "Policy context only", budgetImpact: "$0.00", approvalMode: "2 approval gates", attachments: ["Send/apply actions require user approval"] }
+  { id: "control-approval-gate", name: "Approval Gate", type: "control", category: "Control", riskLevel: "Low", permissions: "Send/apply actions require user approval", memoryAccess: "Policy context only", budgetImpact: "$0.00", approvalMode: "2 approval gates", attachments: ["Send/apply actions require user approval"] }
 ];
 
 export const builderSimulateEvents: AuditEvent[] = [
-  { event: "Orchestration Agent recommended Job Search stack", type: "A2A handoff", agent: "AgentDock Orchestration Agent", workflow: "Job Search Automation", tool: "Build", permission: "recommend stack", memory: "Job Search Memory", cost: "$0.00", decision: "allowed" },
+  { event: "Orchestration Agent recommended Job Search stack", type: "Agent handoff", agent: "AgentDock Orchestration Agent", workflow: "Job Search Automation", tool: "Build", permission: "recommend stack", memory: "Job Search Memory", cost: "$0.00", decision: "allowed" },
   { event: "Job Discovery Agent searched 12 roles", type: "MCP/tool use", agent: "Job Discovery Agent", workflow: "Job Search Automation", tool: "Search MCP", permission: "search", memory: "Job Search Memory", cost: "$0.09", decision: "allowed" },
-  { event: "Company Research Agent summarized 3 companies", type: "A2A handoff", agent: "Company Research Agent", workflow: "Job Search Automation", tool: "Search MCP", permission: "write notes", memory: "Research Memory", cost: "$0.18", decision: "allowed" },
+  { event: "Company Research Agent summarized 3 companies", type: "Agent handoff", agent: "Company Research Agent", workflow: "Job Search Automation", tool: "Search MCP", permission: "write notes", memory: "Research Memory", cost: "$0.18", decision: "allowed" },
   { event: "Resume Tailoring Agent read Resume Memory", type: "memory access", agent: "Resume Tailoring Agent", workflow: "Job Search Automation", tool: "Memory Firewall", permission: "read", memory: "Resume Memory", cost: "$0.02", decision: "allowed" },
   { event: "Outreach Draft Agent requested Gmail draft access", type: "approval request", agent: "Outreach Draft Agent", workflow: "Job Search Automation", tool: "Gmail Draft MCP", permission: "create drafts", memory: "Job Search Memory", cost: "$0.11", decision: "approval_required" },
   { event: "Approval Gate created 3 pending approvals", type: "approval request", agent: "Approval Gate", workflow: "Job Search Automation", tool: "Control", permission: "human review", memory: "None", cost: "$0.00", decision: "approval_required" },
@@ -318,21 +318,21 @@ export const builderSimulateEvents: AuditEvent[] = [
 export const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export const eventTypeLabels: Record<string, EventType> = {
-  orchestration: "A2A handoff",
-  a2a_handoff: "A2A handoff",
+  orchestration: "Agent handoff",
+  a2a_handoff: "Agent handoff",
   mcp_tool_use: "MCP/tool use",
   memory_access: "memory access",
   credential_minted: "credential minting",
   approval_requested: "approval request",
   action_blocked: "blocked action",
   spend_event: "spend event",
-  workflow_completed: "A2A handoff"
+  workflow_completed: "Agent handoff"
 };
 
 export function activityLogToAuditEvent(log: PersistedActivityLog): AuditEvent {
   return {
     event: log.title,
-    type: eventTypeLabels[log.eventType] ?? "A2A handoff",
+    type: eventTypeLabels[log.eventType] ?? "Agent handoff",
     agent: log.agent?.name ?? "AgentDock Orchestration Agent",
     workflow: log.workflow?.name ?? (typeof log.metadata?.workflowName === "string" ? log.metadata.workflowName : "Job Search Automation"),
     tool: typeof log.metadata?.mcpName === "string"

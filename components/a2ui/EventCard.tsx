@@ -1,7 +1,11 @@
 "use client";
 
-// A2UI — agent-to-user interface. Every agent-originated event reaches the human
-// through ONE card anatomy: who · what · on what · authority · decision · when/cost.
+// ROADMAP (Chunk 10, finding D-2): these are AgentDock's bespoke event cards —
+// every agent-originated event reaches the human through ONE card anatomy
+// (who · what · on what · authority · decision · when/cost). This is working
+// rendering, NOT a surface protocol. The "A2UI" identifiers here are flagged for
+// an honest rename when the real **A2UI** (agent-to-user interface) protocol is
+// adopted in a future chunk; behavior is unchanged for now.
 import type { AuditEvent, Decision, McpRiskLevel, PersistedApprovalRequest, PersistedWorkflowRunEvent } from "../../lib/types";
 import { Badge, Button, Data } from "../layout/primitives";
 
