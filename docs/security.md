@@ -11,9 +11,30 @@ agent step is a real model call, agent outputs hand off to the next agent as
 untrusted data, every tool call passes a deterministic pre-action policy gate,
 `approval_required` actions pause the live run, real cost is metered and halts
 the run at a cap, every action writes an immutable audit event, and a kill switch
-terminates an in-flight run. Exactly one real tool exists (read-only web search);
-all other policy-allowed tools are reported honestly as unavailable until an
-executor exists.
+terminates an in-flight run. Real tool execution now also flows through a real,
+governed MCP client (`tools/call` over the official SDK); read-only web search
+keeps its legacy path, and any other policy-allowed tool without an executor is
+still reported honestly as unavailable.
+
+## Governed MCP execution + Gmail (Chunk 9)
+
+Every MCP `tools/call` passes the same deterministic gate as any other action —
+deny-by-default, action classification, the lethal-trifecta guard, cost, audit,
+and untrusted-output framing. A discovered tool is blocked until explicitly
+granted. Two load-bearing guarantees for the first-party Gmail server:
+
+- **No silent send.** `send_email` is classified as an external write, so it can
+  only ever reach `approval_required` or `blocked` — there is no grant under
+  which it auto-executes. Injected instructions in untrusted web content or a
+  handoff cannot trigger a send; they still stop at approval. `create_draft`
+  writes only to the user's own Drafts and is treated as a safe, reversible op.
+- **Token never leaves the server side.** The Google OAuth token is encrypted at
+  rest (AES-256-GCM, reusing the credential helpers) and decrypted only by the
+  run engine to inject into the Gmail server's process environment. It never
+  appears in an API response, a run event, the agent's context, or a tool result.
+
+Connecting arbitrary third-party MCP servers is intentionally not enabled — only
+the allowlisted first-party server is reachable.
 
 Chunk 6 hardens the governance state machine:
 

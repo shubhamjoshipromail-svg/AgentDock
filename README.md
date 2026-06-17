@@ -348,6 +348,51 @@ The catalog API supports:
 - Registry-source filter
 - Cursor pagination
 
+## Governed MCP Client (any compliant server, through the gate)
+
+AgentDock adopted MCP's data model from the start; it now has a real MCP
+**execution** client too (`lib/execution/mcp-client.ts`, built on the official
+`@modelcontextprotocol/sdk`). It speaks the real wire protocol — `initialize` →
+`tools/list` → `tools/call` — so adding a capability becomes "connect a server +
+grant + gate it," not "hand-write an executor per tool."
+
+Every MCP `tools/call` routes through the **same deterministic policy gate** as
+everything else: deny-by-default, action classification, the lethal-trifecta
+guard, cost metering, approvals, the kill switch, and untrusted-output framing.
+A newly discovered tool is **blocked until explicitly granted**. The agent emits
+a structured `arguments` object matching the tool's input schema; the legacy
+`search-mcp` string path is unchanged.
+
+### First-party Gmail server
+
+The first connected server is a first-party Gmail MCP server (`servers/gmail/`)
+exposing two tools:
+
+- `create_draft` — writes only to your own Drafts. Safe, reversible, no external
+  side effect; executes without approval.
+- `send_email` — a real outbound send. Classified as an external write, so it is
+  **always approval-gated and never auto-sends** — there is no grant
+  configuration under which a send is auto-allowed. Injected instructions buried
+  in untrusted content cannot trigger a silent send; they still stop at approval.
+
+The user's Google OAuth token (scopes `gmail.compose` + `gmail.send`) is stored
+**encrypted** and read **server-side only** — it is injected into the Gmail
+server's process environment and is never returned to a client or handed to an
+agent. The founder performs the live Google consent once (see below).
+
+Connecting **arbitrary third-party MCP servers is intentionally not enabled** —
+only the allowlisted first-party server is connectable. Untrusted-server vetting
+is a separate trust chunk.
+
+### Enabling Gmail locally (founder step)
+
+1. Add `gmail.compose` + `gmail.send` to the OAuth consent screen scopes in
+   Google Cloud, then sign out and sign back in to re-consent.
+2. Build a flow, grant a Gmail tool, and give the agent a goal that needs an
+   email. `send_email` will pause at an approval card showing the exact
+   to/subject/body; approving sends for real. `create_draft` lands a draft with
+   no approval. The agent never receives your token.
+
 ## Flow Persistence and Run Preview
 
 Saving a Flow persists:
