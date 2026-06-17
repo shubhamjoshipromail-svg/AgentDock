@@ -18,8 +18,10 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "googleapis": "^173.0.0",
     "next": "^16.2.6",
     "next-auth": "^4.24.14",
     "pg": "^8.20.0",
