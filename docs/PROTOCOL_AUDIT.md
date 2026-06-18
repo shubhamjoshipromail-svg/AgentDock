@@ -19,20 +19,34 @@ a **category (A–F)**, and the prescribed action. Categories:
 - **F** — uncertain / behavior-or-architecture-altering / risky → STOP, flag for
   the founder.
 
-> **Status column** is filled in during remediation (Phases 2–6). At Phase 1 all
-> rows are `open`.
+> **CLOSED OUT (Phase 6).** The Status column reflects the final outcome of each
+> finding: resolved, deferred (with a recorded decision), or flagged for the
+> founder. Categories A-1..A-4, C-1, D-1, D-2 are resolved; A-5 (engine half),
+> resolved with the catalog/UI half flagged (F-3); A-6 deferred (F-2).
 
 ---
 
 ## Founder decisions needed (Category F)
 
-_Populated as remediation proceeds. At Phase 1: see F-1 below._
+These are the items left for you — none block the resolved remediation; each is a
+deliberate "stop and decide" rather than a silent change.
 
-- **F-1 — Model-provider key consolidation (see C-1).** Collapsing planning (env
-  keys) and runs (BYO keys) into one path changes onboarding behavior (planning
-  before a BYO key exists). Recommend **unify behind one interface + document the
-  two deliberate sources** rather than delete either. Founder to confirm whether
-  env-key planning should remain as a system fallback.
+- **F-1 — Model-provider keys (C-1): RESOLVED as documented.** Planning uses the
+  system env key (so you can plan before adding a key); runs use your BYO key.
+  Kept as two deliberate paths and documented in `lib/llm/index.ts`. **Decision
+  needed only if** you'd prefer planning to also require a BYO key (removing the
+  pre-key planning affordance) — otherwise no action.
+- **F-2 — Web-search executor (A-6): DEFERRED.** No vetted MCP search server is
+  available without a new dependency + trust surface, so the legacy executor
+  stays behind the generic dispatch (not a per-server special-case). Replace it
+  with a registered MCP search server in a future chunk. No action needed now.
+- **F-3 — Gmail catalog reachability + connect UI (A-5, remaining half): DEFERRED.**
+  The engine/grant/identity is now generic and Gmail executes through it (proven
+  in tests). What remains for *live UI* reachability is (a) seeding the two Gmail
+  tools as catalog `McpServer` rows carrying the new identity columns, and (b) a
+  "connect a server → list discovered tools → grant per tool" A2UI surface.
+  Deferred this pass to avoid destabilizing the catalog/sync/sanity tests; this is
+  the live Gmail-from-UI step. Founder to confirm priority for the next chunk.
 
 ---
 
@@ -40,15 +54,15 @@ _Populated as remediation proceeds. At Phase 1: see F-1 below._
 
 | # | File:line | Finding | Cat | Action | Status |
 |---|-----------|---------|-----|--------|--------|
-| A-1 | `lib/execution/run-engine.ts:507` | `if (serverName === "gmail")` injects the Gmail token | A | Generic server-side credential injection (broker pattern), no server name branch | open |
-| A-2 | `lib/execution/mcp-client.ts:32,35` | `ALLOWLIST = new Set(["gmail"])` | A | Replace with a generic registered-server model | open |
-| A-3 | `lib/execution/mcp-client.ts:42–55` | `mcp:`-prefix name hack (`isMcpToolServer`/`parseMcpServerName`) | A | One consistent server identity; discover tools via `tools/list`, not name parsing | open |
-| A-4 | `lib/execution/mcp-client.ts:57` | `if (serverName !== "gmail")` in the stdio transport factory | A | Transport from per-server registration config | open |
-| A-5 | `lib/mcp-catalog.ts:58`, `lib/registry/curated.ts:42` | Catalog `gmail-draft-mcp` vs engine identity `gmail`/`mcp:gmail:*` — mismatch makes Gmail UI-unreachable | A | One server identity catalog→grant→engine | open |
-| A-6 | `lib/execution/tools/registry.ts` | Legacy string-input web-search executor — a parallel non-MCP execution path | A→F | Prefer MCP search server; if none, keep behind the generic interface with a recorded F-decision (F-2) | open |
-| C-1 | `lib/llm/index.ts:12–15` (env keys) vs `lib/execution/provider.ts` (BYO keys) | Two model-key systems: planning uses env keys, runs use BYO keys | C | Unify behind one interface + document; see F-1 | open |
-| D-1 | `lib/execution/run-engine.ts:196,600`; `components/mock-data.ts:321–335` | `a2a_handoff` event + "A2A handoff" labels — bespoke linear text handoff, **not** the A2A protocol | D | Honest rename of human-facing labels + roadmap marker; keep behavior (DB enum value left in place to avoid a migration; flagged) | open |
-| D-2 | `components/a2ui/EventCard.tsx`, `components/a2ui/a2ui.css`, `components/control/ControlPlane.tsx` | "A2UI · agent-to-user interface" — bespoke event-card rendering, **not** a real surface protocol | D | Honest naming on human-facing captions + roadmap marker; folder/identifier rename deferred to avoid churn (flagged) | open |
+| A-1 | `lib/execution/run-engine.ts:507` | `if (serverName === "gmail")` injects the Gmail token | A | Generic server-side credential injection (broker pattern), no server name branch | resolved |
+| A-2 | `lib/execution/mcp-client.ts:32,35` | `ALLOWLIST = new Set(["gmail"])` | A | Replace with a generic registered-server model | resolved |
+| A-3 | `lib/execution/mcp-client.ts:42–55` | `mcp:`-prefix name hack (`isMcpToolServer`/`parseMcpServerName`) | A | One consistent server identity; discover tools via `tools/list`, not name parsing | resolved |
+| A-4 | `lib/execution/mcp-client.ts:57` | `if (serverName !== "gmail")` in the stdio transport factory | A | Transport from per-server registration config | resolved |
+| A-5 | `lib/mcp-catalog.ts:58`, `lib/registry/curated.ts:42` | Catalog `gmail-draft-mcp` vs engine identity `gmail`/`mcp:gmail:*` — mismatch makes Gmail UI-unreachable | A | One server identity catalog→grant→engine | engine identity resolved; catalog seeding + connect UI deferred (F-3) |
+| A-6 | `lib/execution/tools/registry.ts` | Legacy string-input web-search executor — a parallel non-MCP execution path | A→F | Prefer MCP search server; if none, keep behind the generic interface with a recorded F-decision (F-2) | deferred (F-2) |
+| C-1 | `lib/llm/index.ts:12–15` (env keys) vs `lib/execution/provider.ts` (BYO keys) | Two model-key systems: planning uses env keys, runs use BYO keys | C | Unify behind one interface + document; see F-1 | resolved (documented) |
+| D-1 | `lib/execution/run-engine.ts:196,600`; `components/mock-data.ts:321–335` | `a2a_handoff` event + "A2A handoff" labels — bespoke linear text handoff, **not** the A2A protocol | D | Honest rename of human-facing labels + roadmap marker; keep behavior (DB enum value left in place to avoid a migration; flagged) | resolved |
+| D-2 | `components/a2ui/EventCard.tsx`, `components/a2ui/a2ui.css`, `components/control/ControlPlane.tsx` | "A2UI · agent-to-user interface" — bespoke event-card rendering, **not** a real surface protocol | D | Honest naming on human-facing captions + roadmap marker; folder/identifier rename deferred to avoid churn (flagged) | resolved (identifier rename flagged) |
 | E-1 | `lib/execution/mcp-client.ts` (`Client`, `initialize → tools/list → tools/call`) | Real MCP client core | E | **Protect.** Do not rewrite. The generic path (A-1..A-5) builds *around* it | n/a |
 | E-2 | `app/api/workflow-runs/simulate/route.ts` | Run preview / simulate path | E | **Live caller confirmed**: `components/build/Builder.tsx:241` `runPreview → simulateRun`. Not dead. Keep. | n/a |
 
