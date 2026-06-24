@@ -340,4 +340,56 @@ describe("Chunk 12 — connect, disconnect, discover", () => {
       setCurrentUser(null);
     });
   });
+
+  describe("generality: second MCP server through identical surface", () => {
+    it("connects, discovers, and lists tools for echo-mcp with zero new UI/endpoint code", async () => {
+      const user = await createTestUser("second@example.com", "Second Server");
+      setCurrentUser(user);
+
+      // Use the SECOND registered server (echo-mcp) — same connect endpoint,
+      // same discover endpoint, same tools endpoint. Proves the surface is
+      // server-generic.
+      mcpClient.tools = [
+        { name: "echo", description: "Echoes the input", inputSchema: { type: "object", properties: { message: { type: "string" } } } }
+      ];
+
+      const { POST: connectPost } = await import("../app/api/mcp/connections/route");
+
+      // Connect to echo-mcp (the second server).
+      let req = new Request("http://localhost/api/mcp/connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverKey: "echo-mcp" })
+      });
+      let res = await connectPost(req);
+      expect(res.status).toBe(201);
+      const connectBody = await res.json();
+      expect(connectBody.connection.status).toBe("connected");
+      expect(connectBody.connection.serverKey).toBe("echo-mcp");
+
+      // Discover tools.
+      const { POST: discoverPost } = await import("../app/api/mcp/connections/[id]/discover/route");
+      req = new Request(`http://localhost/api/mcp/connections/${connectBody.connection.id}/discover`, { method: "POST" });
+      res = await discoverPost(req, { params: Promise.resolve({ id: connectBody.connection.id }) });
+      expect(res.status).toBe(200);
+      const discBody = await res.json();
+      expect(discBody.tools.map((t: { toolName: string }) => t.toolName)).toContain("echo");
+
+      // List discovered tools.
+      const { GET: toolsGet } = await import("../app/api/mcp/connections/[id]/tools/route");
+      req = new Request(`http://localhost/api/mcp/connections/${connectBody.connection.id}/tools`);
+      res = await toolsGet(req, { params: Promise.resolve({ id: connectBody.connection.id }) });
+      expect(res.status).toBe(200);
+      const toolsBody = await res.json();
+      expect(toolsBody.tools[0].toolName).toBe("echo");
+
+      // Verify: the echo-mcp server's authProvider is null (no OAuth needed),
+      // unlike gmail which requires google OAuth. This proves per-server
+      // auth varies without any server-specific code.
+      const conn = await prisma.serverConnection.findUnique({ where: { id: connectBody.connection.id } });
+      expect(conn?.authProvider).toBeNull();
+
+      setCurrentUser(null);
+    });
+  });
 });

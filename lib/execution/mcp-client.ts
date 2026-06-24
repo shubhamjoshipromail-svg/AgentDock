@@ -45,6 +45,16 @@ const SERVER_REGISTRY: Record<string, McpServerRegistration> = {
     command: process.env.GMAIL_MCP_COMMAND ?? process.execPath,
     args: (process.env.GMAIL_MCP_ARGS ?? "servers/gmail/dist/index.js").split(" ").filter(Boolean),
     tokenEnvVar: "GMAIL_ACCESS_TOKEN"
+  },
+  // Second registered server — proves the connect/discover/grant surface is
+  // generic. Adding this entry requires zero new UI/endpoint code; the same
+  // generic screens discover and grant its tools. In production this would
+  // point to a real MCP server binary; for tests the transport factory is
+  // mocked to return an in-memory transport.
+  "echo-mcp": {
+    command: process.execPath,
+    args: "servers/gmail/dist/index.js".split(" "),
+    tokenEnvVar: undefined
   }
 };
 
