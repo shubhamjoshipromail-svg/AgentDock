@@ -11,7 +11,7 @@ import type {
   Section
 } from "../lib/types";
 
-export const sections: Section[] = ["Build", "Store", "Flows", "Control", "Profile"];
+export const sections: Section[] = ["Build", "Store", "Flows", "Control", "Profile", "Connect"];
 export const flow = ["Discovery", "Research", "Resume", "Outreach"];
 
 export const agents: Agent[] = [

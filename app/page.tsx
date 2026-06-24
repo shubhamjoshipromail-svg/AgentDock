@@ -8,6 +8,7 @@ import { Builder } from "../components/build/Builder";
 import { ControlPlane } from "../components/control/ControlPlane";
 import { Library } from "../components/flows/Library";
 import { Shell } from "../components/layout/Shell";
+import { ConnectPanel } from "../components/connect/ConnectPanel";
 import { Profile } from "../components/profile/Profile";
 import { Store } from "../components/store/Store";
 import { CommandPalette, type Command } from "../components/layout/CommandPalette";
@@ -179,6 +180,7 @@ function AppInner() {
               defaultAgent={defaultAgent}
             />
           )}
+          {activeSection === "Connect" && <ConnectPanel />}
         </BootstrapGate>
       </Shell>
       <CommandPalette open={cmdkOpen} onOpenChange={setCmdkOpen} commands={commands} />

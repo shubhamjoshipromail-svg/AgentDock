@@ -322,7 +322,7 @@ describe("Chunk 12 — connect, disconnect, discover", () => {
 
       // Second discovery: only one tool remains (create_draft removed).
       mcpClient.tools = [
-        { name: "send_email", description: "Send an email", inputSchema: {} }
+        { name: "send_email", description: "Send an email", inputSchema: { type: "object", properties: { to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } } } }
       ];
       req = new Request(`http://localhost/api/mcp/connections/${conn.id}/discover`, { method: "POST" });
       res = await POST(req, { params: Promise.resolve({ id: conn.id }) });

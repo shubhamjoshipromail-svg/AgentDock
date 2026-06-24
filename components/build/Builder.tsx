@@ -19,6 +19,7 @@ import {
   stepDisplayNames
 } from "../mock-data";
 import { serializeBuilderFlow, workflowToBuilderNodes } from "./serialize";
+import { GrantPanel } from "./GrantPanel";
 import { FlowGraph } from "./FlowGraph";
 import { builderNodesToGraph, plannedFlowToGraph } from "./flow-graph";
 import type {
@@ -92,7 +93,7 @@ export function Builder({
   const [savingWorkflow, setSavingWorkflow] = useState(false);
 
   // UI state: inspector tab + library collapse.
-  const [inspectorTab, setInspectorTab] = useState<"plan" | "step">("plan");
+  const [inspectorTab, setInspectorTab] = useState<"plan" | "step" | "grants">("plan");
   const [libraryOpen, setLibraryOpen] = useState(true);
 
   const hasDraftWorkflow = builderMode !== "empty";
@@ -455,6 +456,7 @@ export function Builder({
         <div className="inspectorTabs" role="tablist">
           <button role="tab" aria-selected={inspectorTab === "plan"} className={inspectorTab === "plan" ? "inspectorTab active" : "inspectorTab"} onClick={() => setInspectorTab("plan")}>Plan</button>
           <button role="tab" aria-selected={inspectorTab === "step"} className={inspectorTab === "step" ? "inspectorTab active" : "inspectorTab"} onClick={() => setInspectorTab("step")}>Step</button>
+          <button role="tab" aria-selected={inspectorTab === "grants"} className={inspectorTab === "grants" ? "inspectorTab active" : "inspectorTab"} onClick={() => setInspectorTab("grants")}>Grants</button>
         </div>
 
         <div className="inspectorBody">
@@ -574,6 +576,20 @@ export function Builder({
                   <Button variant="ghost" size="sm" onClick={onViewLogs}>View timeline</Button>
                 </div>
               )}
+            </div>
+          ) : inspectorTab === "grants" ? (
+            <div className="inspectorBlock">
+              <h3>Tool grants</h3>
+              <GrantPanel
+                workflowId={savedWorkflowId || currentWorkflow?.id || ""}
+                workflowName={currentWorkflow?.name ?? "Draft flow"}
+                existingGrants={
+                  currentWorkflow?.mcpAccessGrants?.map((g) => ({
+                    mcpServerId: g.mcpServer.id,
+                    id: g.id
+                  })) ?? []
+                }
+              />
             </div>
           ) : (
             <EmptyState title="Select a step" body="Click a node on the canvas to inspect its access, memory, cost, and approvals." />
