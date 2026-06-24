@@ -238,3 +238,46 @@ export function listRealRuns(fallbackMessage = "Unable to load real runs.") {
 export function killRealRun(id: string, fallbackMessage = "Unable to kill run.") {
   return request<{ ok: boolean }>(`/api/runs/${id}/kill`, fallbackMessage, { method: "POST" });
 }
+
+// --- Chunk 12: connect, disconnect, discover, grant MCP servers ---
+
+export type PersistedConnection = {
+  id: string; userId: string; serverKey: string; label?: string | null;
+  transportConfig?: Record<string, unknown> | null; authProvider?: string | null;
+  status: string; lastDiscoveredAt?: string | null; lastError?: string | null;
+  createdAt: string; updatedAt: string;
+};
+
+export type DiscoveredTool = {
+  serverRowId: string; serverKey: string; toolName: string; displayName: string;
+  description?: string | null; inputSchema?: Record<string, unknown> | null;
+  isExternalSend: boolean; riskLevel: string;
+};
+
+export function listConnections(fallbackMessage = "Unable to load connections.") {
+  return request<{ connections: PersistedConnection[] }>("/api/mcp/connections", fallbackMessage);
+}
+
+export function connectServer(serverKey: string, fallbackMessage = "Unable to connect to server.") {
+  return request<{ connection: PersistedConnection; message?: string }>(
+    "/api/mcp/connections", fallbackMessage, jsonInit("POST", { serverKey })
+  );
+}
+
+export function disconnectServer(id: string, fallbackMessage = "Unable to disconnect.") {
+  return request<{ ok: boolean }>(`/api/mcp/connections/${id}`, fallbackMessage, { method: "DELETE" });
+}
+
+export function discoverTools(connectionId: string, fallbackMessage = "Tool discovery failed.") {
+  return request<{ connection: PersistedConnection; tools: { toolName: string; serverRowId: string; isNew: boolean }[]; reconciled: { removed: string[] } }>(
+    `/api/mcp/connections/${connectionId}/discover`, fallbackMessage, { method: "POST" }
+  );
+}
+
+export function listDiscoveredTools(connectionId: string, fallbackMessage = "Unable to list discovered tools.") {
+  return request<{ tools: DiscoveredTool[] }>(`/api/mcp/connections/${connectionId}/tools`, fallbackMessage);
+}
+
+export function removeToolGrant(workflowId: string, mcpId: string, fallbackMessage = "Unable to remove tool grant.") {
+  return request<{ ok: boolean }>(`/api/workflows/${workflowId}/mcps/${mcpId}`, fallbackMessage, { method: "DELETE" });
+}

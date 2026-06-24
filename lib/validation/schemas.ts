@@ -106,5 +106,18 @@ export const startRunSchema = z.object({
   workflowId: z.string().uuid()
 });
 
+// Chunk 12: connect to a registered MCP server.
+export const connectServerSchema = z.object({
+  serverKey: z.string().min(1).max(100)
+});
+
+// Chunk 12: grant a discovered tool into a flow.
+export const grantToolSchema = z.object({
+  mcpServerId: z.string().uuid({ message: "mcpServerId must be the UUID of a discovered tool row." }),
+  permission: z.enum(["read_only", "draft_only", "approval_required", "blocked"]).optional()
+});
+
 export type CreateCredentialInput = z.infer<typeof createCredentialSchema>;
 export type StartRunInput = z.infer<typeof startRunSchema>;
+export type ConnectServerInput = z.infer<typeof connectServerSchema>;
+export type GrantToolInput = z.infer<typeof grantToolSchema>;

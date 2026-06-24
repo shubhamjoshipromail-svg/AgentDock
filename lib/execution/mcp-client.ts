@@ -91,7 +91,7 @@ function connectionKey(serverName: string, ctx?: McpConnectContext): string {
 
 // Connect-or-reuse. Connections are kept warm and keyed per (server, user) so a
 // run reuses one initialized session instead of re-handshaking per tool call.
-async function getClient(serverName: string, ctx?: McpConnectContext): Promise<Client> {
+export async function getClient(serverName: string, ctx?: McpConnectContext): Promise<Client> {
   if (!isConnectableMcpServer(serverName)) {
     throw new Error(`MCP server '${serverName}' is not registered for connection.`);
   }

@@ -310,3 +310,36 @@ export type RuntimeMode = {
 };
 
 export type CapabilityKind = "db" | "local" | "soon" | "mock";
+
+// Chunk 12: per-user server connection lifecycle.
+export type ConnectionStatusType = "registered" | "connecting" | "connected" | "discovered" | "error" | "disconnected";
+
+export type PersistedServerConnection = {
+  id: string;
+  userId: string;
+  serverKey: string;
+  label?: string | null;
+  transportConfig?: Record<string, unknown> | null;
+  authProvider?: string | null;
+  status: ConnectionStatusType;
+  lastDiscoveredAt?: string | null;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// A discovered tool, ready to be granted into a flow. Built from tools/list output.
+export type PersistedDiscoveredTool = {
+  serverRowId: string;    // McpServer row id (the grantable identity)
+  serverKey: string;      // e.g. "gmail"
+  toolName: string;       // e.g. "send_email"
+  displayName: string;
+  description?: string | null;
+  inputSchema?: Record<string, unknown> | null;
+  isExternalSend: boolean;
+  riskLevel: string;
+  // Whether this tool is already granted for a specific workflow (populated in grant context).
+  granted?: boolean;
+  grantId?: string;
+  grantPermission?: string;
+};
