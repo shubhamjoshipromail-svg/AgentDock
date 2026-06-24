@@ -10,6 +10,7 @@ import {
   listConnections,
   listDiscoveredTools,
   listToolServers,
+  syncToolCatalog,
   type DiscoveredTool,
   type PersistedConnection
 } from "../../lib/api/client";
@@ -19,6 +20,10 @@ import { useToast } from "../layout/Toast";
 import "./connect.css";
 
 type ConnectStep = "connect" | "discover" | "done";
+
+// Server keys that are registered and connectable (from SERVER_REGISTRY in mcp-client.ts).
+// A catalog server is connectable if its name matches a registered key.
+const REGISTERED_SERVER_KEYS = ["gmail", "echo-mcp"];
 
 export function ConnectPanel() {
   const { data: session } = useSession();
@@ -31,6 +36,7 @@ export function ConnectPanel() {
   const [loading, setLoading] = useState(false);
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [step, setStep] = useState<ConnectStep>("connect");
 
   const load = async () => {
@@ -41,14 +47,29 @@ export function ConnectPanel() {
         listToolServers()
       ]);
       setConnections(connData.connections ?? []);
-      // Connectable servers: catalog entries with mcpServerKey set.
+      // Connectable servers: catalog entries whose name matches a registered server key.
+      // This is generic — adding a key to REGISTERED_SERVER_KEYS is all that's needed.
       setConnectable(
         (serverData.servers ?? []).filter((s) =>
-          s.name && ["gmail"].includes(s.name)
+          REGISTERED_SERVER_KEYS.includes(s.name)
         )
       );
     } catch {
       // Silently fall back — the UI shows empty states.
+    }
+  };
+
+  const handleSync = async () => {
+    if (!session?.user) return;
+    setSyncing(true);
+    try {
+      const result = await syncToolCatalog();
+      toast(`Synced ${result.upserted} servers · ${result.skipped} skipped · ${result.failed} failed`, "ok");
+      await load();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Sync failed.", "danger");
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -150,7 +171,11 @@ export function ConnectPanel() {
       <div className="connectPanel">
         <div className="connectPanelHead">
           <h2>Connect a server</h2>
-          <span className="connectSteps">
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <Button variant="ghost" size="sm" loading={syncing} onClick={handleSync}>
+              Sync catalog
+            </Button>
+            <span className="connectSteps">
             <span className="connectStep" data-active={step === "connect"} data-done={step !== "connect"}>
               <span className="connectStepNum">1</span> Connect
             </span>
@@ -158,6 +183,7 @@ export function ConnectPanel() {
               <span className="connectStepNum">2</span> Discover
             </span>
           </span>
+          </div>
         </div>
 
         <div className="connectPanelBody">

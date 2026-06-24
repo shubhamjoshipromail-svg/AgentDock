@@ -10,11 +10,14 @@ const mcpClient = vi.hoisted(() => ({
   connectCalls: 0,
   listToolsCalls: 0,
   toThrow: null as Error | null,
-  tools: [
+  tools: [] as { name: string; description: string; inputSchema: Record<string, unknown> }[]
+}));
+
+// Set initial tools after the hoisted declaration.
+mcpClient.tools = [
     { name: "send_email", description: "Send an email", inputSchema: { type: "object", properties: { to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } } } },
     { name: "create_draft", description: "Create a draft", inputSchema: { type: "object", properties: { to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } } } }
-  ]
-}));
+];
 
 // Mock the credential broker so connect doesn't require real OAuth tokens.
 vi.mock("../lib/execution/credential-broker", () => ({
