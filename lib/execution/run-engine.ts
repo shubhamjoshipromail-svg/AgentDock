@@ -605,12 +605,18 @@ async function haltError(ctx: Ctx, reason: string) {
 
 // --- Drivers -----------------------------------------------------------------
 
+export type DriveOptions = {
+  /** Called after each agent step completes (not on pause/kill/halt). */
+  onAgentStepComplete?: (stepIndex: number) => Promise<void>;
+};
+
 async function drive(
   ctx: Ctx,
   fromStep: number,
   firstStepSeed: string[],
   firstStepHandoff: string | null,
-  firstApprovedCall: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null } | null
+  firstApprovedCall: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null } | null,
+  opts?: DriveOptions
 ): Promise<RunResult> {
   let lastFinalText: string | null = null;
   let handoff: { from: string; content: string } | null = firstStepHandoff
@@ -646,6 +652,9 @@ async function drive(
     } else {
       handoff = null;
     }
+    // Step completed successfully — advance the cursor so a crashed worker
+    // can resume from the next agent, not re-run this one.
+    await opts?.onAgentStepComplete?.(i + 1);
   }
   await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "workflow_completed", title: "Run completed", description: "All agent steps finished.", decision: "info", actorType: "system" });
   await prisma.workflowRun.update({
@@ -686,7 +695,11 @@ export async function startRun(userId: string, workflowId: string): Promise<{ ok
 // This is intentionally thin: it reuses the exact same runnable loader, context
 // builder, caps, gate, memory firewall, and drive loop as the synchronous test
 // helper above. The worker owns queue state; the engine owns run semantics.
-export async function executeExistingRun(userId: string, runId: string): Promise<RunResult> {
+export async function executeExistingRun(
+  userId: string,
+  runId: string,
+  opts?: { stepCursor?: number; onAgentStepComplete?: (stepIndex: number) => Promise<void> }
+): Promise<RunResult> {
   const run = await prisma.workflowRun.findFirst({
     where: { id: runId, userId },
     select: { id: true, workflowId: true, status: true }
@@ -701,6 +714,23 @@ export async function executeExistingRun(userId: string, runId: string): Promise
     return { runId, status: "halted_error" };
   }
 
+  const fromStep = opts?.stepCursor ?? 0;
+
+  // If resuming from mid-run, reconstruct handoff from the last completed agent's
+  // result event so the next agent gets context (never empty, never stale).
+  let resumeHandoff: string | null = null;
+  if (fromStep > 0 && fromStep <= runnable.agents.length) {
+    const prevAgent = runnable.agents[fromStep - 1];
+    const prevResult = await prisma.workflowRunEvent.findFirst({
+      where: { workflowRunId: runId, agentId: prevAgent.agentId, eventType: "orchestration" },
+      orderBy: { createdAt: "desc" },
+      select: { description: true }
+    });
+    if (prevResult?.description) {
+      resumeHandoff = prevResult.description;
+    }
+  }
+
   const ctx = await buildCtx(userId, run.id, runnable.workflow.goal, runnable.agents);
   if (!ctx) {
     await prisma.workflowRun.update({ where: { id: run.id }, data: { status: "halted_error", endedAt: new Date() } });
@@ -708,7 +738,7 @@ export async function executeExistingRun(userId: string, runId: string): Promise
   }
 
   await prisma.workflowRun.update({ where: { id: run.id }, data: { status: "running" } });
-  return drive(ctx, 0, [], null, null);
+  return drive(ctx, fromStep, [], resumeHandoff, null, { onAgentStepComplete: opts?.onAgentStepComplete });
 }
 
 export async function resumeRunFromLatestApproval(userId: string, runId: string): Promise<RunResult | null> {

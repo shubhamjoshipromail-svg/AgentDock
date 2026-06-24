@@ -193,6 +193,13 @@ export async function heartbeatRunJob(jobId: string, workerId: string, leaseMs =
   return updated.count > 0;
 }
 
+export async function updateStepCursor(jobId: string, workerId: string, stepCursor: number): Promise<void> {
+  await prisma.runJob.updateMany({
+    where: { id: jobId, claimedBy: workerId, status: "running" },
+    data: { stepCursor }
+  });
+}
+
 export async function completeRunJob(jobId: string, workerId: string, result: RunResult): Promise<void> {
   const status = jobStatusForRun(result.status);
   await prisma.runJob.updateMany({
@@ -222,27 +229,58 @@ export async function failRunJob(jobId: string, workerId: string, error: unknown
 }
 
 export async function processRunJob(job: RunJobWithRun, workerId: string, leaseMs = DEFAULT_LEASE_MS): Promise<RunResult> {
-  await heartbeatRunJob(job.id, workerId, leaseMs);
+  // Continuous heartbeat: extend the lease every leaseMs/3 so a long-running
+  // engine (multi-agent flow) never loses its lease mid-execution. The heartbeat
+  // stops on the first failure — a dead worker stops heartbeating and the job
+  // becomes reclaimable after leaseExpiresAt passes.
+  const heartbeatMs = Math.max(5_000, Math.floor(leaseMs / 3));
+  let heartbeatError = false;
+  const heartbeat = setInterval(async () => {
+    const ok = await heartbeatRunJob(job.id, workerId, leaseMs);
+    if (!ok) heartbeatError = true;
+  }, heartbeatMs);
 
-  if (job.workflowRun.status === "killed") {
-    const result = { runId: job.workflowRunId, status: "killed" };
+  try {
+    if (job.workflowRun.status === "killed") {
+      const result = { runId: job.workflowRunId, status: "killed" };
+      await completeRunJob(job.id, workerId, result);
+      return result;
+    }
+
+    // Read the current step cursor from the job row. A fresh job starts at 0;
+    // a reclaimed job resumes from the last completed agent's index.
+    const freshJob = await prisma.runJob.findUnique({ where: { id: job.id }, select: { stepCursor: true } });
+    const stepCursor = freshJob?.stepCursor ?? 0;
+
+    const result =
+      job.workflowRun.status === "paused_for_approval"
+        ? await resumeRunFromLatestApproval(job.userId, job.workflowRunId)
+        : await executeExistingRun(job.userId, job.workflowRunId, {
+            stepCursor,
+            onAgentStepComplete: async (idx) => {
+              await updateStepCursor(job.id, workerId, idx);
+            }
+          });
+
+    if (heartbeatError) {
+      // Heartbeat failed mid-run: the lease may have expired and another worker
+      // could have claimed this job. Fail to be safe — the other worker will
+      // pick it up.
+      await failRunJob(job.id, workerId, new Error("Heartbeat lost mid-run; lease may have expired."));
+      return { runId: job.workflowRunId, status: "halted_error" };
+    }
+
+    if (!result) {
+      const failed = { runId: job.workflowRunId, status: "halted_error" };
+      await failRunJob(job.id, workerId, new Error("Run could not be resumed."));
+      return failed;
+    }
+
     await completeRunJob(job.id, workerId, result);
     return result;
+  } finally {
+    clearInterval(heartbeat);
   }
-
-  const result =
-    job.workflowRun.status === "paused_for_approval"
-      ? await resumeRunFromLatestApproval(job.userId, job.workflowRunId)
-      : await executeExistingRun(job.userId, job.workflowRunId);
-
-  if (!result) {
-    const failed = { runId: job.workflowRunId, status: "halted_error" };
-    await failRunJob(job.id, workerId, new Error("Run could not be resumed."));
-    return failed;
-  }
-
-  await completeRunJob(job.id, workerId, result);
-  return result;
 }
 
 export async function runWorkerOnce(options: {
