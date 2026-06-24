@@ -121,6 +121,15 @@ enum ApprovalRequestStatus {
   expired
 }
 
+enum RunJobStatus {
+  queued
+  running
+  paused
+  completed
+  failed
+  killed
+}
+
 enum ApprovalActionType {
   resume_draft_review
   gmail_draft_approval
@@ -174,6 +183,7 @@ model User {
   approvalRequests  ApprovalRequest[]
   activityLogs      ActivityLog[]
   mcpAccessGrants   McpAccessGrant[]
+  runJobs           RunJob[]
 
   @@map("users")
 }
@@ -344,10 +354,32 @@ model WorkflowRun {
   events          WorkflowRunEvent[]
   approvalRequests ApprovalRequest[]
   activityLogs    ActivityLog[]
+  runJob          RunJob?
 
   @@index([userId, createdAt])
   @@index([workflowId, createdAt])
   @@map("workflow_runs")
+}
+
+model RunJob {
+  id            String       @id @default(uuid()) @db.Uuid
+  userId        String       @map("user_id") @db.Uuid
+  workflowRunId String       @unique @map("workflow_run_id") @db.Uuid
+  status        RunJobStatus @default(queued)
+  claimedBy     String?      @map("claimed_by")
+  leaseExpiresAt DateTime?   @map("lease_expires_at")
+  heartbeatAt   DateTime?    @map("heartbeat_at")
+  attemptCount  Int          @default(0) @map("attempt_count")
+  lastError     String?      @map("last_error")
+  stepCursor    Int          @default(0) @map("step_cursor")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflowRun   WorkflowRun  @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@index([status, leaseExpiresAt, createdAt])
+  @@index([userId, status])
+  @@map("run_jobs")
 }
 
 model WorkflowRunEvent {

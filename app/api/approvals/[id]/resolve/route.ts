@@ -4,7 +4,7 @@ import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
 import { parseJsonBody } from "../../../../../lib/validation/parse";
 import { approvalResolveSchema } from "../../../../../lib/validation/schemas";
-import { resumeAfterApproval } from "../../../../../lib/execution/run-engine";
+import { enqueueRunJob, markRunJobFailed } from "../../../../../lib/execution/run-queue";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -109,9 +109,41 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             data: { status: "halted_error", endedAt: new Date() }
           });
         });
+        await markRunJobFailed(user.id, approval.workflowRunId, "Policy edited; pending action not executed.");
+        run = { runId: approval.workflowRunId, status: "halted_error" };
+      } else if (body.status === "denied") {
+        await prisma.$transaction(async (tx) => {
+          await tx.workflowRunEvent.create({
+            data: {
+              workflowRunId: approval.workflowRunId,
+              userId: user.id,
+              agentId: approval.agentId,
+              eventType: "action_blocked",
+              title: "Approval denied",
+              description: "Human denied the requested action. Run halted.",
+              decision: "denied",
+              actorType: "human",
+              actorId: user.id,
+              authorityRef: approval.id,
+              schemaVersion: 1,
+              metadata: {
+                source: "approval_resolution",
+                approvalRequestId: approval.id,
+                status: "denied",
+                executed: false
+              }
+            }
+          });
+          await tx.workflowRun.update({
+            where: { id: approval.workflowRunId },
+            data: { status: "halted_error", endedAt: new Date() }
+          });
+        });
+        await markRunJobFailed(user.id, approval.workflowRunId, "Approval denied; pending action not executed.");
         run = { runId: approval.workflowRunId, status: "halted_error" };
       } else {
-        run = await resumeAfterApproval(user.id, approval.id, body.status === "approved");
+        const queued = await enqueueRunJob(user.id, approval.workflowRunId);
+        run = queued.ok ? { runId: approval.workflowRunId, status: queued.status ?? "queued" } : null;
       }
     }
 

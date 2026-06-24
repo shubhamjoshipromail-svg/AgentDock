@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../lib/auth-user";
 import { prisma } from "../../../lib/prisma";
-import { startRun } from "../../../lib/execution/run-engine";
+import { createQueuedRun } from "../../../lib/execution/run-queue";
 import { parseJsonBody } from "../../../lib/validation/parse";
 import { startRunSchema } from "../../../lib/validation/schemas";
 
@@ -21,8 +21,9 @@ function previewText(text: string | null, max: number): string | null {
   return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
 }
 
-// Start a real, governed run for a saved flow. Explicit + auth + daily-cap
-// pre-check (which makes ZERO model calls when over the cap).
+// Enqueue a real, governed run for a saved flow. Explicit + auth + daily-cap
+// pre-check (which makes ZERO model calls when over the cap). The worker owns
+// provider/tool execution so the request is durable and fast.
 export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const outcome = await startRun(user.id, parsed.data.workflowId);
+  const outcome = await createQueuedRun(user.id, parsed.data.workflowId);
   if (!outcome.ok) {
     return NextResponse.json({ message: outcome.message }, { status: outcome.status });
   }

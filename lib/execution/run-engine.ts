@@ -682,6 +682,45 @@ export async function startRun(userId: string, workflowId: string): Promise<{ ok
   return { ok: true, result };
 }
 
+// Worker entrypoint: execute a run row that was already created by the API.
+// This is intentionally thin: it reuses the exact same runnable loader, context
+// builder, caps, gate, memory firewall, and drive loop as the synchronous test
+// helper above. The worker owns queue state; the engine owns run semantics.
+export async function executeExistingRun(userId: string, runId: string): Promise<RunResult> {
+  const run = await prisma.workflowRun.findFirst({
+    where: { id: runId, userId },
+    select: { id: true, workflowId: true, status: true }
+  });
+  if (!run) return { runId, status: "halted_error" };
+  if (run.status === "killed") return { runId, status: "killed" };
+  if (run.status === "paused_for_approval") return { runId, status: "paused_for_approval" };
+
+  const runnable = await loadRunnable(userId, run.workflowId);
+  if (!runnable || runnable.agents.length === 0) {
+    await prisma.workflowRun.update({ where: { id: run.id }, data: { status: "halted_error", endedAt: new Date() } });
+    return { runId, status: "halted_error" };
+  }
+
+  const ctx = await buildCtx(userId, run.id, runnable.workflow.goal, runnable.agents);
+  if (!ctx) {
+    await prisma.workflowRun.update({ where: { id: run.id }, data: { status: "halted_error", endedAt: new Date() } });
+    return { runId, status: "halted_error" };
+  }
+
+  await prisma.workflowRun.update({ where: { id: run.id }, data: { status: "running" } });
+  return drive(ctx, 0, [], null, null);
+}
+
+export async function resumeRunFromLatestApproval(userId: string, runId: string): Promise<RunResult | null> {
+  const approval = await prisma.approvalRequest.findFirst({
+    where: { userId, workflowRunId: runId, status: "approved" },
+    orderBy: { resolvedAt: "desc" },
+    select: { id: true }
+  });
+  if (!approval) return { runId, status: "paused_for_approval" };
+  return resumeAfterApproval(userId, approval.id, true);
+}
+
 // Resume a paused run after an approval decision. approved → execute the pending
 // tool and continue; denied → halt.
 export async function resumeAfterApproval(userId: string, approvalId: string, approved: boolean): Promise<RunResult | null> {
