@@ -18,8 +18,37 @@ AgentDock has a real identity and policy-data plane. It can persist users,
 Flows, agents, tool grants, memory grants, model-planning costs, preview runs,
 approvals, and activity. It also has an early real-run path: a signed-in user can
 store an encrypted BYO Anthropic/OpenAI key, run saved Flow agents through real
-model calls, and use one real read-only tool (`search-mcp`). All other tools
-remain metadata/gated/unavailable until an executor exists.
+model calls, use the legacy read-only Search tool, and route registered MCP
+tools through a governed MCP client. The first connected MCP server is a
+first-party Gmail server; `create_draft` can create real drafts, while
+`send_email` is always approval-gated before any outbound send.
+
+## Project Status
+
+AgentDock is past static demo stage. It is now a working prototype of the
+control-plane data path, with a deliberately narrow real execution surface.
+
+| Area | Status | Notes |
+|---|---|---|
+| Auth + tenancy | Complete for prototype | Google/Auth.js sessions, user-owned rows, ownership checks. |
+| Flow Builder | Mostly complete | Model-backed planning, permission clamp, save/load, persisted graph hydration. |
+| Flow truth | Complete for prototype | Saving reconciles agents/tools/memory so removed grants do not linger. |
+| Real run engine | Prototype complete | Sequential agents, BYO model calls, bounded cost/steps/tools, kill switch. |
+| A2A handoff | Internal v1 complete | Agent outputs hand off as capped untrusted context; not external A2A protocol yet. |
+| A2UI / Control | Prototype complete | Real run board, output/process split, approval inbox, run events. |
+| MCP catalog | Complete for prototype | Official registry metadata + curated entries, search/filter/pagination. |
+| Governed MCP execution | Early v1 | Official SDK client, registered servers only, first-party Gmail server connected. |
+| Memory Firewall | Prototype complete | Zones, grants, logs, runtime read bounding; no semantic retrieval yet. |
+| Access Gateway | Early v1 | Encrypted BYO model keys and encrypted Google OAuth token bundles. Not KMS/Vault yet. |
+| Runtime / sandbox | Not built | Runs execute inside the Next.js/server process, not isolated workers or containers. |
+| Billing/payments | Not built | No provider resale, Stripe, org billing, or spend reconciliation yet. |
+| External agents / NANDA | Not built | No third-party agent runtime, discovery trust network, or cross-org agent identity yet. |
+
+The next best build step is a **runtime separation chunk**: move real run
+execution out of request/response handlers into a durable worker/job queue with
+per-user concurrency limits, streamed run events, and a clean boundary for a
+future sandbox. This is the step that turns the current governed prototype into
+something that can reliably run longer workflows.
 
 ## Current Product Surface
 
@@ -76,10 +105,12 @@ Timeline.
 ## What Is Still Simulated or Disabled
 
 - External/third-party agent execution.
-- MCP server installation.
-- MCP tool invocation beyond the built-in read-only Search MCP executor.
-- Gmail, Calendar, Drive, GitHub, or Stripe account connections.
-- Gmail, Calendar, Drive, GitHub, Stripe, or other write-capable tool execution.
+- Arbitrary third-party MCP server installation/execution.
+- MCP tool invocation beyond the legacy Search tool and the registered
+  first-party Gmail MCP server.
+- Calendar, Drive, GitHub, Stripe, or arbitrary account connections.
+- Calendar, Drive, GitHub, Stripe, or other write-capable tool execution beyond
+  Gmail draft/send under AgentDock approval policy.
 - Runtime containers or sandbox hosting.
 - Real credential minting and provider-key proxying.
 - Billing and payment collection.
@@ -227,7 +258,7 @@ cookies and callback validation.
 
 ## Google OAuth
 
-AgentDock requests identity scopes only:
+By default, AgentDock requests identity scopes only:
 
 ```text
 openid email profile
@@ -240,6 +271,17 @@ In Google Cloud, configure:
   `http://localhost:3000/api/auth/callback/google`
 
 AgentDock does not request Gmail, Calendar, Drive, or other Workspace scopes.
+
+For the optional first-party Gmail MCP demo, the founder can add:
+
+```text
+https://www.googleapis.com/auth/gmail.compose
+https://www.googleapis.com/auth/gmail.send
+```
+
+Those scopes are not used for general login. They are only needed if you want to
+run the first-party Gmail MCP server locally. The encrypted Google token bundle
+is stored server-side and injected only into the Gmail MCP process environment.
 
 ## Optional Model-Backed Planning
 
@@ -569,28 +611,36 @@ npm run build
 ## Security Boundaries
 
 - `.env` and `.env.test` are gitignored.
-- Provider keys are read server-side only.
-- Provider keys, raw model output, and user goals are not logged.
-- No provider or MCP credentials are stored in `ScopedCredential`; it is
-  metadata-only.
-- Real secrets should eventually live in Vault/KMS.
+- BYO provider keys are encrypted at rest in `ScopedCredential` and decrypted
+  server-side only for real runs.
+- Google OAuth token bundles for the optional first-party Gmail MCP path are
+  encrypted at rest and injected only into the Gmail MCP server process env.
+- Provider keys, Google tokens, and user goals are not logged or returned to the
+  client. Run events store capped model/tool outputs for observability.
+- Real secrets should eventually move from encrypted Postgres rows to Vault/KMS.
 - External MCP registry entries never become trusted automatically.
-- Tool attachment creates a permission grant but does not install or execute
-  the tool.
+- Tool attachment creates a permission grant but does not install arbitrary
+  third-party servers. Only registered/allowlisted MCP servers can execute.
 - Run Preview never executes agents or tools.
 
 ## Demo Flow
 
 1. Sign in with Google.
-2. Open **Build** and describe an outcome.
-3. Click **Plan flow**.
-4. Review provider, model, tokens, cost, duration, warnings, and the Flow Graph.
-5. Tighten a tool permission if desired.
-6. Save the Flow.
-7. Open **Flows** to inspect the persisted graph and attached tools.
-8. Run Preview.
-9. Open **Control** to inspect Timeline events and pending approvals.
-10. Resolve an approval or revoke tool/memory access.
+2. Add a BYO Anthropic/OpenAI key in **Profile** if you want a real run.
+3. Open **Build** and describe an outcome.
+4. Click **Plan flow**.
+5. Review provider, model, tokens, cost, duration, warnings, and the Flow Graph.
+6. Tighten a tool permission if desired.
+7. Save the Flow.
+8. Open **Flows** to inspect the persisted graph and attached tools.
+9. Run Preview from **Build** when you want a metadata-only rehearsal.
+10. Open **Control** and click **Run for real** to execute saved agents with the
+    BYO model key and governed tools.
+11. Inspect Output vs Process, resolve approvals, or revoke tool/memory access.
+
+Optional Gmail path: after adding Gmail OAuth scopes and re-consenting, attach a
+registered Gmail tool. Draft creation can run as a reversible mailbox write;
+send requests pause for approval and re-gate before sending.
 
 ## End Goal
 

@@ -120,6 +120,7 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
 
     const created = await createQueuedRun(user.id, workflow.id);
     expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("unreachable");
     const runId = created.result.runId;
 
     // Worker A claims, processes agent step 0 → stepCursor advances to 1.
@@ -157,6 +158,7 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
     // First execution: pauses for approval.
     const created = await createQueuedRun(user.id, workflow.id);
     expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("unreachable");
     const runId = created.result.runId;
 
     const job1 = await claimNextRunJob({ workerId: "worker-1" });
@@ -182,7 +184,7 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
     const sendEvent = sendEvents[sendEvents.length - 1];
     const meta = sendEvent.metadata as { idempotencyKey?: string };
     expect(typeof meta.idempotencyKey).toBe("string");
-    expect(meta.idempotencyKey.length).toBeGreaterThan(0);
+    expect(meta.idempotencyKey?.length ?? 0).toBeGreaterThan(0);
 
     // Now simulate crash-and-reclaim AFTER the external send completed.
     // Re-enqueue the job so another worker picks it up.
@@ -225,6 +227,7 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
 
     const created = await createQueuedRun(user.id, workflow.id);
     expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("unreachable");
     const runId = created.result.runId;
 
     // Worker 1 processes → pauses for approval.
@@ -260,6 +263,7 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
 
     const created = await createQueuedRun(user.id, workflow.id);
     expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("unreachable");
     const runId = created.result.runId;
 
     // Kill the run.
@@ -305,6 +309,7 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
 
     const created = await createQueuedRun(user.id, workflow.id);
     expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("unreachable");
 
     const job = await claimNextRunJob({ workerId: "worker-1" });
     expect(job).not.toBeNull();
