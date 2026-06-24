@@ -4,7 +4,19 @@ import type { CompleteJsonParams, LlmCompletion, LlmProvider } from "./types";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 // Current Claude Sonnet-class model. Override with ANTHROPIC_MODEL.
+// Only Anthropic-hosted models are valid here — if the env contains a non-Anthropic
+// model (e.g. leaked from a shell that runs a different AI tool), fall back to default.
 const DEFAULT_MODEL = "claude-sonnet-4-6";
+function resolveModel(): string {
+  const fromEnv = process.env.ANTHROPIC_MODEL;
+  if (!fromEnv) return DEFAULT_MODEL;
+  // Guard: if the env model looks like a non-Anthropic model (another provider's
+  // model leaked into the shell), ignore it and use the default.
+  if (fromEnv.includes("deepseek") || fromEnv.includes("gpt") || fromEnv.includes("gemini")) {
+    return DEFAULT_MODEL;
+  }
+  return fromEnv;
+}
 const TEMPERATURE = 0.2;
 
 type AnthropicResponse = {
@@ -33,7 +45,7 @@ async function safeErrorText(response: Response): Promise<string> {
 
 export function createAnthropicProvider(
   apiKey: string,
-  model = process.env.ANTHROPIC_MODEL || DEFAULT_MODEL
+  model = resolveModel()
 ): LlmProvider {
   return {
     name: "anthropic",
