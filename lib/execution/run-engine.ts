@@ -464,7 +464,7 @@ async function runStep(
       await haltError(ctx, "tool-call ceiling reached");
       return { kind: "halted", status: "halted_error" };
     }
-    const executed = await executeAllowedTool(ctx, agent, tool!, actionKind, envelope.input, gate.reason, envelope.arguments);
+    const executed = await executeAllowedTool(ctx, agent, tool!, actionKind, envelope.input, gate.reason, envelope.arguments, iter);
     toolResults.push(executed);
   }
 
@@ -472,12 +472,54 @@ async function runStep(
   return { kind: "done" };
 }
 
-async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedTool, action: ActionKind, input: string, reason: string, args?: Record<string, unknown>): Promise<string> {
+async function executeAllowedTool(
+  ctx: Ctx,
+  agent: RunnableAgent,
+  tool: AllowedTool,
+  action: ActionKind,
+  input: string,
+  reason: string,
+  args?: Record<string, unknown>,
+  /** Stable position of this tool call within its step (0, 1, …; -1 = resume path). */
+  toolIter = 0
+): Promise<string> {
   const executor = getExecutor(tool.server.name);
   let output: string;
   let costCents = 0;
   let real = false;
   let toolInputForAudit = input;
+
+  // --- Idempotency guard for real external-send tools -----------------------
+  // A deterministic key stable across retries. If a worker crashes after the
+  // external action completes but before recording it, the next worker that
+  // claims this job will find the prior event and skip re-execution.
+  const idempotencyKey = `${ctx.runId}:a${agent.index}:t${toolIter}`;
+  const isExternal = Boolean(tool.isExternalSend);
+  const willBeReal = isMcpTool(tool) || (executor ? isRealTool(tool.server.name) : false);
+
+  if (willBeReal && isExternal) {
+    const priorIntent = await prisma.workflowRunEvent.findFirst({
+      where: { workflowRunId: ctx.runId, eventType: "mcp_tool_use", decision: "allowed" },
+      orderBy: { createdAt: "desc" }
+    });
+    if (priorIntent?.metadata) {
+      const meta = priorIntent.metadata as { idempotencyKey?: string; toolOutput?: string };
+      if (meta.idempotencyKey === idempotencyKey && typeof meta.toolOutput === "string") {
+        // Action already completed — return cached result without re-executing.
+        await appendEvent({
+          runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "mcp_tool_use",
+          title: `${tool.toolName} (idempotent skip)`,
+          description: `${agent.name} skipped ${tool.toolName} — already executed in a prior attempt.`,
+          decision: "allowed", costCents: 0, actorType: "system", actorId: agent.agentId,
+          resourceType: "tool", resourceId: tool.server.id, authorityRef: tool.grant.id, untrusted: true,
+          metadata: { real: true, toolName: tool.toolName, idempotencyKey, idempotentSkip: true,
+            toolOutput: capText(meta.toolOutput, TOOL_OUTPUT_META_LIMIT) }
+        });
+        return `${tool.toolName} result: ${meta.toolOutput}`;
+      }
+    }
+  }
+  // -------------------------------------------------------------------------
 
   if (isMcpTool(tool)) {
     // Route through the real governed MCP client with STRUCTURED arguments, using
@@ -513,7 +555,8 @@ async function executeAllowedTool(ctx: Ctx, agent: RunnableAgent, tool: AllowedT
       real,
       toolName: tool.toolName,
       toolInput: capText(toolInputForAudit, TOOL_INPUT_META_LIMIT),
-      toolOutput: capText(output, TOOL_OUTPUT_META_LIMIT)
+      toolOutput: capText(output, TOOL_OUTPUT_META_LIMIT),
+      idempotencyKey: willBeReal && isExternal ? idempotencyKey : undefined
     }
   });
   // Result re-enters context tagged untrusted.
@@ -588,7 +631,8 @@ async function executeApprovedTool(
     classified ? classified.action : pending.action,
     pending.input,
     "human-approved after policy re-check",
-    pending.arguments ?? undefined
+    pending.arguments ?? undefined,
+    -1 // resume path — negative iter to distinguish from normal step loop
   );
   return { kind: "executed", result };
 }
