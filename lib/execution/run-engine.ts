@@ -10,6 +10,28 @@ import { getRunProvider } from "./provider";
 import { buildStepContext } from "./memory";
 import type { RunEventMeta } from "../types";
 
+// ============================================================================
+// SANDBOX BOUNDARY — the single seam where an isolated executor slots in.
+//
+// Today tool execution is split into two paths inside executeAllowedTool:
+//   1. MCP tools → callMcpTool (real MCP client, governed, auth-brokered)
+//   2. Legacy tools → getExecutor (registry lookup, local/stub)
+//
+// Both run in-process. To sandbox execution later:
+//   - Replace the MCP path with an RPC/containerized call THROUGH
+//     callMcpTool — the gate, idempotency guard, and audit stay unchanged.
+//   - The legacy tool path is phased out as all tools become MCP.
+//   - The sandbox executor receives: serverKey, toolName, input (structured
+//     arguments), and an auth token scoped to this invocation.
+//   - NO gate logic, NO orchestration, NO credential-broker logic moves
+//     into the sandbox — those stay on the trusted side of this boundary.
+//
+// The boundary is the function call itself: everything ABOVE executeAllowedTool
+// (gate, orchestration, caps, kill switch, memory firewall) is trusted and
+// stays in the worker process. Everything BELOW (tool I/O, network, file
+// system) is untrusted and sandboxable.
+// ============================================================================
+
 // Governance classification for an MCP tool, derived generically from the
 // server's `isExternalSend` column — no tool-name special-casing. An external
 // send (real outbound effect) rides the send/approval path and the lethal-
@@ -522,11 +544,12 @@ async function executeAllowedTool(
   // -------------------------------------------------------------------------
 
   if (isMcpTool(tool)) {
-    // Route through the real governed MCP client with STRUCTURED arguments, using
-    // the generic server identity (mcpServerKey + mcpToolName). A server that
-    // needs auth declares a credentialProvider; the broker loads the token and it
-    // is set ONLY in the server's process env — never reaching the agent. No
-    // server-specific code here.
+    // ═══════════════════════════════════════════════════════════════════
+    // SANDBOX SEAM — the single point where tool execution crosses into
+    // untrusted territory. Replace callMcpTool with a sandboxed RPC to
+    // isolate this tool invocation. The gate, idempotency guard, and all
+    // audit logic above this line stay trusted and unchanged.
+    // ═══════════════════════════════════════════════════════════════════
     const structuredArgs = args ?? {};
     toolInputForAudit = JSON.stringify(structuredArgs);
     const env = await mcpServerEnv(tool.server, ctx.userId);
