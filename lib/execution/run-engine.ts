@@ -67,7 +67,7 @@ function caps() {
   };
 }
 
-const MAX_TOOL_ITERS_PER_STEP = 3;
+const MAX_TOOL_ITERS_PER_STEP = intEnv("RUN_MAX_TOOL_ITERS_PER_STEP", 5);
 const MAX_OUTPUT_TOKENS = 1200;
 const MODEL_OUTPUT_META_LIMIT = 8000;
 const TOOL_INPUT_META_LIMIT = 1000;
@@ -107,24 +107,75 @@ type Envelope =
 
 function parseEnvelope(text: string): Envelope {
   let body = text.trim();
+
+  // Strip markdown fences if present.
   if (body.startsWith("```")) body = body.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+
+  // Try direct JSON parse first.
   try {
     const json = JSON.parse(body);
     if (json && json.type === "tool_call" && typeof json.tool === "string") {
       const action: ActionKind = ["read", "write", "send", "delete", "execute"].includes(json.action) ? json.action : "read";
-      // MCP tools take a structured `arguments` object matching their input
-      // schema; legacy string tools (web search) keep `input`.
       const args =
         json.arguments && typeof json.arguments === "object" && !Array.isArray(json.arguments)
           ? (json.arguments as Record<string, unknown>)
           : undefined;
       return { type: "tool_call", tool: String(json.tool), action, input: String(json.input ?? ""), arguments: args };
     }
-    if (json && json.type === "final") return { type: "final", text: String(json.text ?? "") };
+    if (json && json.type === "final" && typeof json.text === "string") {
+      return { type: "final", text: String(json.text) };
+    }
+    // Parsed JSON but not an envelope — could be a raw object mistakenly returned.
+    // Don't treat arbitrary JSON as a final answer; flag it.
+    if (json && !json.type) {
+      return { type: "final", text: "[engine] model returned JSON without a recognized envelope type — not a deliverable." };
+    }
   } catch {
-    /* fall through: treat raw text as a final answer */
+    // Not valid JSON. Fall through to raw-text path.
   }
+
+  // Try harder: look for a JSON object anywhere in the text.
+  // Models sometimes wrap the envelope in prose ("Here's the plan: {...}").
+  const jsonMatch = body.match(/\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}/);
+  if (jsonMatch) {
+    try {
+      const json = JSON.parse(jsonMatch[0]);
+      if (json && json.type === "tool_call" && typeof json.tool === "string") {
+        const action: ActionKind = ["read", "write", "send", "delete", "execute"].includes(json.action) ? json.action : "read";
+        const args =
+          json.arguments && typeof json.arguments === "object" && !Array.isArray(json.arguments)
+            ? (json.arguments as Record<string, unknown>)
+            : undefined;
+        return { type: "tool_call", tool: String(json.tool), action, input: String(json.input ?? ""), arguments: args };
+      }
+      if (json && json.type === "final" && typeof json.text === "string") {
+        return { type: "final", text: String(json.text) };
+      }
+    } catch {
+      // Extracted substring wasn't valid — fall through.
+    }
+  }
+
+  // Raw text that is itself a JSON-looking blob (starts with { and contains "type")
+  // but we still can't parse — don't pass it off as a deliverable.
+  if (body.startsWith("{") && body.includes('"type"')) {
+    return { type: "final", text: "[engine] could not parse model output as a valid envelope — not a deliverable." };
+  }
+
   return { type: "final", text: body.slice(0, 2000) };
+}
+
+// Guards against raw JSON/envelopes leaking into the user-visible Output.
+function sanitizeDeliverable(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  // If the entire output is just a JSON envelope, it's not a deliverable.
+  if ((trimmed.startsWith("{") || trimmed.startsWith("```")) && trimmed.includes('"type"')) {
+    return null;
+  }
+  // If it's just the engine error placeholder, not a deliverable.
+  if (trimmed.startsWith("[engine]")) return null;
+  return trimmed;
 }
 
 type AllowedTool = {
@@ -302,9 +353,37 @@ async function callModel(provider: LlmProvider, system: string, user: string, ti
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await provider.completeJson({ system, user, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: controller.signal });
+  } catch (error) {
+    // Classify the error so callers get an honest reason — never a swallowed generic.
+    if (controller.signal.aborted) {
+      throw new TimeoutError(`model call timed out after ${timeoutMs}ms`);
+    }
+    throw error; // re-throw: the caller captures the real message.
   } finally {
     clearTimeout(timer);
   }
+}
+
+class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TimeoutError";
+  }
+}
+
+// Classify a provider error into a short, human-readable reason.
+function classifyProviderError(error: unknown): string {
+  if (error instanceof TimeoutError) return error.message;
+  const msg = error instanceof Error ? error.message : String(error);
+  const lower = msg.toLowerCase();
+  if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("invalid") && lower.includes("key")) return "invalid or expired API key";
+  if (lower.includes("403") || lower.includes("forbidden")) return "API key lacks permission";
+  if (lower.includes("404") || lower.includes("model") && lower.includes("not found")) return `model not found: ${msg.slice(0, 120)}`;
+  if (lower.includes("429") || lower.includes("rate") && lower.includes("limit")) return "rate limited by provider";
+  if (lower.includes("500") || lower.includes("502") || lower.includes("503")) return "provider server error";
+  if (lower.includes("timeout") || lower.includes("timed out") || lower.includes("abort")) return "request timed out";
+  if (lower.includes("econnrefused") || lower.includes("enotfound") || lower.includes("dns")) return "network error: cannot reach provider";
+  return msg.slice(0, 200);
 }
 
 function buildSystem(agent: RunnableAgent): string {
@@ -392,12 +471,33 @@ async function runStep(
       continue;
     }
 
-    // --- model call ---
+    // --- model call (with bounded retry for transient errors) ---
     let completion;
-    try {
-      completion = await callModel(ctx.provider, buildSystem(agent), buildUser(ctx.goal, memoryContext, toolResults, handoffContent), ctx.c.stepTimeoutMs);
-    } catch {
-      await haltError(ctx, "model call failed or timed out");
+    let lastError: unknown;
+    const MAX_RETRIES = 2;
+    const RETRY_BACKOFF_MS = 1000;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        completion = await callModel(ctx.provider, buildSystem(agent), buildUser(ctx.goal, memoryContext, toolResults, handoffContent), ctx.c.stepTimeoutMs);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        const reason = classifyProviderError(error);
+        // Only retry on transient errors (rate-limit, network, server errors) —
+        // not on auth errors or model-not-found.
+        const isTransient = reason.includes("rate limited") || reason.includes("network error") || reason.includes("provider server error") || reason.includes("timed out");
+        if (!isTransient || attempt === MAX_RETRIES) {
+          await haltError(ctx, `model call failed: ${reason}${attempt > 0 ? ` (after ${attempt + 1} attempts)` : ""}`, { errorType: "model_call", rawError: reason, attempts: attempt + 1 });
+          return { kind: "halted", status: "halted_error" };
+        }
+        // Wait with backoff, then retry.
+        await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS * (attempt + 1)));
+      }
+    }
+    if (!completion) {
+      const reason = classifyProviderError(lastError);
+      await haltError(ctx, `model call failed: ${reason}`, { errorType: "model_call", rawError: reason });
       return { kind: "halted", status: "halted_error" };
     }
     const envelope = parseEnvelope(completion.text);
@@ -490,8 +590,16 @@ async function runStep(
     toolResults.push(executed);
   }
 
-  // Ran out of per-step tool iterations: end the step.
-  return { kind: "done" };
+  // Ran out of per-step tool iterations without a final answer.
+  // Don't pretend this is success — the agent didn't reach a deliverable.
+  await appendEvent({
+    runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "action_blocked",
+    title: `${agent.name} did not reach a final answer`,
+    description: `Agent exhausted ${MAX_TOOL_ITERS_PER_STEP} tool iterations without producing a final answer.`,
+    decision: "denied", actorType: "agent", actorId: agent.agentId,
+    metadata: { toolResults: toolResults.map((r) => capText(r, 200)) }
+  });
+  return { kind: "halted", status: "halted_error" };
 }
 
 async function executeAllowedTool(
@@ -665,8 +773,14 @@ async function haltCost(ctx: Ctx) {
   await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "halted_cost", endedAt: new Date() } });
 }
 
-async function haltError(ctx: Ctx, reason: string) {
-  await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked", title: "Run halted", description: reason, decision: "denied", actorType: "system" });
+async function haltError(ctx: Ctx, reason: string, meta?: Record<string, unknown>) {
+  // Log to stderr so the worker terminal shows the real reason — never silent.
+  console.error(`[run-engine] ${ctx.runId} halted: ${reason}${meta ? ` (${JSON.stringify(meta)})` : ""}`);
+  await appendEvent({
+    runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked",
+    title: "Run halted", description: reason, decision: "denied", actorType: "system",
+    metadata: { haltReason: reason, ...(meta ?? {}) } as RunEventMeta
+  });
   await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "halted_error", endedAt: new Date() } });
 }
 
@@ -723,10 +837,27 @@ async function drive(
     // can resume from the next agent, not re-run this one.
     await opts?.onAgentStepComplete?.(i + 1);
   }
+  // Sanitize: never show raw JSON/envelopes as the Output.
+  const deliverable = sanitizeDeliverable(lastFinalText);
+  if (!deliverable && lastFinalText) {
+    // The agent finished but its "final" output was a raw envelope — not a real deliverable.
+    await appendEvent({
+      runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked",
+      title: "Run produced no clean deliverable",
+      description: "The final agent output was a raw envelope or unparseable JSON — not a user-facing result.",
+      decision: "denied", actorType: "system",
+      metadata: { rawOutput: capText(lastFinalText, TOOL_OUTPUT_META_LIMIT) }
+    });
+    await prisma.workflowRun.update({
+      where: { id: ctx.runId },
+      data: { status: "halted_error", endedAt: new Date(), resultText: null }
+    });
+    return { runId: ctx.runId, status: "halted_error" };
+  }
   await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "workflow_completed", title: "Run completed", description: "All agent steps finished.", decision: "info", actorType: "system" });
   await prisma.workflowRun.update({
     where: { id: ctx.runId },
-    data: { status: "completed", completedAt: new Date(), endedAt: new Date(), resultText: lastFinalText }
+    data: { status: "completed", completedAt: new Date(), endedAt: new Date(), resultText: deliverable }
   });
   return { runId: ctx.runId, status: "completed" };
 }
@@ -744,15 +875,22 @@ export async function startRun(userId: string, workflowId: string): Promise<{ ok
   if (!runnable) return { ok: false, status: 404, message: "Flow not found." };
   if (runnable.agents.length === 0) return { ok: false, status: 400, message: "Flow has no agents to run." };
 
+  // Key precheck: fail fast with a precise reason before creating a run row.
+  // Distinguishes the run/BYO key from the planner/env key so the fix is clear.
+  const provider = await getRunProvider(userId);
+  if (!provider) {
+    return {
+      ok: false, status: 503,
+      message: "No valid AI provider key set for runs. Add one in Profile → Provider Keys (this is your own BYO key, separate from the system planner key)."
+    };
+  }
+
   const run = await prisma.workflowRun.create({
     data: { userId, workflowId, status: "running", riskLevel: "medium", startedAt: new Date() }
   });
 
-  const ctx = await buildCtx(userId, run.id, runnable.workflow.goal, runnable.agents);
-  if (!ctx) {
-    await prisma.workflowRun.update({ where: { id: run.id }, data: { status: "halted_error", endedAt: new Date() } });
-    return { ok: false, status: 503, message: "No active provider key. Add a key in Profile to run agents." };
-  }
+  // Reuse the provider we already validated in the precheck.
+  const ctx: Ctx = { userId, runId: run.id, provider, goal: runnable.workflow.goal, agents: runnable.agents, c: caps(), startedAtMs: Date.now() };
 
   const result = await drive(ctx, 0, [], null, null);
   return { ok: true, result };
