@@ -40,15 +40,15 @@ control-plane data path, with a deliberately narrow real execution surface.
 | Governed MCP execution | Early v1 | Official SDK client, registered servers only, first-party Gmail server connected. |
 | Memory Firewall | Prototype complete | Zones, grants, logs, runtime read bounding; no semantic retrieval yet. |
 | Access Gateway | Early v1 | Encrypted BYO model keys and encrypted Google OAuth token bundles. Not KMS/Vault yet. |
-| Runtime / sandbox | Not built | Runs execute inside the Next.js/server process, not isolated workers or containers. |
+| Durable execution + worker | **Chunk 11 complete** | Postgres-backed job queue, standalone worker process, crash recovery, idempotent external actions, step-cursor resume, SSE event streaming, per-user concurrency bound, explicit sandbox seam. |
+| Sandbox / isolation | Not built | Sandbox boundary is defined in code (`callMcpTool` seam); actual container/VM isolation not yet implemented. |
 | Billing/payments | Not built | No provider resale, Stripe, org billing, or spend reconciliation yet. |
 | External agents / NANDA | Not built | No third-party agent runtime, discovery trust network, or cross-org agent identity yet. |
 
-The next best build step is a **runtime separation chunk**: move real run
-execution out of request/response handlers into a durable worker/job queue with
-per-user concurrency limits, streamed run events, and a clean boundary for a
-future sandbox. This is the step that turns the current governed prototype into
-something that can reliably run longer workflows.
+**Chunk 11 (Durable Execution) has shipped.** Real runs are now enqueued via a
+Postgres-backed job queue and executed by a standalone worker process with crash
+recovery, idempotent external actions, step-cursor resume, and event streaming —
+see [docs/durable-execution.md](docs/durable-execution.md) for the full design.
 
 ## Current Product Surface
 
@@ -93,6 +93,13 @@ Timeline.
   execute the pending action and does not silently resume); re-run the flow to
   apply the updated policy.
 - MCP revocation with `revokedAt` kill-switch semantics.
+- Durable run execution via Postgres-backed job queue with crash recovery.
+- Standalone worker process (npm run worker) with lease/heartbeat.
+- Idempotent external actions — a retried step never double-fires a real-world effect.
+- Step-cursor resume — a reclaimed job resumes from the last completed agent.
+- SSE event streaming at `GET /api/runs/:id/stream` (additive to polling).
+- Per-user concurrency bound (safety cap, not throughput feature).
+- Explicit sandbox boundary at the `callMcpTool` seam.
 - Memory approval-required grants are skipped and logged, not silently injected.
 - Approval resolution with persisted audit events.
 - Memory grant editing and revocation.
@@ -138,11 +145,42 @@ Policy Resolution + Permission Clamping
 Saved Flow in Postgres
         |
         v
-Database-backed Run Preview
+POST /api/runs → WorkflowRun + RunJob (queued) → HTTP 201 (immediate)
+                                              |
+                                              v
+                              ┌───────────────────────────────┐
+                              │  Postgres Queue (run_jobs)     │
+                              │  SELECT … FOR UPDATE SKIP      │
+                              │  LOCKED, per-user concurrency  │
+                              └──────────────┬────────────────┘
+                                             │
+                              ┌──────────────┴────────────────┐
+                              │  Worker (npm run worker)       │
+                              │  - Claim → heartbeat → execute │
+                              │  - Crash recovery              │
+                              │  - Idempotent external actions │
+                              │  - Step-cursor resume          │
+                              └──────────────┬────────────────┘
+                                             │
+                              ┌──────────────┴────────────────┐
+                              │  Run Engine (drive)            │
+                              │  - Policy gate                 │
+                              │  - Cap enforcement             │
+                              │  - Kill switch                 │
+                              │  - Memory firewall             │
+                              └──────────────┬────────────────┘
+                                             │
+                              ┌──────────────┴────────────────┐
+                              │  Sandbox Seam (callMcpTool)    │
+                              │  - MCP tool execution          │
+                              │  - (Future: isolated executor) │
+                              └───────────────────────────────┘
         |
-        +--> WorkflowRunEvent
-        +--> ApprovalRequest
-        +--> ActivityLog / Timeline
+        v
+Run Events + Approvals + Activity Log
+        |
+        v
+SSE Stream (GET /api/runs/:id/stream) → live Control board
 ```
 
 The intended production architecture extends this with an Access Gateway,
@@ -247,10 +285,23 @@ npm run db:seed
 ### 5. Start AgentDock
 
 ```bash
+# Terminal 1: Next.js dev server (UI + API)
 npm run dev
+
+# Terminal 2: Worker process (claims and executes queued runs)
+npm run worker
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+The worker is a standalone process — no Next.js dependency. It loops: claim a
+queued job → heartbeat continuously → execute via the run engine → release. It
+respects a per-user concurrency cap (default: 1) so a single user can never
+flood the queue. Configurable via environment variables:
+
+- `WORKER_POLL_MS` — poll interval when idle (default: 2000)
+- `WORKER_LEASE_MS` — job lease duration (default: 60000)
+- `WORKER_PER_USER_CONCURRENCY` — max concurrent runs per user (default: 1)
 
 Use `localhost` consistently for the browser, `AUTH_URL`, Google authorized
 origin, and Google callback. Mixing `localhost` and `127.0.0.1` can break OAuth
@@ -523,6 +574,7 @@ Read routes such as `GET /api/workflows` and `GET /api/memory` are pure reads.
 | POST | `/api/workflow-runs/simulate` | Generic metadata-only Run Preview (from Build) |
 | GET/POST | `/api/runs` | List real runs (with flow name + output preview) / start a real run |
 | GET | `/api/runs/[id]` | Real run detail: events with agent names + workflow name |
+| GET | `/api/runs/[id]/stream` | SSE event stream — live run-event feed (cursor-based, additive to polling) |
 | POST | `/api/runs/[id]/kill` | Kill an in-flight real run |
 | POST | `/api/approvals/[id]/resolve` | Approve (resume after re-check), deny (halt), or edit (halt; re-run to apply) |
 | GET | `/api/activity` | Unified Timeline |
@@ -544,6 +596,7 @@ The Prisma schema includes:
 - Auth: `User`, `Account`, `Session`, `VerificationToken`
 - Agents and Flows: `Agent`, `Workflow`, `WorkflowAgent`
 - Runtime preview: `WorkflowRun`, `WorkflowRunEvent`
+- Durable job queue: `RunJob`
 - Approvals and audit: `ApprovalRequest`, `ActivityLog`
 - Tools: `McpServer`, `McpTool`, `WorkflowMcp`, `McpAccessGrant`
 - Memory: `MemoryPartition`, `MemoryItem`, `MemoryAccessGrant`,
@@ -596,6 +649,10 @@ The suite covers:
 - Anthropic/OpenAI response parsing and cost calculation
 - Orchestrator schema, reference resolution, permission clamping, retries,
   timeout, budget cap, oversize response handling, and prompt-injection posture
+- Durable worker/queue: crash recovery, lease reclamation, step-cursor resume
+- Idempotent external actions across retries (no double-fire)
+- Async safety: kill mid-queue, caps from worker, revoke mid-run, per-user concurrency
+- SSE event streaming via ReadableStream
 
 Provider calls are mocked in tests; API keys are not required.
 
