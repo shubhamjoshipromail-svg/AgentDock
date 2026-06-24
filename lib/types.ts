@@ -1,5 +1,5 @@
 // Single source for all Persisted*/domain types shared by UI and API client.
-export type Section = "Build" | "Store" | "Flows" | "Control" | "Profile" | "Connect";
+export type Section = "Build" | "Store" | "Flows" | "Control" | "Profile" | "Connect" | "Workspace";
 export type StoreTab = "Agents" | "Tools" | "Templates";
 export type LibraryTab = "My Flows" | "My Agents" | "My Tools" | "Scoped Access";
 export type BuilderPaletteTab = "Agents" | "Tools" | "Memory" | "Controls";
@@ -252,6 +252,11 @@ export type PersistedMcpServer = {
   category?: string | null;
   installCommand?: string | null;
   metadata?: Record<string, unknown>;
+  // Chunk 10 generic execution identity columns.
+  mcpServerKey?: string | null;
+  mcpToolName?: string | null;
+  credentialProvider?: string | null;
+  isExternalSend?: boolean;
   tools?: {
     id: string;
     name: string;
@@ -276,6 +281,7 @@ export type PersistedMcpAccessGrant = {
   requiresApproval: boolean;
   allowedActions?: string[] | null;
   blockedActions?: string[] | null;
+  revokedAt?: string | null;
   mcpServer: PersistedMcpServer;
 };
 

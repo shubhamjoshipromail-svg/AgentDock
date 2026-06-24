@@ -23,6 +23,8 @@ function SectionIcon({ section }: { section: Section }) {
       return <svg {...common}><circle cx="12" cy="8.5" r="3.3" /><path d="M5.5 19a6.5 6.5 0 0 1 13 0" /></svg>;
     case "Connect":
       return <svg {...common}><path d="M12 4v4" /><path d="M16 8H8a4 4 0 0 0-4 4v4a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4v-4a4 4 0 0 0-4-4Z" /><path d="M12 16v4" /><circle cx="12" cy="12" r="1.5" /></svg>;
+    case "Workspace":
+      return <svg {...common}><rect x="3" y="3" width="18" height="18" rx="2.5" /><path d="M9 3v18" /><path d="M3 9h18" /></svg>;
   }
 }
 
@@ -46,7 +48,8 @@ const SECTION_TITLES: Record<Section, string> = {
   Flows: "Flows",
   Control: "Control",
   Profile: "Profile",
-  Connect: "Connect"
+  Connect: "Connect",
+  Workspace: "Workspace"
 };
 
 export function Shell({

@@ -9,6 +9,7 @@ import { ControlPlane } from "../components/control/ControlPlane";
 import { Library } from "../components/flows/Library";
 import { Shell } from "../components/layout/Shell";
 import { ConnectPanel } from "../components/connect/ConnectPanel";
+import { FlowWorkspace } from "../components/workspace/FlowWorkspace";
 import { Profile } from "../components/profile/Profile";
 import { Store } from "../components/store/Store";
 import { CommandPalette, type Command } from "../components/layout/CommandPalette";
@@ -62,7 +63,8 @@ function BootstrapGate({ children }: { children: React.ReactNode }) {
 }
 
 function AppInner() {
-  const [activeSection, setActiveSection] = useState<Section>("Build");
+  const [activeSection, setActiveSection] = useState<Section>("Workspace");
+  const [workspaceFlowId, setWorkspaceFlowId] = useState<string | null>(null);
   const [storeTab, setStoreTab] = useState<StoreTab>("Agents");
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("My Flows");
   const [builderPaletteTab, setBuilderPaletteTab] = useState<BuilderPaletteTab>("Agents");
@@ -140,6 +142,9 @@ function AppInner() {
         onOpenCommand={() => setCmdkOpen(true)}
       >
         <BootstrapGate>
+          {activeSection === "Workspace" && (
+            <FlowWorkspace flowId={workspaceFlowId} onFlowChange={setWorkspaceFlowId} />
+          )}
           {activeSection === "Control" && <ControlPlane />}
           {activeSection === "Build" && (
             <Builder
