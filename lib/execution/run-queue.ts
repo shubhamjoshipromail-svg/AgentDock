@@ -12,6 +12,8 @@ export type RunJobWithRun = {
   status: string;
   claimedBy: string | null;
   leaseExpiresAt: Date | null;
+  attemptCount: number;
+  stepCursor: number;
   workflowRun: {
     id: string;
     userId: string;
