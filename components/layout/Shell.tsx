@@ -11,20 +11,14 @@ import { AuthStatus } from "./AuthMenu";
 function SectionIcon({ section }: { section: Section }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
   switch (section) {
-    case "Build":
-      return <svg {...common}><circle cx="6" cy="6" r="2.4" /><circle cx="18" cy="6" r="2.4" /><circle cx="12" cy="18" r="2.4" /><path d="M6 8.4v3a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3" /><path d="M12 13.4v2.2" /></svg>;
-    case "Store":
-      return <svg {...common}><path d="M4 8h16l-1 4.5a3 3 0 0 1-3 2.5H8a3 3 0 0 1-3-2.5Z" /><path d="M4 8 6 4h12l2 4" /><path d="M9 19h6" /></svg>;
-    case "Flows":
-      return <svg {...common}><rect x="3.5" y="4" width="7" height="5" rx="1.2" /><rect x="13.5" y="15" width="7" height="5" rx="1.2" /><path d="M7 9v3a2 2 0 0 0 2 2h8" /></svg>;
-    case "Control":
-      return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></svg>;
-    case "Profile":
-      return <svg {...common}><circle cx="12" cy="8.5" r="3.3" /><path d="M5.5 19a6.5 6.5 0 0 1 13 0" /></svg>;
-    case "Connect":
-      return <svg {...common}><path d="M12 4v4" /><path d="M16 8H8a4 4 0 0 0-4 4v4a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4v-4a4 4 0 0 0-4-4Z" /><path d="M12 16v4" /><circle cx="12" cy="12" r="1.5" /></svg>;
     case "Workspace":
       return <svg {...common}><rect x="3" y="3" width="18" height="18" rx="2.5" /><path d="M9 3v18" /><path d="M3 9h18" /></svg>;
+    case "Store":
+      return <svg {...common}><path d="M4 8h16l-1 4.5a3 3 0 0 1-3 2.5H8a3 3 0 0 1-3-2.5Z" /><path d="M4 8 6 4h12l2 4" /><path d="M9 19h6" /></svg>;
+    case "Guides":
+      return <svg {...common}><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" /><path d="M8 7h6" /><path d="M8 11h8" /><path d="M8 15h6" /></svg>;
+    case "Profile":
+      return <svg {...common}><circle cx="12" cy="8.5" r="3.3" /><path d="M5.5 19a6.5 6.5 0 0 1 13 0" /></svg>;
   }
 }
 
@@ -43,13 +37,10 @@ function ModeIndicator() {
 }
 
 const SECTION_TITLES: Record<Section, string> = {
-  Build: "Build a flow",
+  Workspace: "Workspace",
   Store: "Store",
-  Flows: "Flows",
-  Control: "Control",
-  Profile: "Profile",
-  Connect: "Connect",
-  Workspace: "Workspace"
+  Guides: "Guides",
+  Profile: "Profile"
 };
 
 export function Shell({

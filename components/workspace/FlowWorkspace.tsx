@@ -20,7 +20,14 @@ import {
 import type { PersistedWorkflow } from "../../lib/types";
 import { Badge, Button, EmptyState } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
+import { Builder } from "../build/Builder";
+import { ControlPlane } from "../control/ControlPlane";
+import { ConnectPanel } from "../connect/ConnectPanel";
+import { recommendedBuilderNodes } from "../mock-data";
+import type { BuilderNode } from "../../lib/types";
 import "./workspace.css";
+
+type WorkspaceTab = "flow" | "builder" | "activity" | "connect";
 
 type Participant = {
   agentId: string;
@@ -58,6 +65,14 @@ export function FlowWorkspace({
   const { data: session } = useSession();
   const toast = useToast();
 
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("flow");
+
+  // Builder state (moved in from page.tsx).
+  const [builderPrompt, setBuilderPrompt] = useState("Describe an outcome…");
+  const [builderNodes, setBuilderNodes] = useState<BuilderNode[]>([recommendedBuilderNodes[0]]);
+  const [selectedBuilderNodeId, setSelectedBuilderNodeId] = useState(recommendedBuilderNodes[0].id);
+  const [builderSaved, setBuilderSaved] = useState(false);
+
   const [flows, setFlows] = useState<PersistedWorkflow[]>([]);
   const [flow, setFlow] = useState<PersistedWorkflow | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -72,6 +87,36 @@ export function FlowWorkspace({
   // Describe-to-build
   const [describeText, setDescribeText] = useState("");
   const [planning, setPlanning] = useState(false);
+
+  // Builder helpers
+  const recommendBuilderStack = () => {
+    setBuilderNodes(recommendedBuilderNodes);
+    setSelectedBuilderNodeId("agent-job-discovery");
+    setBuilderSaved(false);
+  };
+  const addBuilderNode = (node: BuilderNode) => {
+    setBuilderNodes((cur) => {
+      const uniqueId = `${node.id}-${cur.length + 1}`;
+      const nextNode = cur.some((n) => n.id === node.id) ? { ...node, id: uniqueId } : node;
+      setSelectedBuilderNodeId(nextNode.id);
+      return [...cur, nextNode];
+    });
+    setBuilderSaved(false);
+  };
+  const removeBuilderNode = (id: string) => {
+    setBuilderNodes((cur) => {
+      const next = cur.filter((n) => n.id !== id || n.type === "goal");
+      setSelectedBuilderNodeId(next[0]?.id ?? recommendedBuilderNodes[0].id);
+      return next.length ? next : [recommendedBuilderNodes[0]];
+    });
+    setBuilderSaved(false);
+  };
+  const loadWorkflowNodes = (nodes: BuilderNode[]) => {
+    if (!nodes.length) return;
+    setBuilderNodes(nodes);
+    setSelectedBuilderNodeId(nodes[0].id);
+    setBuilderSaved(true);
+  };
 
   const loadFlows = useCallback(async () => {
     if (!session?.user) return;
@@ -249,8 +294,83 @@ export function FlowWorkspace({
     return <EmptyState icon={<span style={{ fontSize: 28 }}>🔐</span>} title="Sign in to use the workspace" body="Sign in with Google to build, grant, run, and watch your flows." />;
   }
 
+  // Tab bar
+  const tabBar = (
+    <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--border)", padding: "0 0.75rem", background: "var(--surface)" }}>
+      {(["flow", "builder", "activity", "connect"] as WorkspaceTab[]).map((t) => (
+        <button
+          key={t}
+          onClick={() => setWorkspaceTab(t)}
+          style={{
+            padding: "0.5rem 0.875rem",
+            fontSize: "0.78rem",
+            fontWeight: workspaceTab === t ? 600 : 400,
+            color: workspaceTab === t ? "var(--foreground)" : "var(--muted)",
+            border: "none",
+            borderBottom: workspaceTab === t ? "2px solid var(--accent)" : "2px solid transparent",
+            background: "transparent",
+            cursor: "pointer",
+            textTransform: "capitalize"
+          }}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+
+  // Render the active tab
+  if (workspaceTab === "builder") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        {tabBar}
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <Builder
+            prompt={builderPrompt}
+            setPrompt={setBuilderPrompt}
+            nodes={builderNodes}
+            selectedNodeId={selectedBuilderNodeId}
+            setSelectedNodeId={setSelectedBuilderNodeId}
+            saved={builderSaved}
+            onRecommend={recommendBuilderStack}
+            onAddNode={addBuilderNode}
+            onRemoveNode={removeBuilderNode}
+            onLoadWorkflow={loadWorkflowNodes}
+            onSave={() => setBuilderSaved(true)}
+            onViewLogs={() => setWorkspaceTab("activity")}
+            onSetDefault={() => {}}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (workspaceTab === "activity") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        {tabBar}
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <ControlPlane />
+        </div>
+      </div>
+    );
+  }
+
+  if (workspaceTab === "connect") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        {tabBar}
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <ConnectPanel />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="workspaceRoot">
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {tabBar}
+      <div className="workspaceRoot" style={{ flex: 1 }}>
       {/* LEFT: Flows list + Participants */}
       <div className="workspaceLeft">
         <div className="describeBar">
@@ -453,6 +573,7 @@ export function FlowWorkspace({
           <EmptyState title="Select a participant" body="Click an agent on the left to see its tools and grants." />
         )}
       </div>
+    </div>
     </div>
   );
 }

@@ -4,61 +4,28 @@ import { useMemo, useState } from "react";
 import { SessionProvider, useSession } from "next-auth/react";
 
 import { bootstrap } from "../lib/api/client";
-import { Builder } from "../components/build/Builder";
-import { ControlPlane } from "../components/control/ControlPlane";
-import { Library } from "../components/flows/Library";
 import { Shell } from "../components/layout/Shell";
-import { ConnectPanel } from "../components/connect/ConnectPanel";
 import { FlowWorkspace } from "../components/workspace/FlowWorkspace";
 import { Profile } from "../components/profile/Profile";
 import { Store } from "../components/store/Store";
 import { CommandPalette, type Command } from "../components/layout/CommandPalette";
 import { ToastProvider } from "../components/layout/Toast";
-import { recommendedBuilderNodes } from "../components/mock-data";
-import type {
-  BuilderNode,
-  BuilderPaletteTab,
-  LibraryTab,
-  Section,
-  StoreTab
-} from "../lib/types";
+import type { Section, StoreTab } from "../lib/types";
 import { useEffect } from "react";
 
-// Runs the idempotent server bootstrap once per signed-in session before the
-// sections mount, so their initial loads see the starter data (GET routes are
-// pure reads). Children render immediately when signed out.
 function BootstrapGate({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (status === "loading") {
-      return;
-    }
-
-    if (!session?.user) {
-      setReady(true);
-      return;
-    }
-
+    if (status === "loading") return;
+    if (!session?.user) { setReady(true); return; }
     let cancelled = false;
-    bootstrap()
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) {
-          setReady(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    bootstrap().catch(() => undefined).finally(() => { if (!cancelled) setReady(true); });
+    return () => { cancelled = true; };
   }, [status, session?.user?.email]);
 
-  if (!ready) {
-    return <div className="sectionLoading" aria-busy="true">Loading workspace…</div>;
-  }
-
+  if (!ready) return <div className="sectionLoading" aria-busy="true">Loading workspace…</div>;
   return <>{children}</>;
 }
 
@@ -66,126 +33,41 @@ function AppInner() {
   const [activeSection, setActiveSection] = useState<Section>("Workspace");
   const [workspaceFlowId, setWorkspaceFlowId] = useState<string | null>(null);
   const [storeTab, setStoreTab] = useState<StoreTab>("Agents");
-  const [libraryTab, setLibraryTab] = useState<LibraryTab>("My Flows");
-  const [builderPaletteTab, setBuilderPaletteTab] = useState<BuilderPaletteTab>("Agents");
-  const [builderPrompt, setBuilderPrompt] = useState("Find jobs, research companies, tailor resumes, and draft outreach. Do not send or apply without me.");
-  const [builderNodes, setBuilderNodes] = useState<BuilderNode[]>([recommendedBuilderNodes[0]]);
-  const [selectedBuilderNodeId, setSelectedBuilderNodeId] = useState(recommendedBuilderNodes[0].id);
-  const [builderSaved, setBuilderSaved] = useState(false);
-  const [selectedMemory, setSelectedMemory] = useState("Job Search Memory");
   const [defaultAgent, setDefaultAgent] = useState("Job Discovery Agent");
-  const [spend] = useState(2.15);
   const [cmdkOpen, setCmdkOpen] = useState(false);
-
-  const recommendBuilderStack = () => {
-    setBuilderNodes(recommendedBuilderNodes);
-    setSelectedBuilderNodeId("agent-job-discovery");
-    setBuilderSaved(false);
-  };
-
-  const addBuilderNode = (node: BuilderNode) => {
-    setBuilderNodes((current) => {
-      const uniqueId = `${node.id}-${current.length + 1}`;
-      const nextNode = current.some((item) => item.id === node.id) ? { ...node, id: uniqueId } : node;
-      setSelectedBuilderNodeId(nextNode.id);
-      return [...current, nextNode];
-    });
-    setBuilderSaved(false);
-  };
-
-  const removeBuilderNode = (id: string) => {
-    setBuilderNodes((current) => {
-      const next = current.filter((node) => node.id !== id || node.type === "goal");
-      setSelectedBuilderNodeId(next[0]?.id ?? recommendedBuilderNodes[0].id);
-      return next.length ? next : [recommendedBuilderNodes[0]];
-    });
-    setBuilderSaved(false);
-  };
-
-  const saveBuilderWorkflow = () => {
-    setBuilderSaved(true);
-  };
-
-  // Hydrate the canvas wholesale from a persisted flow (Chunk 8 flow truth).
-  const loadWorkflowNodes = (nodes: BuilderNode[]) => {
-    if (!nodes.length) return;
-    setBuilderNodes(nodes);
-    setSelectedBuilderNodeId(nodes[0].id);
-    setBuilderSaved(true);
-  };
 
   const commands: Command[] = useMemo(() => {
     const go = (section: Section): Command => ({
-      id: `go-${section}`,
-      label: `Go to ${section}`,
-      group: "Navigation",
-      hint: "Navigate",
-      run: () => setActiveSection(section)
+      id: `go-${section}`, label: `Go to ${section}`, group: "Navigation", hint: "Navigate", run: () => setActiveSection(section)
     });
     return [
-      go("Build"),
-      go("Store"),
-      go("Flows"),
-      go("Control"),
-      go("Profile"),
-      { id: "new-flow", label: "New flow", group: "Actions", hint: "Build", run: () => setActiveSection("Build") },
-      { id: "sync-catalog", label: "Sync catalog", group: "Actions", hint: "Store", run: () => { setActiveSection("Store"); setStoreTab("Tools"); } },
-      { id: "focus-search", label: "Focus search", group: "Actions", hint: "Store", run: () => { setActiveSection("Store"); setStoreTab("Tools"); } }
+      go("Workspace"), go("Store"), go("Guides"), go("Profile"),
+      { id: "new-flow", label: "New flow", group: "Actions", hint: "Workspace", run: () => setActiveSection("Workspace") },
     ];
   }, []);
 
   return (
     <>
-      <Shell
-        activeSection={activeSection}
-        onSelectSection={setActiveSection}
-        onOpenCommand={() => setCmdkOpen(true)}
-      >
+      <Shell activeSection={activeSection} onSelectSection={setActiveSection} onOpenCommand={() => setCmdkOpen(true)}>
         <BootstrapGate>
           {activeSection === "Workspace" && (
             <FlowWorkspace flowId={workspaceFlowId} onFlowChange={setWorkspaceFlowId} />
           )}
-          {activeSection === "Control" && <ControlPlane />}
-          {activeSection === "Build" && (
-            <Builder
-              prompt={builderPrompt}
-              setPrompt={setBuilderPrompt}
-              nodes={builderNodes}
-              selectedNodeId={selectedBuilderNodeId}
-              setSelectedNodeId={setSelectedBuilderNodeId}
-              saved={builderSaved}
-              onRecommend={recommendBuilderStack}
-              onAddNode={addBuilderNode}
-              onRemoveNode={removeBuilderNode}
-              onLoadWorkflow={loadWorkflowNodes}
-              onSave={saveBuilderWorkflow}
-              onViewLogs={() => setActiveSection("Control")}
-              onSetDefault={setDefaultAgent}
-            />
-          )}
           {activeSection === "Store" && (
-            <Store
-              tab={storeTab}
-              setTab={setStoreTab}
-              defaultAgent={defaultAgent}
-              setDefaultAgent={setDefaultAgent}
-            />
+            <Store tab={storeTab} setTab={setStoreTab} defaultAgent={defaultAgent} setDefaultAgent={setDefaultAgent} />
           )}
-          {activeSection === "Flows" && (
-            <Library
-              tab={libraryTab}
-              setTab={setLibraryTab}
-              spend={spend}
-            />
+          {activeSection === "Guides" && (
+            <div style={{ padding: "2rem", maxWidth: 720, margin: "0 auto" }}>
+              <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "0.5rem" }}>Guides</h2>
+              <p style={{ color: "var(--muted)", fontSize: "0.9rem", lineHeight: 1.6 }}>
+                Templates and walkthroughs for common flows — coming soon. For now, describe a task in the Workspace
+                and the orchestrator will compose a flow for you.
+              </p>
+            </div>
           )}
           {activeSection === "Profile" && (
-            <Profile
-              selectedMemory={selectedMemory}
-              onSelectMemory={setSelectedMemory}
-              defaultAgent={defaultAgent}
-            />
+            <Profile selectedMemory="Job Search Memory" onSelectMemory={() => {}} defaultAgent={defaultAgent} />
           )}
-          {activeSection === "Connect" && <ConnectPanel />}
         </BootstrapGate>
       </Shell>
       <CommandPalette open={cmdkOpen} onOpenChange={setCmdkOpen} commands={commands} />
