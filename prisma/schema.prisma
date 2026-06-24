@@ -160,6 +160,15 @@ enum McpVerificationStatus {
   unverified
 }
 
+enum ConnectionStatus {
+  registered
+  connecting
+  connected
+  discovered
+  error
+  disconnected
+}
+
 model User {
   id                String              @id @default(uuid()) @db.Uuid
   name              String?
@@ -184,6 +193,7 @@ model User {
   activityLogs      ActivityLog[]
   mcpAccessGrants   McpAccessGrant[]
   runJobs           RunJob[]
+  serverConnections ServerConnection[]
 
   @@map("users")
 }
@@ -585,6 +595,26 @@ model McpAccessGrant {
   @@index([agentId])
   @@index([mcpServerId])
   @@map("mcp_access_grants")
+}
+
+model ServerConnection {
+  id               String           @id @default(uuid()) @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  serverKey        String           @map("server_key")
+  label            String?
+  transportConfig  Json?            @map("transport_config")
+  authProvider     String?          @map("auth_provider")
+  status           ConnectionStatus @default(registered)
+  lastDiscoveredAt DateTime?        @map("last_discovered_at")
+  lastError        String?          @map("last_error")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, serverKey])
+  @@index([userId])
+  @@index([status])
+  @@map("server_connections")
 }
 
 model MemoryItem {
