@@ -4,7 +4,7 @@ import { getCurrentUser } from "../../../../lib/auth-user";
 import { prisma } from "../../../../lib/prisma";
 import { parseJsonBody } from "../../../../lib/validation/parse";
 import { connectServerSchema } from "../../../../lib/validation/schemas";
-import { isConnectableMcpServer, getClient, closeMcpConnection } from "../../../../lib/execution/mcp-client";
+import { isConnectableMcpServer, getClient, closeMcpConnection, serverAuthProvider, serverDisplayLabel } from "../../../../lib/execution/mcp-client";
 import { loadBrokeredCredential } from "../../../../lib/execution/credential-broker";
 
 // GET /api/mcp/connections — list the current user's server connections.
@@ -25,7 +25,7 @@ export async function GET() {
 }
 
 // POST /api/mcp/connections — connect to a registered MCP server.
-// Generic path: any server in the SERVER_REGISTRY is connectable.
+// Generic path: any enabled ServerRegistration row (data) is connectable.
 // For OAuth-backed servers, the user must already have a brokered credential
 // (acquired via the existing OAuth flow); if missing we return instructions.
 export async function POST(request: Request) {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   const { serverKey } = parsed.data;
 
   // 1. Server must be registered (no server-name branching — generic check).
-  if (!isConnectableMcpServer(serverKey)) {
+  if (!(await isConnectableMcpServer(serverKey))) {
     return NextResponse.json(
       { message: `MCP server '${serverKey}' is not registered for connection.` },
       { status: 400 }
@@ -56,9 +56,8 @@ export async function POST(request: Request) {
   }
 
   // 3. If the server needs OAuth, verify the user has a brokered credential.
-  // The credential broker key is derived from the server's known auth provider.
-  // For now, the only OAuth-backed server is gmail → google.
-  const authProvider = requireAuthProvider(serverKey);
+  // The auth provider is registration DATA — no per-server branch here.
+  const authProvider = await serverAuthProvider(serverKey);
   if (authProvider) {
     const token = await loadBrokeredCredential(authProvider, user.id);
     if (!token) {
@@ -81,7 +80,7 @@ export async function POST(request: Request) {
       serverKey,
       authProvider,
       status: "connecting",
-      label: serverDisplayLabel(serverKey)
+      label: await serverDisplayLabel(serverKey)
     },
     update: {
       authProvider,
@@ -115,20 +114,4 @@ export async function POST(request: Request) {
       { status: 502 }
     );
   }
-}
-
-// --- Generic helpers (no server-name branching) ---
-
-// Map a registered server key to its credential broker provider.
-// This is a registration concern, not a per-server code branch.
-function requireAuthProvider(serverKey: string): string | null {
-  // Generic: the server registration declares its auth provider.
-  // Today only gmail (google OAuth) is in the registry.
-  const AUTH_MAP: Record<string, string> = { gmail: "google" };
-  return AUTH_MAP[serverKey] ?? null;
-}
-
-function serverDisplayLabel(serverKey: string): string {
-  const LABELS: Record<string, string> = { gmail: "Gmail" };
-  return LABELS[serverKey] ?? serverKey;
 }

@@ -819,7 +819,7 @@ async function mcpServerEnv(
   userId: string
 ): Promise<Record<string, string>> {
   if (!server.mcpServerKey || !server.credentialProvider) return {};
-  const envVar = mcpTokenEnvVar(server.mcpServerKey);
+  const envVar = await mcpTokenEnvVar(server.mcpServerKey);
   if (!envVar) return {};
   const token = await loadBrokeredCredential(server.credentialProvider, userId);
   return token ? { [envVar]: token } : {};

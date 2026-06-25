@@ -38,10 +38,10 @@ describe("governed MCP client — discovery + invocation over the real protocol"
     setMcpTransportFactory(null);
   });
 
-  it("only registered first-party servers are connectable", () => {
-    expect(isConnectableMcpServer("gmail")).toBe(true);
-    expect(isConnectableMcpServer("evil.example.com")).toBe(false);
-    expect(isConnectableMcpServer("stripe")).toBe(false);
+  it("only registered first-party servers are connectable (resolved from data)", async () => {
+    expect(await isConnectableMcpServer("gmail")).toBe(true);
+    expect(await isConnectableMcpServer("evil.example.com")).toBe(false);
+    expect(await isConnectableMcpServer("stripe")).toBe(false);
   });
 
   it("lists a server's tools with their JSON input schemas (tools/list)", async () => {

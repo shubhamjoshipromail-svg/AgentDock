@@ -349,9 +349,14 @@ describe("Chunk 12 — connect, disconnect, discover", () => {
       const user = await createTestUser("second@example.com", "Second Server");
       setCurrentUser(user);
 
-      // Use the SECOND registered server (echo-mcp) — same connect endpoint,
-      // same discover endpoint, same tools endpoint. Proves the surface is
-      // server-generic.
+      // Register a SECOND server purely as DATA — a ServerRegistration row, no
+      // code change anywhere. The same connect/discover/tools endpoints then work
+      // for it, proving the surface is server-generic and driven by registration.
+      await prisma.serverRegistration.create({
+        data: { serverKey: "echo-mcp", displayName: "Echo", transport: "stdio", command: "node", args: ["servers/echo/dist/index.js"], credentialProvider: null, tokenEnvVar: null }
+      });
+
+      // Same connect endpoint, same discover endpoint, same tools endpoint.
       mcpClient.tools = [
         { name: "echo", description: "Echoes the input", inputSchema: { type: "object", properties: { message: { type: "string" } } } }
       ];

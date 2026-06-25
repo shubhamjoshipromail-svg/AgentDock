@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 
 import { getCurrentUser } from "../../../../../../lib/auth-user";
 import { prisma } from "../../../../../../lib/prisma";
-import { listMcpTools } from "../../../../../../lib/execution/mcp-client";
+import { listMcpTools, serverDisplayLabel } from "../../../../../../lib/execution/mcp-client";
 
 // POST /api/mcp/connections/[id]/discover — run tools/list against a connected
 // server, persist the discovered tools as grantable McpServer rows, and reconcile
@@ -69,6 +69,9 @@ export async function POST(
   // Upsert each discovered tool.
   const results: { toolName: string; serverRowId: string; isNew: boolean }[] = [];
 
+  // Display label comes from registration data (resolve once for this server).
+  const label = await serverDisplayLabel(connection.serverKey);
+
   for (const tool of discoveredTools) {
     const name = `${connection.serverKey}-${tool.name.replace(/_/g, "-")}`;
     const registryId = `agentdock:discovered:${connection.serverKey}:${tool.name}`;
@@ -80,7 +83,7 @@ export async function POST(
       where: { registrySource_registryId: { registrySource: "discovered", registryId } },
       create: {
         name,
-        displayName: `${serverDisplayLabel(connection.serverKey)}: ${tool.name}`,
+        displayName: `${label}: ${tool.name}`,
         description: tool.description ?? `${tool.name} (discovered from ${connection.serverKey})`,
         registrySource: "discovered",
         registryId,
@@ -94,7 +97,7 @@ export async function POST(
         lastSyncedAt: now
       },
       update: {
-        displayName: `${serverDisplayLabel(connection.serverKey)}: ${tool.name}`,
+        displayName: `${label}: ${tool.name}`,
         description: tool.description ?? `${tool.name} (discovered from ${connection.serverKey})`,
         lastSyncedAt: now
       }
@@ -161,9 +164,4 @@ function classifyExternalSend(serverKey: string, toolName: string): boolean {
   // is a safe/reversible operation. This is a heuristic, not a server-specific
   // branch — it works for gmail (send_email) as well as any future server.
   return toolName.startsWith("send_") || toolName.includes("_send_");
-}
-
-function serverDisplayLabel(serverKey: string): string {
-  const LABELS: Record<string, string> = { gmail: "Gmail" };
-  return LABELS[serverKey] ?? serverKey;
 }

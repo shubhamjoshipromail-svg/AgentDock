@@ -26,6 +26,31 @@ async function main() {
     }
   });
 
+  // Chunk 15: server registration AS DATA. Seed the first-party entries as
+  // ServerRegistration rows (curated/admin only — never user-submitted). Adding a
+  // new server here makes it connectable through the generic flow with no code
+  // change. Mirrors lib/registry/server-registrations.ts (the runtime fallback).
+  const serverRegistrations = [
+    {
+      serverKey: "gmail",
+      displayName: "Gmail",
+      transport: "stdio",
+      command: process.env.GMAIL_MCP_COMMAND ?? process.execPath,
+      args: (process.env.GMAIL_MCP_ARGS ?? "servers/gmail/dist/index.js").split(" ").filter(Boolean),
+      credentialProvider: "google",
+      tokenEnvVar: "GMAIL_ACCESS_TOKEN",
+      enabled: true,
+      curated: true
+    }
+  ];
+  for (const reg of serverRegistrations) {
+    await prisma.serverRegistration.upsert({
+      where: { serverKey: reg.serverKey },
+      update: reg,
+      create: reg
+    });
+  }
+
   const agents = {};
   for (const { name, ...defaults } of agentDefaults) {
     agents[name] = await prisma.agent.upsert({

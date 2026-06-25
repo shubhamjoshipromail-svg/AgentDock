@@ -1,6 +1,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+
+import { prisma } from "../prisma";
+import { findCuratedRegistration, type CuratedTransport } from "../registry/server-registrations";
 
 // A real, governed MCP client. It speaks the actual wire protocol (initialize →
 // tools/list → tools/call) via the official SDK — no hand-rolled JSON-RPC. It
@@ -27,55 +31,93 @@ export type McpConnectContext = {
 };
 
 // A registered MCP server: how to launch/reach it (transport) and which env var
-// its credential broker fills. This is server *registration* — config data, not
-// per-server control flow. Connectability is "is this server registered", not a
-// hardcoded allowlist of names with special execution. Adding a server is a new
-// registration entry; no execution code changes.
-export type McpServerRegistration = {
-  // stdio launch config (the SDK keeps this transport-agnostic; remote transports
-  // can be added here later without touching callers).
-  command: string;
+// its credential broker fills. This is server *registration* — config DATA in the
+// `ServerRegistration` table (curated/seeded), not per-server control flow.
+// Connectability is "is this server registered + enabled", resolved from data —
+// not a hardcoded allowlist of names. Adding a server is a new row; no execution
+// code changes.
+export type ResolvedRegistration = {
+  serverKey: string;
+  displayName: string;
+  transport: CuratedTransport;
+  command: string | null;
   args: string[];
-  // The env var the brokered credential is injected into, if the server needs one.
-  tokenEnvVar?: string;
+  url: string | null;
+  credentialProvider: string | null;
+  tokenEnvVar: string | null;
 };
 
-const SERVER_REGISTRY: Record<string, McpServerRegistration> = {
-  gmail: {
-    command: process.env.GMAIL_MCP_COMMAND ?? process.execPath,
-    args: (process.env.GMAIL_MCP_ARGS ?? "servers/gmail/dist/index.js").split(" ").filter(Boolean),
-    tokenEnvVar: "GMAIL_ACCESS_TOKEN"
-  },
-  // Second registered server — proves the connect/discover/grant surface is
-  // generic. Adding this entry requires zero new UI/endpoint code; the same
-  // generic screens discover and grant its tools. In production this would
-  // point to a real MCP server binary; for tests the transport factory is
-  // mocked to return an in-memory transport.
-  "echo-mcp": {
-    command: process.execPath,
-    args: "servers/gmail/dist/index.js".split(" "),
-    tokenEnvVar: undefined
+// Resolve a server's registration: the DB table is authoritative; first-party
+// curated data is the bootstrap/fallback so a fresh (or truncated test) database
+// still reaches first-party servers without seeding. Disabled rows are not
+// connectable. NO server-name branching — every server flows through this lookup.
+export async function resolveRegistration(serverKey: string): Promise<ResolvedRegistration | null> {
+  const row = await prisma.serverRegistration.findUnique({ where: { serverKey } }).catch(() => null);
+  if (row) {
+    if (!row.enabled) return null;
+    return {
+      serverKey: row.serverKey,
+      displayName: row.displayName,
+      transport: row.transport as CuratedTransport,
+      command: row.command,
+      args: Array.isArray(row.args) ? (row.args as string[]) : [],
+      url: row.url,
+      credentialProvider: row.credentialProvider,
+      tokenEnvVar: row.tokenEnvVar
+    };
   }
-};
+  const curated = findCuratedRegistration(serverKey);
+  if (!curated) return null;
+  return {
+    serverKey: curated.serverKey,
+    displayName: curated.displayName,
+    transport: curated.transport,
+    command: curated.command ?? null,
+    args: curated.args ?? [],
+    url: curated.url ?? null,
+    credentialProvider: curated.credentialProvider ?? null,
+    tokenEnvVar: curated.tokenEnvVar ?? null
+  };
+}
 
-export function isConnectableMcpServer(serverKey: string): boolean {
-  return serverKey in SERVER_REGISTRY;
+export async function isConnectableMcpServer(serverKey: string): Promise<boolean> {
+  return (await resolveRegistration(serverKey)) !== null;
 }
 
 // The env var name a registered server expects its brokered credential in (if any).
-export function mcpTokenEnvVar(serverKey: string): string | null {
-  return SERVER_REGISTRY[serverKey]?.tokenEnvVar ?? null;
+export async function mcpTokenEnvVar(serverKey: string): Promise<string | null> {
+  return (await resolveRegistration(serverKey))?.tokenEnvVar ?? null;
+}
+
+// Display label for a registered server (data-driven — replaces the duplicated
+// hardcoded { gmail: "Gmail" } label maps in the connection routes).
+export async function serverDisplayLabel(serverKey: string): Promise<string> {
+  return (await resolveRegistration(serverKey))?.displayName ?? serverKey;
+}
+
+// The credential-broker provider a registered server authenticates with (if any).
+export async function serverAuthProvider(serverKey: string): Promise<string | null> {
+  return (await resolveRegistration(serverKey))?.credentialProvider ?? null;
 }
 
 export type TransportFactory = (serverKey: string, ctx?: McpConnectContext) => Transport | Promise<Transport>;
 
-// The real transport spawns the registered server over stdio from its
-// registration config. Tests inject an in-memory transport instead (no child
-// process), exercising the exact same client code path.
-function defaultStdioTransport(serverKey: string, ctx?: McpConnectContext): Transport {
-  const registration = SERVER_REGISTRY[serverKey];
+// The real transport reaches the registered server per its registration: a vetted
+// local process over stdio, or a remote http/sse endpoint by URL. Tests inject an
+// in-memory transport instead (no child process), exercising the same client path.
+async function defaultTransport(serverKey: string, ctx?: McpConnectContext): Promise<Transport> {
+  const registration = await resolveRegistration(serverKey);
   if (!registration) {
     throw new Error(`MCP server '${serverKey}' is not registered.`);
+  }
+  if (registration.transport === "http" || registration.transport === "sse") {
+    if (!registration.url) {
+      throw new Error(`MCP server '${serverKey}' has transport '${registration.transport}' but no url.`);
+    }
+    return new StreamableHTTPClientTransport(new URL(registration.url));
+  }
+  if (!registration.command) {
+    throw new Error(`MCP server '${serverKey}' has stdio transport but no command.`);
   }
   return new StdioClientTransport({
     command: registration.command,
@@ -84,12 +126,12 @@ function defaultStdioTransport(serverKey: string, ctx?: McpConnectContext): Tran
   });
 }
 
-let transportFactory: TransportFactory = defaultStdioTransport;
+let transportFactory: TransportFactory = defaultTransport;
 
 // Test seam: override how transports are created (e.g. an InMemoryTransport
 // linked to an in-process server). Pass null to restore the real stdio factory.
 export function setMcpTransportFactory(factory: TransportFactory | null): void {
-  transportFactory = factory ?? defaultStdioTransport;
+  transportFactory = factory ?? defaultTransport;
 }
 
 type Connection = { client: Client; transport: Transport };
@@ -102,7 +144,7 @@ function connectionKey(serverName: string, ctx?: McpConnectContext): string {
 // Connect-or-reuse. Connections are kept warm and keyed per (server, user) so a
 // run reuses one initialized session instead of re-handshaking per tool call.
 export async function getClient(serverName: string, ctx?: McpConnectContext): Promise<Client> {
-  if (!isConnectableMcpServer(serverName)) {
+  if (!(await isConnectableMcpServer(serverName))) {
     throw new Error(`MCP server '${serverName}' is not registered for connection.`);
   }
   const key = connectionKey(serverName, ctx);

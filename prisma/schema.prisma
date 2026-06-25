@@ -169,6 +169,15 @@ enum ConnectionStatus {
   disconnected
 }
 
+// How a registered MCP server is launched/reached. stdio = a vetted local process
+// (command+args); http/sse = a remote MCP endpoint (url). Curated/seeded only —
+// see ServerRegistration.
+enum ServerTransport {
+  stdio
+  http
+  sse
+}
+
 model User {
   id                String              @id @default(uuid()) @db.Uuid
   name              String?
@@ -615,6 +624,38 @@ model ServerConnection {
   @@index([userId])
   @@index([status])
   @@map("server_connections")
+}
+
+// Chunk 15: server registration AS DATA. Defines how to launch/reach an MCP
+// server (a vetted local stdio command, or a remote http/sse URL) and which
+// credential broker entry / env var it needs. Connectability, transport, token
+// env, display label, and auth provider are read from these rows — NOT from a
+// code constant. SECURITY: rows are seed/admin-curated only (an arbitrary local
+// `command` is RCE); there is intentionally no endpoint for ordinary users to
+// register one. First-party entries are also mirrored in a curated data module
+// so they bootstrap a fresh DB and survive test truncation; a new server is a
+// new row (no execution-code change).
+model ServerRegistration {
+  id                 String          @id @default(uuid()) @db.Uuid
+  serverKey          String          @unique @map("server_key")
+  displayName        String          @map("display_name")
+  transport          ServerTransport @default(stdio)
+  // stdio transport: vetted local process.
+  command            String?
+  args               Json?
+  // http/sse transport: remote MCP endpoint.
+  url                String?
+  // Which credential-broker provider issues this server's token (nullable).
+  credentialProvider String?         @map("credential_provider")
+  // The env var the brokered token is injected into (stdio), nullable.
+  tokenEnvVar        String?         @map("token_env_var")
+  enabled            Boolean         @default(true)
+  curated            Boolean         @default(true)
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  @@index([enabled])
+  @@map("server_registrations")
 }
 
 model MemoryItem {
