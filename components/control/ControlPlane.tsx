@@ -199,8 +199,10 @@ function AgentSection({
     approvalsReq ? `${approvalsReq} approval${approvalsReq === 1 ? "" : "s"}` : null
   ].filter(Boolean).join(" · ");
   const sectionApprovals = approvals.filter((a) => (a.agent?.name ?? "System") === block.agentName);
+  // Auto-expand if there are pending approvals — user must see the approve/deny buttons.
+  const hasPending = sectionApprovals.some((a) => a.status === "pending");
   return (
-    <details className="agentSection">
+    <details className="agentSection" open={hasPending}>
       <summary>
         <span className="agentSectionName">{block.agentName}</span>
         <span className="agentSectionMeta">{summary}{cost > 0 ? ` · ${formatCents(cost)}` : ""}</span>
@@ -230,7 +232,7 @@ function RunDetail({
   filters: { key: Decision | "all"; label: string }[];
   onFilter: (key: Decision | "all") => void;
   events: RealRunEvent[];
-  onResolveApproval: (id: string, status: "approved" | "denied" | "edited") => void;
+  onResolveApproval: (id: string, status: "approved" | "denied" | "edited", editedArgs?: Record<string, string>) => void;
   resolvingApprovalId: string;
   onBack: () => void;
 }) {
@@ -426,10 +428,10 @@ export function ControlPlane() {
     return () => window.clearInterval(id);
   }, [selectedRunId, session?.user?.email, boardHasActiveRun]);
 
-  const resolveLiveApproval = async (approvalId: string, status: "approved" | "denied" | "edited") => {
+  const resolveLiveApproval = async (approvalId: string, status: "approved" | "denied" | "edited", editedArgs?: Record<string, string>) => {
     setResolvingApprovalId(approvalId);
     try {
-      await resolveApproval(approvalId, status, "Unable to resolve approval.");
+      await resolveApproval(approvalId, status, editedArgs, "Unable to resolve approval.");
       toast(status === "denied" ? "Denied — run halted." : "Approved — run resumed.", status === "denied" ? "warn" : "ok");
       if (liveRun) await refreshLiveRun(liveRun.id);
       await loadControlPlaneData();

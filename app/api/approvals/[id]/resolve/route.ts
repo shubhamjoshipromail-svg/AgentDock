@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
@@ -39,6 +40,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     const updatedApproval = await prisma.$transaction(async (tx) => {
+      // If the user edited tool arguments (e.g. filled in the email recipient),
+      // merge them into the approval metadata so the run engine uses them.
+      if (body.editedArgs && Object.keys(body.editedArgs).length > 0) {
+        const existingMeta = (approval.metadata ?? {}) as Record<string, unknown>;
+        const existingArgs = (existingMeta.arguments ?? {}) as Record<string, unknown>;
+        await tx.approvalRequest.update({
+          where: { id: approval.id },
+          data: {
+            metadata: { ...existingMeta, arguments: { ...existingArgs, ...body.editedArgs } } as Prisma.InputJsonObject
+          }
+        });
+      }
+
       const updated = await tx.approvalRequest.update({
         where: { id: approval.id },
         data: {

@@ -90,12 +90,13 @@ export function simulateRun(workflowId: string, fallbackMessage = "Run preview f
 export function resolveApproval(
   approvalId: string,
   status: ApprovalResolveInput["status"],
+  editedArgs?: Record<string, string>,
   fallbackMessage = "Unable to resolve approval."
 ) {
-  return request<{ approvalRequest: PersistedApprovalRequest }>(
+  return request<{ approvalRequest: PersistedApprovalRequest; run?: { runId: string; status: string } | null }>(
     `/api/approvals/${approvalId}/resolve`,
     fallbackMessage,
-    jsonInit("POST", { status })
+    jsonInit("POST", { status, editedArgs })
   );
 }
 

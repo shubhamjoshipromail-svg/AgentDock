@@ -44,7 +44,8 @@ export const simulateRunSchema = z.object({
 });
 
 export const approvalResolveSchema = z.object({
-  status: z.enum(["approved", "denied", "edited"])
+  status: z.enum(["approved", "denied", "edited"]),
+  editedArgs: z.record(z.string(), z.string()).optional()
 });
 
 export const toolGrantPatchSchema = z.object({

@@ -87,16 +87,21 @@ export function EventCard({ event }: { event: A2UIEvent }) {
 }
 
 // The signature variant: an approval the human must resolve. Same anatomy + a
-// rationale line + an action row. Pending cards pulse warn until resolved.
+// rationale line + editable tool arguments + an action row. Pending cards pulse
+// warn until resolved.
 export function ApprovalCard({
   approval,
   onResolve,
   resolving = false
 }: {
   approval: PersistedApprovalRequest;
-  onResolve?: (id: string, status: "approved" | "denied" | "edited") => void;
+  onResolve?: (id: string, status: "approved" | "denied" | "edited", editedArgs?: Record<string, string>) => void;
   resolving?: boolean;
 }) {
+  const meta = (approval as { metadata?: Record<string, unknown> }).metadata;
+  const toolArgs = (meta?.arguments as Record<string, string>) ?? {};
+  const hasArgs = Object.keys(toolArgs).length > 0;
+
   return (
     <article className="ec ec-stripe-warn ec-approval">
       <div className="ecMain">
@@ -108,13 +113,41 @@ export function ApprovalCard({
         <div className="ecMeta">
           <span className="ecResource">{approval.actionType.replaceAll("_", " ")}<Badge tone="warn">{approval.riskLevel} risk</Badge></span>
         </div>
-        {approval.description && <p className="ecRationale">{approval.description}</p>}
+        {approval.description && <p className="ecRationale">{approval.description.slice(0, 200)}</p>}
+        {hasArgs && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", margin: "0.5rem 0" }}>
+            {Object.entries(toolArgs).map(([key, value]) => (
+              <div key={key} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <label style={{ fontSize: "0.72rem", color: "var(--muted)", minWidth: 50, textAlign: "right" }}>{key}:</label>
+                <input
+                  id={`approval-arg-${approval.id}-${key}`}
+                  defaultValue={String(value ?? "")}
+                  placeholder={key === "to" ? "email@example.com" : key}
+                  style={{
+                    flex: 1, background: "var(--surface)", color: "var(--foreground)",
+                    border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 4px)",
+                    padding: "0.3rem 0.4rem", fontSize: "0.75rem"
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
         <div className="ecActions">
-          <Button variant="primary" size="sm" loading={resolving} onClick={() => onResolve?.(approval.id, "approved")}>Approve</Button>
+          <Button variant="primary" size="sm" loading={resolving} onClick={() => {
+            if (!hasArgs) { onResolve?.(approval.id, "approved"); return; }
+            // Collect edited arguments from the DOM inputs
+            const edited: Record<string, string> = {};
+            for (const key of Object.keys(toolArgs)) {
+              const el = document.getElementById(`approval-arg-${approval.id}-${key}`) as HTMLInputElement | null;
+              edited[key] = el?.value ?? String(toolArgs[key] ?? "");
+            }
+            onResolve?.(approval.id, "approved", edited);
+          }}>Approve</Button>
           <Button variant="danger" size="sm" disabled={resolving} onClick={() => onResolve?.(approval.id, "denied")}>Deny</Button>
           <Button variant="ghost" size="sm" disabled={resolving} onClick={() => onResolve?.(approval.id, "edited")}>Edit policy</Button>
         </div>
-        <p className="ecRationale">Approve resumes only after a fresh policy check. Edit policy does not execute the action.</p>
+        <p className="ecRationale">Fill in any missing fields above, then Approve. The tool runs with your edits.</p>
       </div>
       <div className="ecAside">
         <Badge tone="warn">approval required</Badge>
