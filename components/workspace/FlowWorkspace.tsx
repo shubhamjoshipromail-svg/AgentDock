@@ -462,6 +462,13 @@ export function FlowWorkspace({
                       <div className="runStepBody">
                         <div>{s.title}</div>
                         <div className="runStepMeta">{s.description.slice(0, 140)}</div>
+                        {s.decision === "blocked" && flowId && (
+                          <div style={{ marginTop: "0.25rem" }}>
+                            <span style={{ fontSize: "0.65rem", color: "var(--muted)" }}>
+                              Grant this tool to unblock — use the Grants panel on the right →
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -526,6 +533,23 @@ export function FlowWorkspace({
                 </div>
               )}
             </div>
+
+            {/* Quick-grant during run: show pending blocks/approvals with inline actions */}
+            {run.approvals.length > 0 && (
+              <div className="inspectorSection" style={{ background: "var(--warn-bg)", border: "1px solid var(--warn)", borderRadius: "var(--radius)" }}>
+                <h3 style={{ color: "var(--warn)" }}>⚠ Action Required</h3>
+                {run.approvals.map((a) => (
+                  <div key={a.id} style={{ marginBottom: "0.5rem" }}>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground)" }}>{a.title}</div>
+                    <div style={{ fontSize: "0.7rem", color: "var(--muted)", margin: "0.25rem 0" }}>{a.description.slice(0, 120)}</div>
+                    <div style={{ display: "flex", gap: "0.375rem" }}>
+                      <Button variant="primary" size="sm" onClick={() => handleApprove(a.id, true)}>✓ Approve</Button>
+                      <Button variant="danger" size="sm" onClick={() => handleApprove(a.id, false)}>✗ Deny</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="inspectorSection">
               <h3>Discover & grant</h3>
