@@ -574,13 +574,32 @@ async function runStep(
     }
 
     // --- tool call requested → THE POLICY GATE (pre-action) ---
-    const tool = agent.allowedTools.find((x) => x.toolName === envelope.tool);
+    // Match by tool name OR by catalog/server name (agents may use either).
+    const tool = agent.allowedTools.find((x) =>
+      x.toolName === envelope.tool || x.server.name === envelope.tool
+    );
     // MCP tools are classified by tool name (send_email = external write →
     // approval; create_draft = safe). Legacy/string tools use the model's action
     // and the loadRunnable external-send heuristic.
     const classified = tool && isMcpTool(tool) ? classifyMcpTool(tool.isExternalSend) : null;
     const actionKind: ActionKind = classified ? classified.action : envelope.action;
     const isExternalSend = classified ? classified.isExternalSend : tool?.isExternalSend ?? true;
+
+    // Tool name alias hint: if the agent used a catalog name and we matched by it,
+    // show the canonical tool name so the agent learns the right name.
+    const canonicalName = tool ? tool.toolName : envelope.tool;
+    if (!tool && envelope.tool !== canonicalName) {
+      // Tool completely unknown — can't execute. Feed back a blocker and don't loop.
+      await appendEvent({
+        runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked",
+        title: `Unknown tool: ${envelope.tool}`,
+        description: `Agent requested '${envelope.tool}' which is not available. Available tools: ${agent.allowedTools.map((t) => t.toolName).join(", ")}`,
+        decision: "blocked", actorType: "agent", resourceType: "tool"
+      });
+      toolResults.push(`[policy] TOOL UNAVAILABLE: '${envelope.tool}' is not available. Available tools: ${agent.allowedTools.map((t) => t.toolName).join(", ")}. DO NOT retry this tool — it does not exist. Use one of the available tools or produce a final answer.`);
+      continue;
+    }
+
     const gate = authorizeToolCall({
       inAllowList: Boolean(tool),
       grant: tool ? { permission: effectiveGrantPermission(tool.grant), revokedAt: tool.grant.revokedAt } : null,
