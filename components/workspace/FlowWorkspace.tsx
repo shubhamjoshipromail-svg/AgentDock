@@ -182,6 +182,13 @@ export function FlowWorkspace({
   // --- Run ---
   const handleRun = async () => {
     if (!flowId) return toast("Select a flow first.", "warn");
+
+    // Pre-flight: warn if no tools are granted to any agent.
+    const totalGrants = participants.reduce((sum, p) => sum + p.tools.filter((t) => !t.revoked).length, 0);
+    if (totalGrants === 0) {
+      return toast("This flow has no tools granted. Agents can only produce text — they cannot search, draft, or send. Grant tools from the right panel first.", "warn");
+    }
+
     setRunning(true);
     try {
       const result = await startRealRun(flowId);
@@ -477,6 +484,35 @@ export function FlowWorkspace({
                 </span>
               )}
             </div>
+
+            {/* --- TOOL SETUP GUIDE — shown when no tools are connected or granted --- */}
+            {availableTools.length === 0 && participants.every((p) => p.tools.filter((t) => !t.revoked).length === 0) && (
+              <div style={{
+                background: "var(--surface-elevated)",
+                border: "1px dashed var(--border)",
+                borderRadius: "var(--radius-lg, 8px)",
+                padding: "1rem 1.25rem",
+                marginBottom: "0.75rem"
+              }}>
+                <strong style={{ fontSize: "0.85rem" }}>🔌 Set up tools for this flow</strong>
+                <p style={{ fontSize: "0.75rem", color: "var(--muted)", margin: "0.4rem 0", lineHeight: 1.5 }}>
+                  Your agents need tools to act. Without tools, they can only produce text — no search, no email, no actions.
+                </p>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <Button variant="secondary" size="sm" onClick={() => setWorkspaceTab("connect")}>
+                    1. Connect a server
+                  </Button>
+                  <span style={{ fontSize: "0.7rem", color: "var(--muted)", alignSelf: "center" }}>→</span>
+                  <Button variant="secondary" size="sm" onClick={() => setWorkspaceTab("connect")}>
+                    2. Discover tools
+                  </Button>
+                  <span style={{ fontSize: "0.7rem", color: "var(--muted)", alignSelf: "center" }}>→</span>
+                  <span style={{ fontSize: "0.75rem", color: "var(--muted)", alignSelf: "center" }}>
+                    3. Grant tools to agents ↓
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* --- APPROVAL ACTIONS — always visible when pending, before output --- */}
             {run.approvals.length > 0 && (
