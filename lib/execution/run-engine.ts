@@ -5,7 +5,7 @@ import { prisma } from "../prisma";
 import { authorizeToolCall, effectiveGrantPermission, type ActionKind } from "./policy-gate";
 import { getExecutor, isRealTool } from "./tools/registry";
 import { callMcpTool, mcpTokenEnvVar } from "./mcp-client";
-import { loadBrokeredCredential } from "./credential-broker";
+import { brokerCredentialForAction, type BrokerScopeContext } from "./credential-broker";
 import { getRunProvider } from "./provider";
 import { buildStepContext } from "./memory";
 import type { RunEventMeta } from "../types";
@@ -213,7 +213,7 @@ type AllowedTool = {
     mcpToolName: string | null;
     credentialProvider: string | null;
   };
-  grant: { id: string; canRead: boolean; canWrite: boolean; canExecute: boolean; canDelete: boolean; requiresApproval: boolean; revokedAt: Date | null };
+  grant: { id: string; canRead: boolean; canWrite: boolean; canExecute: boolean; canDelete: boolean; requiresApproval: boolean; revokedAt: Date | null; scope: string | null; limitCents: number | null; expiresAt: Date | null };
   // An external-send tool (write to the outside). Web search is never this.
   isExternalSend: boolean;
 };
@@ -275,7 +275,8 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
         },
         grant: {
           id: g.id, canRead: g.canRead, canWrite: g.canWrite, canExecute: g.canExecute,
-          canDelete: g.canDelete, requiresApproval: g.requiresApproval, revokedAt: g.revokedAt
+          canDelete: g.canDelete, requiresApproval: g.requiresApproval, revokedAt: g.revokedAt,
+          scope: g.scope, limitCents: g.limitCents, expiresAt: g.expiresAt
         },
         // MCP rows declare external-send via the server column; legacy heuristic
         // (a write-capable, non-search tool) covers non-MCP rows.
@@ -770,10 +771,22 @@ async function executeAllowedTool(
     // ═══════════════════════════════════════════════════════════════════
     const structuredArgs = args ?? {};
     toolInputForAudit = JSON.stringify(structuredArgs);
-    const env = await mcpServerEnv(tool.server, ctx.userId);
-    const res = await callMcpTool(tool.server.mcpServerKey!, tool.server.mcpToolName!, structuredArgs, { userId: ctx.userId, env });
-    output = res.isError ? `[tool error] ${res.text}` : res.text;
-    real = true;
+    // Issue the credential through the broker's guarded path. For an external
+    // send, the broker enforces the grant mandate (scope/limit/expiry/revocation)
+    // and refuses an unauthorized action — the tool then never runs.
+    const envResult = await mcpServerEnv(tool.server, ctx.userId, {
+      external: tool.isExternalSend,
+      mandate: { scope: tool.grant.scope, limitCents: tool.grant.limitCents, expiresAt: tool.grant.expiresAt, revokedAt: tool.grant.revokedAt },
+      amountCents: costCents
+    });
+    if (!envResult.ok) {
+      output = `[policy] credential broker refused: ${envResult.reason}`;
+      real = false;
+    } else {
+      const res = await callMcpTool(tool.server.mcpServerKey!, tool.server.mcpToolName!, structuredArgs, { userId: ctx.userId, env: envResult.env });
+      output = res.isError ? `[tool error] ${res.text}` : res.text;
+      real = true;
+    }
   } else if (executor) {
     const res = await executor(input);
     output = res.output;
@@ -814,15 +827,22 @@ async function executeAllowedTool(
 // server that declares a credentialProvider gets its brokered token injected into
 // the env var its registration expects — set ONLY in the server's process env,
 // never exposed to the agent or returned to any client. No server-specific code.
+//
+// The credential is issued through the broker's GUARDED path: for a consequential
+// (external-write) action the broker refuses unless an active, unexpired, in-limit
+// grant authorizes it. A refusal returns { ok: false } and the caller does NOT
+// execute the tool.
 async function mcpServerEnv(
   server: { mcpServerKey: string | null; credentialProvider: string | null },
-  userId: string
-): Promise<Record<string, string>> {
-  if (!server.mcpServerKey || !server.credentialProvider) return {};
+  userId: string,
+  scope: BrokerScopeContext
+): Promise<{ ok: true; env: Record<string, string> } | { ok: false; reason: string }> {
+  if (!server.mcpServerKey || !server.credentialProvider) return { ok: true, env: {} };
   const envVar = await mcpTokenEnvVar(server.mcpServerKey);
-  if (!envVar) return {};
-  const token = await loadBrokeredCredential(server.credentialProvider, userId);
-  return token ? { [envVar]: token } : {};
+  if (!envVar) return { ok: true, env: {} };
+  const outcome = await brokerCredentialForAction(server.credentialProvider, userId, scope);
+  if (!outcome.ok) return { ok: false, reason: outcome.reason };
+  return { ok: true, env: outcome.token ? { [envVar]: outcome.token } : {} };
 }
 
 async function executeApprovedTool(
