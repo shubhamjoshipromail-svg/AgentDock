@@ -9,12 +9,10 @@ import {
   discoverTools,
   listConnections,
   listDiscoveredTools,
-  listToolServers,
   syncToolCatalog,
   type DiscoveredTool,
   type PersistedConnection
 } from "../../lib/api/client";
-import type { PersistedMcpServer } from "../../lib/types";
 import { Badge, Button, EmptyState } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 import "./connect.css";
@@ -22,15 +20,18 @@ import "./connect.css";
 type ConnectStep = "connect" | "discover" | "done";
 
 // Server keys that are registered and connectable (from SERVER_REGISTRY in mcp-client.ts).
-// A catalog server is connectable if its name matches a registered key.
-const REGISTERED_SERVER_KEYS = ["gmail", "echo-mcp"];
+// Each entry: the server key and its display label.
+const REGISTERED_SERVERS: Record<string, string> = {
+  gmail: "Gmail",
+  "echo-mcp": "Echo MCP"
+};
 
 export function ConnectPanel() {
   const { data: session } = useSession();
   const toast = useToast();
 
   const [connections, setConnections] = useState<PersistedConnection[]>([]);
-  const [connectable, setConnectable] = useState<PersistedMcpServer[]>([]);
+  const [connectable, setConnectable] = useState<{ serverKey: string; displayName: string; id: string }[]>([]);
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
   const [tools, setTools] = useState<DiscoveredTool[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,17 +43,15 @@ export function ConnectPanel() {
   const load = async () => {
     if (!session?.user) return;
     try {
-      const [connData, serverData] = await Promise.all([
-        listConnections(),
-        listToolServers()
-      ]);
+      const connData = await listConnections();
       setConnections(connData.connections ?? []);
-      // Connectable servers: catalog entries whose name matches a registered server key.
-      // This is generic — adding a key to REGISTERED_SERVER_KEYS is all that's needed.
+      // Connectable servers: every key in REGISTERED_SERVERS is connectable.
       setConnectable(
-        (serverData.servers ?? []).filter((s) =>
-          REGISTERED_SERVER_KEYS.includes(s.name)
-        )
+        Object.entries(REGISTERED_SERVERS).map(([serverKey, displayName]) => ({
+          serverKey,
+          displayName,
+          id: serverKey
+        }))
       );
     } catch {
       // Silently fall back — the UI shows empty states.
@@ -195,14 +194,14 @@ export function ConnectPanel() {
           )}
 
           {connectable.map((server) => {
-            const conn = connections.find((c) => c.serverKey === server.name);
+            const conn = connections.find((c) => c.serverKey === server.serverKey);
             const isConnected = conn && (conn.status === "connected" || conn.status === "discovered");
             const isError = conn?.status === "error";
 
             return (
               <div
                 className={`connectionCard ${selectedConnId === conn?.id ? "connectionCardSelected" : ""}`}
-                key={server.id}
+                key={server.serverKey}
                 onClick={() => conn && selectConnection(conn)}
                 style={conn ? { cursor: "pointer" } : undefined}
               >
@@ -225,8 +224,8 @@ export function ConnectPanel() {
                   <Button
                     variant="primary"
                     size="sm"
-                    loading={connectingKey === server.name}
-                    onClick={(e) => { e.stopPropagation(); handleConnect(server.name); }}
+                    loading={connectingKey === server.serverKey}
+                    onClick={(e) => { e.stopPropagation(); handleConnect(server.serverKey); }}
                   >
                     Connect
                   </Button>
@@ -255,7 +254,7 @@ export function ConnectPanel() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={(e) => { e.stopPropagation(); handleConnect(server.name); }}
+                      onClick={(e) => { e.stopPropagation(); handleConnect(server.serverKey); }}
                     >
                       Retry
                     </Button>
