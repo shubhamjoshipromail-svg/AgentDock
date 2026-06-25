@@ -115,6 +115,7 @@ export type PersistedApprovalRequest = {
   status: "pending" | "approved" | "denied" | "edited" | "expired";
   requestedAt: string;
   resolvedAt?: string | null;
+  metadata?: Record<string, unknown>;
   agent: {
     name: string;
   } | null;

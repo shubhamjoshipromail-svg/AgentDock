@@ -98,8 +98,8 @@ export function ApprovalCard({
   onResolve?: (id: string, status: "approved" | "denied" | "edited", editedArgs?: Record<string, string>) => void;
   resolving?: boolean;
 }) {
-  const meta = (approval as { metadata?: Record<string, unknown> }).metadata;
-  const toolArgs = (meta?.arguments as Record<string, string>) ?? {};
+  const meta = approval.metadata ?? {};
+  const toolArgs = (meta.arguments as Record<string, string>) ?? {};
   const hasArgs = Object.keys(toolArgs).length > 0;
 
   return (
