@@ -475,6 +475,11 @@ async function runStep(
 ): Promise<StepOutcome> {
   const toolResults = [...seedResults];
   const memoryContext = await buildStepContext(ctx.userId, agent.agentId, ctx.runId);
+  // Count how many times the model re-requested an already-succeeded tool. One
+  // repeat earns a nudge to finalize; a second is a runaway loop and is halted —
+  // otherwise a model stuck repeating an identical call burns model calls until
+  // iteration exhaustion (and left the run dangling at "running").
+  let repeatBlocks = 0;
 
   // If resuming from an approval, execute the approved call first.
   let pending = approvedCall;
@@ -600,12 +605,19 @@ async function runStep(
       r.startsWith(`${tool?.toolName ?? envelope.tool} result:`) && r.includes("✅ SUCCESS")
     );
     if (alreadyExecuted && tool) {
+      repeatBlocks += 1;
       await appendEvent({
         runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked",
         title: `Already executed: ${envelope.tool}`,
         description: `Agent tried to call '${envelope.tool}' again but it already succeeded in this step. Produce your final answer.`,
         decision: "blocked", actorType: "agent", resourceType: "tool"
       });
+      // First repeat: nudge it to finalize. A second repeat means the model is
+      // stuck in a runaway loop — halt it rather than spin until iter exhaustion.
+      if (repeatBlocks >= 2) {
+        await haltError(ctx, "repeated tool-call loop — runaway model re-requesting an already-succeeded tool", { toolName: envelope.tool, repeatBlocks });
+        return { kind: "halted", status: "halted_error" };
+      }
       toolResults.push(`[policy] '${envelope.tool}' was already executed successfully in this step. You have the result. Produce your final answer NOW — do NOT request this tool again.`);
       continue;
     }
@@ -691,12 +703,11 @@ async function runStep(
 
   // Ran out of per-step tool iterations without a final answer — even the
   // forced final-answer call on the last iteration failed to produce one.
-  await appendEvent({
-    runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "action_blocked",
-    title: `${agent.name} did not reach a final answer`,
-    description: `Agent exhausted ${MAX_TOOL_ITERS_PER_STEP} tool iterations without producing a final answer, including a forced retry.`,
-    decision: "denied", actorType: "agent", actorId: agent.agentId,
-    metadata: { toolResultCount: toolResults.filter((r) => !r.startsWith("[policy]")).length }
+  // haltError persists the terminal status; without it the run is left dangling
+  // at "running" despite the halted return value below.
+  await haltError(ctx, `agent exhausted ${MAX_TOOL_ITERS_PER_STEP} tool iterations without producing a final answer, including a forced retry`, {
+    agentName: agent.name,
+    toolResultCount: toolResults.filter((r) => !r.startsWith("[policy]")).length
   });
   return { kind: "halted", status: "halted_error" };
 }
