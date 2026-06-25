@@ -17,9 +17,14 @@ function base(overrides: Partial<GateInput> = {}): GateInput {
 }
 
 describe("authorizeToolCall — deterministic policy gate", () => {
-  it("deny-by-default: tool not on the allow-list → blocked", () => {
-    expect(authorizeToolCall(base({ inAllowList: false })).decision).toBe("blocked");
-    expect(authorizeToolCall(base({ grant: null })).decision).toBe("blocked");
+  it("deny-by-default: tool not on the allow-list → blocked (or approval for read-level/low-risk)", () => {
+    // Ungranted low-risk read-level tools surface as approval so the user can
+    // grant them at the moment of consequence (Chunk 13-14).
+    expect(authorizeToolCall(base({ inAllowList: false })).decision).toBe("approval_required");
+    expect(authorizeToolCall(base({ grant: null })).decision).toBe("approval_required");
+    // But ungranted writes still hard-block.
+    expect(authorizeToolCall(base({ inAllowList: false, action: { kind: "send", isExternalSend: true } })).decision).toBe("blocked");
+    expect(authorizeToolCall(base({ grant: null, action: { kind: "write", isExternalSend: true } })).decision).toBe("blocked");
   });
 
   it("revoked grant → blocked (kill switch)", () => {
@@ -35,9 +40,11 @@ describe("authorizeToolCall — deterministic policy gate", () => {
     expect(authorizeToolCall(base({ server: { verificationStatus: "verified", riskLevel: "low", recommendedPermission: "blocked" } })).decision).toBe("blocked");
   });
 
-  it("read_only + read → allowed; read_only + write/send/delete → blocked", () => {
+  it("read_only + read → allowed; read_only + write/send/delete → blocked; execute is read-level", () => {
     expect(authorizeToolCall(base()).decision).toBe("allowed");
-    for (const kind of ["write", "send", "delete", "execute"] as const) {
+    // execute is read-level (model verb doesn't change tool risk — Chunk 14)
+    expect(authorizeToolCall(base({ action: { kind: "execute", isExternalSend: false } })).decision).toBe("allowed");
+    for (const kind of ["write", "send", "delete"] as const) {
       expect(authorizeToolCall(base({ action: { kind, isExternalSend: false } })).decision).toBe("blocked");
     }
   });
@@ -81,18 +88,22 @@ describe("authorizeToolCall — deterministic policy gate", () => {
     // A model that emits a write disguised under read_only is still blocked.
     const res = authorizeToolCall(base({ action: { kind: "delete", isExternalSend: true } }));
     expect(res.decision).toBe("blocked");
-    // A non-allow-listed tool with an "approved" grant claim is still blocked.
-    expect(authorizeToolCall(base({ inAllowList: false, grant: { permission: "read_only", revokedAt: null } })).decision).toBe("blocked");
+    // A non-allow-listed tool with a read-level action surfaces as approval
+    // (not auto-allowed) — gate still controls it.
+    expect(authorizeToolCall(base({ inAllowList: false, grant: { permission: "read_only", revokedAt: null } })).decision).toBe("approval_required");
+    // But a non-allow-listed tool claiming write-level is still hard-blocked.
+    expect(authorizeToolCall(base({ inAllowList: false, grant: { permission: "read_only", revokedAt: null }, action: { kind: "send", isExternalSend: true } })).decision).toBe("blocked");
   });
 
-  it("invariant: an unverified / non-allow-listed / over-scoped request is NEVER allowed", () => {
+  it("invariant: an unverified / non-allow-listed / over-scoped request is NEVER auto-allowed", () => {
+    // Ungranted read-level low-risk tools now get approval_required (not auto-allowed).
     const cases: GateInput[] = [
-      base({ inAllowList: false }),
-      base({ grant: null }),
-      base({ grant: { permission: "approval_required", revokedAt: null } }),
-      base({ server: { verificationStatus: "unverified", riskLevel: "low", recommendedPermission: "read_only" } }),
-      base({ action: { kind: "write", isExternalSend: true } }),
-      base({ server: { verificationStatus: "verified", riskLevel: "restricted", recommendedPermission: "read_only" } })
+      base({ inAllowList: false }),                                     // → approval_required (read-level low-risk)
+      base({ grant: null }),                                            // → approval_required
+      base({ grant: { permission: "approval_required", revokedAt: null } }), // → approval_required
+      base({ server: { verificationStatus: "unverified", riskLevel: "low", recommendedPermission: "read_only" } }), // → approval_required (ceiling)
+      base({ action: { kind: "write", isExternalSend: true } }),         // → blocked (write under read_only)
+      base({ server: { verificationStatus: "verified", riskLevel: "restricted", recommendedPermission: "read_only" } }) // → blocked (restricted)
     ];
     for (const input of cases) {
       expect(authorizeToolCall(input).decision).not.toBe("allowed");

@@ -66,13 +66,20 @@ export function effectiveGrantPermission(grant: {
 export function authorizeToolCall(input: GateInput): GateResult {
   const { inAllowList, grant, server, action, step } = input;
 
+  // Determine write-ness from the action kind. Only genuine mutating/external
+  // capabilities escalate past read. "execute" is NOT a write — it's a verb
+  // the model may choose for a read-only tool like web_search. The model's
+  // self-declared verb must never be the security-deciding input.
+  // Classification is anchored in the tool's isExternalSend / risk — not the verb.
+  const isReadLevel = action.kind === "read" || action.kind === "execute";
+
   // 1. Deny-by-default: no allow-list entry / no grant.
-  //    But low-risk, read-only tools (like web search) surface as an approval
+  //    But read-level, low-risk tools (like web search) surface as an approval
   //    request so the user can one-click grant them at the moment of consequence —
-  //    rather than silently blocking. High-risk or write tools still hard-block.
+  //    rather than silently blocking. Write/send/high-risk tools still hard-block.
   if (!inAllowList || !grant) {
-    if (action.kind === "read" && !action.isExternalSend && server.riskLevel !== "restricted" && server.riskLevel !== "high") {
-      return approve("tool is not yet granted — approve to allow this read-only action once");
+    if (isReadLevel && !action.isExternalSend && server.riskLevel !== "restricted" && server.riskLevel !== "high") {
+      return approve("tool is not yet granted — approve to allow this read-level action once");
     }
     return block("tool is not on the agent's allow-list");
   }
@@ -92,20 +99,18 @@ export function authorizeToolCall(input: GateInput): GateResult {
     return block("permission is blocked for this server");
   }
 
-  const isWrite = action.kind !== "read";
-
   // 5. Base decision from the grant's effective permission.
   let result: GateResult;
   switch (grant.permission) {
     case "read_only":
-      result = isWrite
-        ? block("read_only grant cannot perform a write/send/delete")
-        : allow("read within read_only grant");
+      result = isReadLevel
+        ? allow("read within read_only grant")
+        : block("read_only grant cannot perform a write/send/delete");
       break;
     case "draft_only":
-      result = isWrite
-        ? approve("draft_only grant requires approval for a write/send")
-        : allow("read within draft_only grant");
+      result = isReadLevel
+        ? allow("read within draft_only grant")
+        : approve("draft_only grant requires approval for a write/send");
       break;
     case "approval_required":
     default:

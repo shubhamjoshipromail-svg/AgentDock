@@ -125,17 +125,27 @@ function parseEnvelope(text: string): Envelope {
     if (json && json.type === "final" && typeof json.text === "string") {
       return { type: "final", text: String(json.text) };
     }
-    // Parsed JSON but not an envelope — could be a raw object mistakenly returned.
-    // Don't treat arbitrary JSON as a final answer; flag it.
-    if (json && !json.type) {
-      return { type: "final", text: "[engine] model returned JSON without a recognized envelope type — not a deliverable." };
+    // Parsed JSON but not a recognized envelope. If there's a text field at all, use it.
+    if (json && typeof (json as Record<string, unknown>).text === "string") {
+      return { type: "final", text: String((json as Record<string, unknown>).text) };
     }
   } catch {
-    // Not valid JSON. Fall through to raw-text path.
+    // Not valid JSON. Try to recover the text content even from broken JSON.
   }
 
-  // Try harder: look for a JSON object anywhere in the text.
-  // Models sometimes wrap the envelope in prose ("Here's the plan: {...}").
+  // Try to extract the \"text\" field from a JSON-like blob, even if the
+  // surrounding JSON is malformed or truncated. This recovers real deliverable
+  // content that would otherwise be lost to a JSON.parse failure.
+  const textMatch = body.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (textMatch && textMatch[1]) {
+    const recovered = textMatch[1].replace(/\\(.)/g, "$1"); // unescape
+    if (recovered.length > 40) {
+      // This is substantive prose — treat it as a final answer.
+      return { type: "final", text: recovered };
+    }
+  }
+
+  // Try looking for a JSON object via regex.
   const jsonMatch = body.match(/\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}/);
   if (jsonMatch) {
     try {
@@ -151,18 +161,22 @@ function parseEnvelope(text: string): Envelope {
       if (json && json.type === "final" && typeof json.text === "string") {
         return { type: "final", text: String(json.text) };
       }
+      if (json && typeof (json as Record<string, unknown>).text === "string") {
+        return { type: "final", text: String((json as Record<string, unknown>).text) };
+      }
     } catch {
       // Extracted substring wasn't valid — fall through.
     }
   }
 
-  // Raw text that is itself a JSON-looking blob (starts with { and contains "type")
-  // but we still can't parse — don't pass it off as a deliverable.
-  if (body.startsWith("{") && body.includes('"type"')) {
+  // If the body is purely a JSON envelope that we can't parse, it's not deliverable.
+  if (body.startsWith("{") && body.includes('"type"') && body.length < 300) {
     return { type: "final", text: "[engine] could not parse model output as a valid envelope — not a deliverable." };
   }
 
-  return { type: "final", text: body.slice(0, 2000) };
+  // The model produced substantive prose/markdown content.
+  // Don't discard real work just because it wasn't wrapped in JSON.
+  return { type: "final", text: body.slice(0, 4000) };
 }
 
 // Guards against raw JSON/envelopes leaking into the user-visible Output.
@@ -543,15 +557,17 @@ async function runStep(
     });
 
     if (gate.decision === "blocked") {
+      // A genuine hard block — not recoverable by granting. Halt honestly; never
+      // let the agent silently fabricate around it.
       await appendEvent({
         runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "action_blocked",
-        title: `Blocked: ${envelope.tool}`, description: `Tool '${envelope.tool}' (${envelope.action}) blocked: ${gate.reason}`,
+        title: `Blocked: ${envelope.tool}`, description: `Tool '${envelope.tool}' blocked: ${gate.reason}`,
         decision: "blocked", actorType: "agent", actorId: agent.agentId, resourceType: "tool",
-        resourceId: tool?.server.id ?? envelope.tool, authorityRef: tool?.grant.id
+        resourceId: tool?.server.id ?? envelope.tool, authorityRef: tool?.grant.id,
+        metadata: { toolName: envelope.tool, reason: gate.reason }
       });
-      // Feed the denial back as untrusted data so the agent can finish without the tool.
-      toolResults.push(`[policy] tool '${envelope.tool}' was blocked: ${gate.reason}. Continue without it.`);
-      continue;
+      await haltError(ctx, `blocked: ${envelope.tool} — ${gate.reason}`, { toolName: envelope.tool, gateReason: gate.reason });
+      return { kind: "halted", status: "halted_error" };
     }
 
     if (gate.decision === "approval_required") {
@@ -800,6 +816,9 @@ async function drive(
   opts?: DriveOptions
 ): Promise<RunResult> {
   let lastFinalText: string | null = null;
+  // Track the best deliverable across agents — use the longest substantive
+  // output, not just the last agent's (which may be a short refusal).
+  let bestDeliverable: string | null = null;
   let handoff: { from: string; content: string } | null = firstStepHandoff
     ? { from: fromStep > 0 ? ctx.agents[fromStep - 1]?.name ?? "Previous agent" : "Previous agent", content: firstStepHandoff }
     : null;
@@ -829,6 +848,11 @@ async function drive(
     if (outcome.kind === "halted") return { runId: ctx.runId, status: outcome.status };
     if (outcome.finalText) {
       lastFinalText = outcome.finalText;
+      // Track the largest substantive deliverable — not just the last one.
+      // Later agents that only acknowledge/refuse should not bury earlier work.
+      if (!bestDeliverable || outcome.finalText.length > bestDeliverable.length) {
+        bestDeliverable = outcome.finalText;
+      }
       handoff = { from: agent.name, content: outcome.finalText };
     } else {
       handoff = null;
@@ -837,16 +861,41 @@ async function drive(
     // can resume from the next agent, not re-run this one.
     await opts?.onAgentStepComplete?.(i + 1);
   }
-  // Sanitize: never show raw JSON/envelopes as the Output.
-  const deliverable = sanitizeDeliverable(lastFinalText);
-  if (!deliverable && lastFinalText) {
-    // The agent finished but its "final" output was a raw envelope — not a real deliverable.
+  // Pick the best deliverable. Usually the last agent's output is the final
+  // result. But if the last agent produced only a short refusal/ack while an
+  // earlier agent produced real substantive work, use the substantive one.
+  const sanitizedLast = sanitizeDeliverable(lastFinalText);
+  const sanitizedBest = sanitizeDeliverable(bestDeliverable);
+  let deliverable = sanitizedLast ?? sanitizedBest;
+
+  // Detect refusals: must contain refusal language AND be short.
+  // A short valid summary is not a refusal.
+  const isRefusal = (text: string | null): boolean => {
+    if (!text) return true;
+    const lower = text.toLowerCase();
+    if (lower.includes("this isn't my") || lower.includes("i cannot") ||
+        lower.includes("i can't") || lower.includes("not my role") ||
+        lower.includes("not my job") || lower.includes("unable to")) {
+      if (text.length < 120) return true; // refusal language + short = real refusal
+    }
+    return false;
+  };
+
+  if (bestDeliverable && lastFinalText && bestDeliverable !== lastFinalText) {
+    // If the last output is a refusal but an earlier agent produced real work,
+    // use the earlier agent's output.
+    if (isRefusal(sanitizedLast) && !isRefusal(sanitizedBest) && sanitizedBest) {
+      deliverable = sanitizedBest;
+    }
+  }
+  if (!deliverable && (lastFinalText || bestDeliverable)) {
+    // The agent finished but its output was a raw envelope — not a real deliverable.
     await appendEvent({
       runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked",
       title: "Run produced no clean deliverable",
-      description: "The final agent output was a raw envelope or unparseable JSON — not a user-facing result.",
+      description: "The agent output was a raw envelope or unparseable JSON — not a user-facing result.",
       decision: "denied", actorType: "system",
-      metadata: { rawOutput: capText(lastFinalText, TOOL_OUTPUT_META_LIMIT) }
+      metadata: { rawOutput: capText(lastFinalText ?? bestDeliverable ?? "", TOOL_OUTPUT_META_LIMIT) }
     });
     await prisma.workflowRun.update({
       where: { id: ctx.runId },
