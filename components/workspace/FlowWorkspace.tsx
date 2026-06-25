@@ -232,7 +232,36 @@ export function FlowWorkspace({
   const handleApprove = async (approvalId: string, approved: boolean) => {
     try {
       await resolveApproval(approvalId, approved ? "approved" : "denied");
-      toast(approved ? "Approved. Worker will resume." : "Denied.", approved ? "ok" : "warn");
+      // Clear this approval from the UI immediately so the button disappears.
+      setRun((prev) => ({
+        ...prev,
+        approvals: prev.approvals.filter((a) => a.id !== approvalId)
+      }));
+      toast(approved ? "Approved — worker will resume." : "Denied — run halted.", approved ? "ok" : "warn");
+      // Resume polling if the run was paused.
+      if (approved && !pollId) {
+        const id = setInterval(async () => {
+          try {
+            const data = await getRealRun(run.runId!);
+            const r: RealRun = data.run;
+            setRun({
+              runId: r.id,
+              status: r.status,
+              output: r.resultText ?? null,
+              steps: r.events?.map((e) => ({ title: e.title, description: e.description, decision: e.decision, costCents: e.costCents })) ?? [],
+              approvals: r.approvalRequests?.filter((a) => a.status === "pending") ?? [],
+              toolCallCount: r.toolCallCount,
+              stepCount: r.stepCount
+            });
+            if (["completed", "halted_error", "halted_cost", "killed"].includes(r.status)) {
+              clearInterval(id);
+              setRunning(false);
+              toast(r.status === "completed" ? "Run complete." : `Run ended: ${r.status}`, r.status === "completed" ? "ok" : "warn");
+            }
+          } catch { /* skip */ }
+        }, 2000);
+        setPollId(id);
+      }
     } catch (error) {
       toast(error instanceof Error ? error.message : "Approval failed.", "danger");
     }
@@ -449,8 +478,48 @@ export function FlowWorkspace({
               )}
             </div>
 
+            {/* --- APPROVAL ACTIONS — always visible when pending, before output --- */}
+            {run.approvals.length > 0 && (
+              <div style={{
+                background: "var(--warn-bg, #78350f20)",
+                border: "2px solid var(--warn, #f59e0b)",
+                borderRadius: "var(--radius-lg, 8px)",
+                padding: "1rem 1.25rem",
+                marginBottom: "0.75rem"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                  <strong style={{ fontSize: "0.9rem", color: "var(--warn, #f59e0b)" }}>
+                    ⚠ {run.approvals.length} action{run.approvals.length > 1 ? "s" : ""} need{run.approvals.length === 1 ? "s" : ""} your approval
+                  </strong>
+                  <Badge risk="high" />
+                </div>
+                {run.approvals.map((a) => (
+                  <div key={a.id} style={{ marginBottom: "0.5rem" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--foreground)", fontWeight: 600 }}>{a.title}</div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--muted)", margin: "0.25rem 0", lineHeight: 1.4 }}>
+                      {a.description.slice(0, 200)}
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                      <Button variant="primary" size="sm" onClick={() => handleApprove(a.id, true)}>
+                        ✓ Approve & Resume
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => handleApprove(a.id, false)}>
+                        ✗ Deny & Halt
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {run.output ? (
               <div className="runOutput">{run.output}</div>
+            ) : run.status === "paused_for_approval" && run.approvals.length === 0 ? (
+              <div className="runOutput">
+                <div className="runOutputEmpty">
+                  Approval resolved — waiting for the worker to resume…
+                </div>
+              </div>
             ) : run.steps.length > 0 ? (
               <div className="runOutput">
                 <div className="runSteps">
@@ -469,6 +538,13 @@ export function FlowWorkspace({
                             </span>
                           </div>
                         )}
+                        {s.decision === "approval_required" && (
+                          <div style={{ marginTop: "0.25rem" }}>
+                            <span style={{ fontSize: "0.65rem", color: "var(--warn)" }}>
+                              ↳ Resolve this in the approval box above
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -481,20 +557,6 @@ export function FlowWorkspace({
                 </div>
               </div>
             )}
-
-            {run.approvals.map((a) => (
-              <div className="approvalInline" key={a.id}>
-                <div className="approvalInlineHead">
-                  <strong>⚠ {a.title}</strong>
-                  <Badge risk="high" />
-                </div>
-                <div className="approvalInlineDetail">{a.description}</div>
-                <div className="approvalInlineActions">
-                  <Button variant="primary" size="sm" onClick={() => handleApprove(a.id, true)}>Approve</Button>
-                  <Button variant="danger" size="sm" onClick={() => handleApprove(a.id, false)}>Deny</Button>
-                </div>
-              </div>
-            ))}
           </>
         ) : (
           <EmptyState
