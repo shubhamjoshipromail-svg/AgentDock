@@ -66,8 +66,14 @@ export function effectiveGrantPermission(grant: {
 export function authorizeToolCall(input: GateInput): GateResult {
   const { inAllowList, grant, server, action, step } = input;
 
-  // 1. Deny-by-default: no allow-list entry / no grant → blocked.
+  // 1. Deny-by-default: no allow-list entry / no grant.
+  //    But low-risk, read-only tools (like web search) surface as an approval
+  //    request so the user can one-click grant them at the moment of consequence —
+  //    rather than silently blocking. High-risk or write tools still hard-block.
   if (!inAllowList || !grant) {
+    if (action.kind === "read" && !action.isExternalSend && server.riskLevel !== "restricted" && server.riskLevel !== "high") {
+      return approve("tool is not yet granted — approve to allow this read-only action once");
+    }
     return block("tool is not on the agent's allow-list");
   }
 
