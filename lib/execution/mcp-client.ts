@@ -117,19 +117,28 @@ export async function getClient(serverName: string, ctx?: McpConnectContext): Pr
 }
 
 // Discover a server's tools and their JSON input schemas (tools/list).
+// Closes the connection after discovery so a subsequent run creates a fresh
+// transport WITH the brokered credential (token) in its env.
 export async function listMcpTools(serverName: string, ctx?: McpConnectContext): Promise<McpToolSchema[]> {
   const client = await getClient(serverName, ctx);
-  const result = await client.listTools();
-  return (result.tools ?? []).map((tool) => ({
-    name: tool.name,
-    description: tool.description ?? undefined,
-    inputSchema: (tool.inputSchema ?? {}) as Record<string, unknown>
-  }));
+  try {
+    const result = await client.listTools();
+    return (result.tools ?? []).map((tool) => ({
+      name: tool.name,
+      description: tool.description ?? undefined,
+      inputSchema: (tool.inputSchema ?? {}) as Record<string, unknown>
+    }));
+  } finally {
+    // Always close — never let a tokenless discovery connection get reused by a run.
+    await closeMcpConnection(serverName, ctx);
+  }
 }
 
 // Invoke a tool by name with structured arguments (tools/call). The result text
 // is flattened for the caller, which re-enters it as UNTRUSTED data and meters
 // cost — this client neither trusts nor gates the result.
+// Closes after each call so the NEXT call/run creates a fresh transport with
+// the correct brokered credential env (avoids caching a tokenless connection).
 export async function callMcpTool(
   serverName: string,
   toolName: string,
@@ -137,13 +146,17 @@ export async function callMcpTool(
   ctx?: McpConnectContext
 ): Promise<McpCallResult> {
   const client = await getClient(serverName, ctx);
-  const result = await client.callTool({ name: toolName, arguments: args ?? {} });
-  const content = Array.isArray(result.content) ? result.content : [];
-  const text = content
-    .filter((part): part is { type: "text"; text: string } => (part as { type?: string })?.type === "text")
-    .map((part) => part.text)
-    .join("\n");
-  return { text, isError: Boolean(result.isError) };
+  try {
+    const result = await client.callTool({ name: toolName, arguments: args ?? {} });
+    const content = Array.isArray(result.content) ? result.content : [];
+    const text = content
+      .filter((part): part is { type: "text"; text: string } => (part as { type?: string })?.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+    return { text, isError: Boolean(result.isError) };
+  } finally {
+    await closeMcpConnection(serverName, ctx);
+  }
 }
 
 export async function closeMcpConnection(serverName: string, ctx?: McpConnectContext): Promise<void> {
