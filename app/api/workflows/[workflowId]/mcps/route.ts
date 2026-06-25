@@ -156,7 +156,8 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
             data: {
               ...grantTemplate,
               allowedActions: grantTemplate.allowedActions,
-              blockedActions: grantTemplate.blockedActions
+              blockedActions: grantTemplate.blockedActions,
+              revokedAt: null // clear any prior revocation on re-grant
             },
             include: {
               mcpServer: true,
