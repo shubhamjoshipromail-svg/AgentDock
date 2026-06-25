@@ -178,6 +178,8 @@ export function FlowWorkspace({
 
   useEffect(() => { loadFlows(); loadConnectionsAndTools(); }, [loadFlows, loadConnectionsAndTools]);
   useEffect(() => { if (flowId) loadFlow(flowId); }, [flowId, loadFlow]);
+  // Refresh tools when switching back to the flow tab.
+  useEffect(() => { if (workspaceTab === "flow") { loadConnectionsAndTools(); loadFlows(); } }, [workspaceTab]);
 
   // --- Run ---
   const handleRun = async () => {
@@ -650,7 +652,12 @@ export function FlowWorkspace({
             )}
 
             <div className="inspectorSection">
-              <h3>Discover & grant</h3>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h3 style={{ margin: 0 }}>Discover & grant</h3>
+                <Button variant="ghost" size="sm" onClick={() => loadConnectionsAndTools()}>
+                  ↻ Refresh
+                </Button>
+              </div>
               {availableTools.filter((t) => !grantedToolIds.has(t.serverRowId)).slice(0, 8).map((t) => (
                 <div className="inspectorGrantRow" key={t.serverRowId}>
                   <div>
@@ -665,7 +672,7 @@ export function FlowWorkspace({
               ))}
               {availableTools.length === 0 && (
                 <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                  No discovered tools. Connect a server and discover its tools first.
+                  No discovered tools. Connect a server and discover its tools first, then click ↻ Refresh.
                 </div>
               )}
             </div>
