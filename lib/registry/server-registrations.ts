@@ -36,6 +36,17 @@ export const CURATED_SERVER_REGISTRATIONS: CuratedRegistration[] = [
     args: (process.env.GMAIL_MCP_ARGS ?? "servers/gmail/dist/index.js").split(" ").filter(Boolean),
     credentialProvider: "google",
     tokenEnvVar: "GMAIL_ACCESS_TOKEN"
+  },
+  {
+    // Web search — first-party stdio MCP server, read-only, no credential. Web
+    // search is "just another MCP server" reached via the standard client.
+    serverKey: "search",
+    displayName: "Web Search",
+    transport: "stdio",
+    command: process.env.SEARCH_MCP_COMMAND ?? process.execPath,
+    args: (process.env.SEARCH_MCP_ARGS ?? "servers/search/dist/index.js").split(" ").filter(Boolean),
+    credentialProvider: null,
+    tokenEnvVar: null
   }
 ];
 

@@ -12,6 +12,7 @@
     "db:seed": "prisma db seed",
     "worker": "npx tsx servers/worker.ts",
     "build:gmail": "npx tsc servers/gmail/index.ts servers/gmail/server.ts servers/gmail/gmail-tools.ts --outDir servers/gmail/dist --esModuleInterop --module commonjs --target es2022 --resolveJsonModule --skipLibCheck",
+    "build:search": "npx tsc servers/search/index.ts servers/search/server.ts servers/search/search-tools.ts --outDir servers/search/dist --esModuleInterop --module commonjs --target es2022 --resolveJsonModule --skipLibCheck",
     "test": "vitest run",
     "test:watch": "vitest"
   },

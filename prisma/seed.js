@@ -41,6 +41,17 @@ async function main() {
       tokenEnvVar: "GMAIL_ACCESS_TOKEN",
       enabled: true,
       curated: true
+    },
+    {
+      serverKey: "search",
+      displayName: "Web Search",
+      transport: "stdio",
+      command: process.env.SEARCH_MCP_COMMAND ?? process.execPath,
+      args: (process.env.SEARCH_MCP_ARGS ?? "servers/search/dist/index.js").split(" ").filter(Boolean),
+      credentialProvider: null,
+      tokenEnvVar: null,
+      enabled: true,
+      curated: true
     }
   ];
   for (const reg of serverRegistrations) {
