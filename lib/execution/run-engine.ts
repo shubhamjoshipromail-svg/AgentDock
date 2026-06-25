@@ -3,7 +3,6 @@ import { Prisma } from "@prisma/client";
 import type { LlmProvider } from "../llm/types";
 import { prisma } from "../prisma";
 import { authorizeToolCall, effectiveGrantPermission, type ActionKind } from "./policy-gate";
-import { getExecutor, isRealTool } from "./tools/registry";
 import { callMcpTool, mcpTokenEnvVar } from "./mcp-client";
 import { brokerCredentialForAction, type BrokerScopeContext } from "./credential-broker";
 import { getRunProvider } from "./provider";
@@ -13,14 +12,12 @@ import type { RunEventMeta } from "../types";
 // ============================================================================
 // SANDBOX BOUNDARY — the single seam where an isolated executor slots in.
 //
-// Today tool execution is split into two paths inside executeAllowedTool:
-//   1. MCP tools → callMcpTool (real MCP client, governed, auth-brokered)
-//   2. Legacy tools → getExecutor (registry lookup, local/stub)
-//
-// Both run in-process. To sandbox execution later:
-//   - Replace the MCP path with an RPC/containerized call THROUGH
-//     callMcpTool — the gate, idempotency guard, and audit stay unchanged.
-//   - The legacy tool path is phased out as all tools become MCP.
+// There is ONE tool execution path inside executeAllowedTool: every tool is an
+// MCP tool, dispatched through callMcpTool (the real MCP client, governed and
+// auth-brokered). Web search and Gmail are both reached this way — no second
+// registry, no per-server branch. To sandbox execution later:
+//   - Replace the MCP call with an RPC/containerized call THROUGH callMcpTool —
+//     the gate, idempotency guard, and audit stay unchanged.
 //   - The sandbox executor receives: serverKey, toolName, input (structured
 //     arguments), and an auth token scoped to this invocation.
 //   - NO gate logic, NO orchestration, NO credential-broker logic moves
@@ -79,10 +76,8 @@ function capText(value: string, limit: number): string {
 
 // The model addresses tools by a friendly name. For MCP servers the friendly
 // name is the discovered tool name (the `mcpToolName` column); this fallback
-// covers non-MCP rows. Search is the one legacy real tool, exposed as
-// "web_search".
+// covers any non-MCP row by its server name (no per-server special-casing).
 function toolNameFor(serverName: string): string {
-  if (serverName === "search-mcp") return "web_search";
   return serverName;
 }
 
@@ -278,11 +273,11 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
           canDelete: g.canDelete, requiresApproval: g.requiresApproval, revokedAt: g.revokedAt,
           scope: g.scope, limitCents: g.limitCents, expiresAt: g.expiresAt
         },
-        // MCP rows declare external-send via the server column; legacy heuristic
-        // (a write-capable, non-search tool) covers non-MCP rows.
+        // MCP rows declare external-send via the server column; the legacy
+        // heuristic (a write-capable tool) covers any remaining non-MCP row.
         isExternalSend: isMcp
           ? g.mcpServer.isExternalSend
-          : g.mcpServer.name !== "search-mcp" && (g.canWrite || g.canExecute || g.canDelete)
+          : (g.canWrite || g.canExecute || g.canDelete)
       };
     });
     return {
@@ -724,7 +719,6 @@ async function executeAllowedTool(
   /** Stable position of this tool call within its step (0, 1, …; -1 = resume path). */
   toolIter = 0
 ): Promise<string> {
-  const executor = getExecutor(tool.server.name);
   let output: string;
   let costCents = 0;
   let real = false;
@@ -736,7 +730,7 @@ async function executeAllowedTool(
   // claims this job will find the prior event and skip re-execution.
   const idempotencyKey = `${ctx.runId}:a${agent.index}:t${toolIter}`;
   const isExternal = Boolean(tool.isExternalSend);
-  const willBeReal = isMcpTool(tool) || (executor ? isRealTool(tool.server.name) : false);
+  const willBeReal = isMcpTool(tool);
 
   if (willBeReal && isExternal) {
     const priorIntent = await prisma.workflowRunEvent.findFirst({
@@ -787,15 +781,11 @@ async function executeAllowedTool(
       output = res.isError ? `[tool error] ${res.text}` : res.text;
       real = true;
     }
-  } else if (executor) {
-    const res = await executor(input);
-    output = res.output;
-    costCents = res.costCents;
-    real = isRealTool(tool.server.name);
   } else {
-    // Allowed by policy, but no executor is implemented. Be explicit and never
-    // fabricate success; the unavailable note re-enters context as untrusted data.
-    output = `[unavailable] no real executor for this tool`;
+    // Allowed by policy, but not an MCP tool — there is no other execution path.
+    // Be explicit and never fabricate success; the unavailable note re-enters
+    // context as untrusted data.
+    output = `[unavailable] no MCP executor for this tool`;
   }
   await meter(ctx.runId, costCents);
   await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { toolCallCount: { increment: 1 } } });

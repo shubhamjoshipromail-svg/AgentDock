@@ -5,11 +5,19 @@ import { createTestUser, prisma, resetDatabase } from "./helpers/db";
 
 vi.mock("../lib/auth-user", () => mockAuthUserModule());
 
-// The real web-search tool is exercised via the engine; mock it so tests never
-// hit the network. Its real behavior is covered in web-search.test.ts.
-vi.mock("../lib/execution/tools/web-search", () => ({
-  webSearch: vi.fn(async () => ({ output: "mock search results", costCents: 1 }))
-}));
+// Search executes through the single MCP path; mock the MCP client so tests
+// never spawn a subprocess or hit the network. The search server's real behavior
+// is covered in search-server.test.ts.
+vi.mock("../lib/execution/mcp-client", async (importActual) => {
+  const actual = await importActual<typeof import("../lib/execution/mcp-client")>();
+  return {
+    ...actual,
+    callMcpTool: vi.fn(async (_serverKey: string, toolName: string) => ({
+      text: toolName === "web_search" ? "mock search results" : `mcp:${toolName}:ok`,
+      isError: false
+    }))
+  };
+});
 
 // Mock the BYO provider at the execution boundary — no network, no key. A queue
 // of fake completions is shifted on each completeJson call.
@@ -41,6 +49,7 @@ import { GET as runDetailRoute } from "../app/api/runs/[id]/route";
 
 const FINAL = (text = "done") => JSON.stringify({ type: "final", text });
 const TOOL = (tool: string, action = "read", input = "q") => JSON.stringify({ type: "tool_call", tool, action, input });
+const TOOL_ARGS = (tool: string, args: Record<string, unknown>) => JSON.stringify({ type: "tool_call", tool, arguments: args });
 
 async function seedFlow(userId: string, opts: { requiresApproval?: boolean } = {}) {
   const agent = await prisma.agent.create({
@@ -51,7 +60,7 @@ async function seedFlow(userId: string, opts: { requiresApproval?: boolean } = {
   });
   await prisma.workflowAgent.create({ data: { workflowId: workflow.id, agentId: agent.id, roleInWorkflow: "discover", routeOrder: 1, defaultMode: "auto" } });
   const server = await prisma.mcpServer.create({
-    data: { name: "search-mcp", displayName: "Search MCP", description: "Read-only web search.", registrySource: "curated", registryId: "agentdock:search-mcp", riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only" }
+    data: { name: "search-mcp", displayName: "Search MCP", description: "Read-only web search.", registrySource: "curated", registryId: "agentdock:search-mcp", riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only", mcpServerKey: "search", mcpToolName: "web_search", isExternalSend: false }
   });
   await prisma.mcpAccessGrant.create({
     data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, requiresApproval: opts.requiresApproval ?? false }
@@ -91,7 +100,7 @@ describe("run engine — bounded, gated, killable", () => {
     const user = await createTestUser();
     const { workflow } = await seedFlow(user.id);
     llm.queue = [
-      { text: TOOL("web_search", "read", "site:example.com AI roles"), inputTokens: 44, outputTokens: 12, costCents: 2 },
+      { text: TOOL_ARGS("web_search", { query: "site:example.com AI roles" }), inputTokens: 44, outputTokens: 12, costCents: 2 },
       { text: FINAL("Final deliverable built from search results."), inputTokens: 55, outputTokens: 20, costCents: 3 }
     ];
 
@@ -103,7 +112,7 @@ describe("run engine — bounded, gated, killable", () => {
     const evs = await events(run.id);
     const modelEvent = evs.find((e) => e.title === "Job Discovery Agent step");
     expect(modelEvent?.metadata).toMatchObject({
-      modelOutput: TOOL("web_search", "read", "site:example.com AI roles"),
+      modelOutput: TOOL_ARGS("web_search", { query: "site:example.com AI roles" }),
       envelopeType: "tool_call",
       inputTokens: 44,
       outputTokens: 12
@@ -112,7 +121,7 @@ describe("run engine — bounded, gated, killable", () => {
     const toolEvent = evs.find((e) => e.eventType === "mcp_tool_use");
     expect(toolEvent?.metadata).toMatchObject({
       toolName: "web_search",
-      toolInput: "site:example.com AI roles",
+      toolInput: JSON.stringify({ query: "site:example.com AI roles" }),
       toolOutput: "mock search results",
       real: true
     });
@@ -228,10 +237,10 @@ describe("run engine — bounded, gated, killable", () => {
       real: false,
       toolName: "docs-mcp",
       toolInput: "roadmap doc",
-      toolOutput: "[unavailable] no real executor for this tool"
+      toolOutput: "[unavailable] no MCP executor for this tool"
     });
     expect(JSON.stringify(toolEvent)).not.toContain("[simulated]");
-    expect(llm.userPrompts[1]).toContain("[unavailable] no real executor for this tool");
+    expect(llm.userPrompts[1]).toContain("[unavailable] no MCP executor for this tool");
   });
 
   it("uses a substantive default prompt when an agent has no systemPrompt", async () => {

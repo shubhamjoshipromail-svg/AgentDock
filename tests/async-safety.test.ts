@@ -32,9 +32,6 @@ vi.mock("../lib/execution/provider", () => ({
   }))
 }));
 
-vi.mock("../lib/execution/tools/web-search", () => ({
-  webSearch: vi.fn(async () => ({ output: "search results", costCents: 1 }))
-}));
 
 import { killRun } from "../lib/execution/run-engine";
 import { claimNextRunJob, createQueuedRun, processRunJob } from "../lib/execution/run-queue";
@@ -57,7 +54,8 @@ async function seedSearchFlow(userId: string) {
   const server = await prisma.mcpServer.create({
     data: { name: "search-mcp", displayName: "Search", description: "d",
       registrySource: "curated", registryId: "agentdock:async-search", riskLevel: "low",
-      verificationStatus: "verified", recommendedPermission: "read_only" }
+      verificationStatus: "verified", recommendedPermission: "read_only",
+      mcpServerKey: "search", mcpToolName: "web_search", isExternalSend: false }
   });
   const grant = await prisma.mcpAccessGrant.create({
     data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id,
