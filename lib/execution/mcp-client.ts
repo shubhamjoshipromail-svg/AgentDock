@@ -137,8 +137,6 @@ export async function listMcpTools(serverName: string, ctx?: McpConnectContext):
 // Invoke a tool by name with structured arguments (tools/call). The result text
 // is flattened for the caller, which re-enters it as UNTRUSTED data and meters
 // cost — this client neither trusts nor gates the result.
-// Closes after each call so the NEXT call/run creates a fresh transport with
-// the correct brokered credential env (avoids caching a tokenless connection).
 export async function callMcpTool(
   serverName: string,
   toolName: string,
@@ -146,17 +144,13 @@ export async function callMcpTool(
   ctx?: McpConnectContext
 ): Promise<McpCallResult> {
   const client = await getClient(serverName, ctx);
-  try {
-    const result = await client.callTool({ name: toolName, arguments: args ?? {} });
-    const content = Array.isArray(result.content) ? result.content : [];
-    const text = content
-      .filter((part): part is { type: "text"; text: string } => (part as { type?: string })?.type === "text")
-      .map((part) => part.text)
-      .join("\n");
-    return { text, isError: Boolean(result.isError) };
-  } finally {
-    await closeMcpConnection(serverName, ctx);
-  }
+  const result = await client.callTool({ name: toolName, arguments: args ?? {} });
+  const content = Array.isArray(result.content) ? result.content : [];
+  const text = content
+    .filter((part): part is { type: "text"; text: string } => (part as { type?: string })?.type === "text")
+    .map((part) => part.text)
+    .join("\n");
+  return { text, isError: Boolean(result.isError) };
 }
 
 export async function closeMcpConnection(serverName: string, ctx?: McpConnectContext): Promise<void> {
