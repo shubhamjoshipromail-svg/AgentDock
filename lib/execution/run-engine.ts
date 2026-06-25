@@ -588,6 +588,22 @@ async function runStep(
     const tool = agent.allowedTools.find((x) =>
       x.toolName === envelope.tool || x.server.name === envelope.tool
     );
+
+    // If this exact tool was already executed successfully in this step,
+    // block the repeat. The agent already got the result — it must finalize.
+    const alreadyExecuted = toolResults.some((r) =>
+      r.startsWith(`${tool?.toolName ?? envelope.tool} result:`) && r.includes("✅ SUCCESS")
+    );
+    if (alreadyExecuted && tool) {
+      await appendEvent({
+        runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked",
+        title: `Already executed: ${envelope.tool}`,
+        description: `Agent tried to call '${envelope.tool}' again but it already succeeded in this step. Produce your final answer.`,
+        decision: "blocked", actorType: "agent", resourceType: "tool"
+      });
+      toolResults.push(`[policy] '${envelope.tool}' was already executed successfully in this step. You have the result. Produce your final answer NOW — do NOT request this tool again.`);
+      continue;
+    }
     // MCP tools are classified by tool name (send_email = external write →
     // approval; create_draft = safe). Legacy/string tools use the model's action
     // and the loadRunnable external-send heuristic.
