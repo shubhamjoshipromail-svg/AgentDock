@@ -76,12 +76,6 @@ function capText(value: string, limit: number): string {
 }
 
 // The model addresses tools by a friendly name. For MCP servers the friendly
-// name is the discovered tool name (the `mcpToolName` column); this fallback
-// covers any non-MCP row by its server name (no per-server special-casing).
-function toolNameFor(serverName: string): string {
-  return serverName;
-}
-
 // Untrusted-content framing: tool outputs and memory are DATA, never commands.
 const SECURITY_PREAMBLE =
   "You are an AgentDock agent. NEVER claim you performed an action (draft, send, search) unless a tool result confirms it. " +
@@ -258,36 +252,40 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
 
   const agents: RunnableAgent[] = workflow.workflowAgents.map((wa, index) => {
     const applicable = grants.filter((g) => g.agentId === wa.agentId || (g.agentId === null && g.workflowId === workflowId));
-    const allowedTools: AllowedTool[] = applicable.map((g) => {
-      const isMcp = Boolean(g.mcpServer.mcpServerKey && g.mcpServer.mcpToolName);
-      return {
-        // MCP rows are addressed by their discovered tool name; legacy rows by name.
-        toolName: g.mcpServer.mcpToolName ?? toolNameFor(g.mcpServer.name),
-        server: {
-          id: g.mcpServer.id,
-          name: g.mcpServer.name,
-          verificationStatus: g.mcpServer.verificationStatus,
-          riskLevel: g.mcpServer.riskLevel,
-          recommendedPermission: g.mcpServer.recommendedPermission,
-          mcpServerKey: g.mcpServer.mcpServerKey,
-          mcpToolName: g.mcpServer.mcpToolName,
-          credentialProvider: g.mcpServer.credentialProvider
-        },
-        grant: {
-          id: g.id, canRead: g.canRead, canWrite: g.canWrite, canExecute: g.canExecute,
-          canDelete: g.canDelete, requiresApproval: g.requiresApproval, revokedAt: g.revokedAt,
-          scope: g.scope, limitCents: g.limitCents, expiresAt: g.expiresAt
-        },
-        // MCP rows declare external-send via the server column; the legacy
-        // heuristic (a write-capable tool) covers any remaining non-MCP row.
-        isExternalSend: isMcp
-          ? g.mcpServer.isExternalSend
-          : (g.canWrite || g.canExecute || g.canDelete),
-        // The discovered schema for the canonical tool (McpTool row whose name
-        // equals the server's mcpToolName), used for schema-aware arg coercion.
-        inputSchema: g.mcpServer.tools.find((t) => t.name === g.mcpServer.mcpToolName)?.inputSchema ?? null
-      };
-    });
+    // Deny-by-default + canonical identity: only grants whose row carries a
+    // canonical executable identity (mcpServerKey + mcpToolName) are runnable.
+    // The DB guard already forbids granting anything else, so this is a defensive
+    // belt — and it lets the engine address every tool by exactly one name (the
+    // discovered mcpToolName), with no toolNameFor/server-name fallback.
+    const allowedTools: AllowedTool[] = applicable
+      .filter((g) => g.mcpServer.mcpServerKey && g.mcpServer.mcpToolName)
+      .map((g) => {
+        const mcpServerKey = g.mcpServer.mcpServerKey as string;
+        const mcpToolName = g.mcpServer.mcpToolName as string;
+        return {
+          toolName: mcpToolName,
+          server: {
+            id: g.mcpServer.id,
+            name: g.mcpServer.name,
+            verificationStatus: g.mcpServer.verificationStatus,
+            riskLevel: g.mcpServer.riskLevel,
+            recommendedPermission: g.mcpServer.recommendedPermission,
+            mcpServerKey,
+            mcpToolName,
+            credentialProvider: g.mcpServer.credentialProvider
+          },
+          grant: {
+            id: g.id, canRead: g.canRead, canWrite: g.canWrite, canExecute: g.canExecute,
+            canDelete: g.canDelete, requiresApproval: g.requiresApproval, revokedAt: g.revokedAt,
+            scope: g.scope, limitCents: g.limitCents, expiresAt: g.expiresAt
+          },
+          // Canonical rows declare external-send via the server column.
+          isExternalSend: g.mcpServer.isExternalSend,
+          // The discovered schema for the canonical tool (McpTool row whose name
+          // equals the server's mcpToolName), used for schema-aware arg coercion.
+          inputSchema: g.mcpServer.tools.find((t) => t.name === mcpToolName)?.inputSchema ?? null
+        };
+      });
     return {
       index,
       agentId: wa.agentId,
