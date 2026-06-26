@@ -216,6 +216,12 @@ function isMcpTool(tool: AllowedTool): boolean {
   return Boolean(tool.server.mcpServerKey && tool.server.mcpToolName);
 }
 
+// The result of executing one tool call. `text` re-enters the agent context as
+// untrusted data. `runtimeError`, when set, is a genuine runtime failure (the
+// tool ran and errored) — the caller halts the run honestly rather than letting
+// the agent narrate a failed action into a "completed" run.
+type ToolExecution = { text: string; runtimeError?: string };
+
 type RunnableAgent = {
   index: number;
   agentId: string;
@@ -700,7 +706,13 @@ async function runStep(
       return { kind: "halted", status: "halted_error" };
     }
     const executed = await executeAllowedTool(ctx, agent, tool!, actionKind, envelope.input, gate.reason, envelope.arguments, iter);
-    toolResults.push(executed);
+    toolResults.push(executed.text);
+    // A genuine runtime tool error ends the run honestly with the real reason —
+    // the agent can't turn a failed action into a "completed" run.
+    if (executed.runtimeError) {
+      await haltError(ctx, executed.runtimeError, { toolName: tool!.toolName });
+      return { kind: "halted", status: "halted_error" };
+    }
   }
 
   // Ran out of per-step tool iterations without a final answer — even the
@@ -724,10 +736,16 @@ async function executeAllowedTool(
   args?: Record<string, unknown>,
   /** Stable position of this tool call within its step (0, 1, …; -1 = resume path). */
   toolIter = 0
-): Promise<string> {
+): Promise<ToolExecution> {
   let output: string;
   let costCents = 0;
   let real = false;
+  // Set ONLY for a genuine runtime tool error (the tool ran and reported an
+  // error, or — defensively — had no executor). The caller halts the run with
+  // this reason so a failed action can never be spun into a "completed" run. A
+  // missing-argument coercion error and a governance/broker refusal are honest
+  // per-call failures but do NOT halt (the model may self-correct / continue).
+  let runtimeError: string | undefined;
   // True when the tool ran but returned an error (or could not run). The engine
   // must NEVER signal success in this case — fabricating "action performed" is
   // what let an agent claim an email was sent after the send actually errored.
@@ -760,7 +778,7 @@ async function executeAllowedTool(
           metadata: { real: true, toolName: tool.toolName, idempotencyKey, idempotentSkip: true,
             toolOutput: capText(meta.toolOutput, TOOL_OUTPUT_META_LIMIT) }
         });
-        return `${tool.toolName} result: ${meta.toolOutput}`;
+        return { text: `${tool.toolName} result: ${meta.toolOutput}` };
       }
     }
   }
@@ -795,7 +813,7 @@ async function executeAllowedTool(
         resourceType: "tool", resourceId: tool.server.id, authorityRef: tool.grant.id, untrusted: true,
         metadata: { real: false, error: true, toolName: tool.toolName, missingArgs: coerced.missing, toolOutput: capText(output, TOOL_OUTPUT_META_LIMIT) }
       });
-      return `${tool.toolName} result: ${output} ❌ FAILED — this action did NOT complete. Do NOT claim it succeeded; report the failure honestly.`;
+      return { text: `${tool.toolName} result: ${output} ❌ FAILED — this action did NOT complete. Do NOT claim it succeeded; report the failure honestly.` };
     }
     const structuredArgs = coerced.args;
     toolInputForAudit = JSON.stringify(structuredArgs);
@@ -814,17 +832,20 @@ async function executeAllowedTool(
     } else {
       const res = await callMcpTool(tool.server.mcpServerKey!, tool.server.mcpToolName!, structuredArgs, { userId: ctx.userId, env: envResult.env });
       // A tool that ran but reported an error did NOT succeed. Keep real=true for
-      // audit (it executed) but flag the error so the agent is told it FAILED.
+      // audit (it executed) but flag the error so the agent is told it FAILED —
+      // and signal the caller to halt the run honestly with the real reason.
       output = res.isError ? `[tool error] ${res.text}` : res.text;
       real = true;
       toolErrored = res.isError;
+      if (res.isError) runtimeError = `${tool.toolName} failed: ${res.text}`;
     }
   } else {
-    // Allowed by policy, but not an MCP tool — there is no other execution path.
-    // Be explicit and never fabricate success; the unavailable note re-enters
-    // context as untrusted data.
+    // Defensive: post Chunk-16 only canonical executable tools are loadable, so
+    // this branch should be unreachable. If it is ever hit, treat it as a genuine
+    // runtime error and halt honestly — never fabricate success.
     output = `[unavailable] no MCP executor for this tool`;
     toolErrored = true;
+    runtimeError = `${tool.toolName} is not executable (no MCP executor)`;
   }
   await meter(ctx.runId, costCents);
   await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { toolCallCount: { increment: 1 } } });
@@ -854,7 +875,7 @@ async function executeAllowedTool(
     : real && tool.isExternalSend
     ? " ⚠️ ACTION EXECUTED — the external action was performed. Now produce your final answer."
     : "";
-  return `${tool.toolName} result: ${output}${successNote}`;
+  return { text: `${tool.toolName} result: ${output}${successNote}`, runtimeError };
 }
 
 // Build the server-side environment for an MCP server connection. Generic: a
@@ -925,7 +946,7 @@ async function executeApprovedTool(
     authorityRef: tool.grant.id
   });
 
-  const result = await executeAllowedTool(
+  const executed = await executeAllowedTool(
     ctx,
     agent,
     tool,
@@ -935,7 +956,13 @@ async function executeApprovedTool(
     pending.arguments ?? undefined,
     -1 // resume path — negative iter to distinguish from normal step loop
   );
-  return { kind: "executed", result };
+  // An approved external action that errors at runtime (e.g. Gmail API disabled)
+  // halts the run honestly with the real reason — never a fabricated "sent".
+  if (executed.runtimeError) {
+    await haltError(ctx, executed.runtimeError, { toolName: tool.toolName, approved: true });
+    return { kind: "blocked" };
+  }
+  return { kind: "executed", result: executed.text };
 }
 
 async function haltCost(ctx: Ctx) {

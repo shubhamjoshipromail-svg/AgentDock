@@ -179,10 +179,15 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
     const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
 
-    llm.queue = [{ text: FINAL("The email could not be sent because the Gmail API is disabled.") }];
-    await resumeAfterApproval(user.id, approval.id, true);
+    // Approve → the real send errors. The run must end honestly, NOT completed.
+    const resumeResult = await resumeAfterApproval(user.id, approval.id, true);
+    expect(resumeResult?.status).toBe("halted_error");
 
-    // Audit records the failure, not a success.
+    const finalRun = await prisma.workflowRun.findFirstOrThrow({ where: { id: run.id } });
+    expect(finalRun.status).toBe("halted_error");
+    expect(finalRun.resultText).toBeNull(); // no fabricated "sent" deliverable
+
+    // Audit records the failure with the real reason; the halt carries it too.
     const ev = await prisma.workflowRunEvent.findFirstOrThrow({
       where: { workflowRunId: run.id, eventType: "mcp_tool_use" }, orderBy: { createdAt: "desc" }
     });
@@ -190,10 +195,11 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     expect((ev.metadata as Record<string, unknown>).error).toBe(true);
     expect(String((ev.metadata as Record<string, unknown>).toolOutput)).toContain("[tool error]");
 
-    // The model was told the action FAILED — never that it was performed.
-    const resumePrompt = llm.prompts[llm.prompts.length - 1];
-    expect(resumePrompt).toContain("❌ FAILED");
-    expect(resumePrompt).not.toContain("ACTION EXECUTED");
+    const halt = await prisma.workflowRunEvent.findFirstOrThrow({
+      where: { workflowRunId: run.id, eventType: "action_blocked", title: "Run halted" }, orderBy: { createdAt: "desc" }
+    });
+    expect(halt.description).toMatch(/send_email failed/i);
+    expect(halt.description).toMatch(/disabled/i);
   });
 
   it("search reaches web_search with a non-empty query whether the model used legacy input OR structured args", async () => {
@@ -221,6 +227,29 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
       const [, , args] = callMcpToolMock.mock.calls[0];
       expect(args).toEqual({ query: "lake victoria fish" });
     }
+  });
+
+  it("a search that ERRORS halts honestly — never falls back to a hallucinated, completed run", async () => {
+    const user = await createTestUser("search-error@example.com");
+    const { workflow } = await seedSearchFlow(user.id, "err");
+    callMcpToolMock.mockResolvedValue({ text: "search unavailable (network error)", isError: true });
+
+    // Even if the model would happily produce a confident answer from "general
+    // knowledge", the failed tool ends the run honestly.
+    llm.queue = [
+      { text: TOOL_INPUT("web_search", "read", "types of carp") },
+      { text: FINAL("Carps include common carp, grass carp, silver carp ...") }
+    ];
+    const result = await startRun(user.id, workflow.id);
+    expect(result.ok && result.result.status).toBe("halted_error");
+
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    expect(run.status).toBe("halted_error");
+    expect(run.resultText).toBeNull(); // no hallucinated deliverable
+    const halt = await prisma.workflowRunEvent.findFirstOrThrow({
+      where: { workflowRunId: run.id, eventType: "action_blocked", title: "Run halted" }, orderBy: { createdAt: "desc" }
+    });
+    expect(halt.description).toMatch(/web_search failed/i);
   });
 
   it("a send_email with no usable arguments fails honestly (missing fields) and never dispatches", async () => {
