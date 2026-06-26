@@ -6,13 +6,14 @@ import { createTestUser, prisma, resetDatabase } from "./helpers/db";
 vi.mock("../lib/auth-user", () => mockAuthUserModule());
 
 // Mock the BYO provider (no network). Queue of fake completions.
-const llm = vi.hoisted(() => ({ queue: [] as { text: string; costCents?: number }[], calls: 0 }));
+const llm = vi.hoisted(() => ({ queue: [] as { text: string; costCents?: number }[], calls: 0, prompts: [] as string[] }));
 vi.mock("../lib/execution/provider", () => ({
   getRunProvider: vi.fn(async () => ({
     name: "anthropic",
     model: "claude-sonnet-4-6",
-    completeJson: vi.fn(async () => {
+    completeJson: vi.fn(async (params: { user: string }) => {
       llm.calls += 1;
+      llm.prompts.push(params.user);
       const next = llm.queue.shift();
       if (!next) throw new Error("no queued completion");
       return { text: next.text, usage: { inputTokens: 10, outputTokens: 5 }, costCents: next.costCents ?? 1 };
@@ -78,7 +79,9 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     await resetDatabase();
     llm.queue = [];
     llm.calls = 0;
-    callMcpToolMock.mockClear();
+    llm.prompts = [];
+    callMcpToolMock.mockReset();
+    callMcpToolMock.mockResolvedValue({ text: "ok: performed", isError: false });
     setCurrentUser(null);
   });
 
@@ -138,5 +141,34 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const [server, toolName] = callMcpToolMock.mock.calls[0];
     expect(server).toBe("gmail");
     expect(toolName).toBe("create_draft");
+  });
+
+  it("a send that ERRORS is reported as failure, never framed as success", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedGmailFlow(user.id);
+    await storeGoogleOAuthToken(user.id, { accessToken: "ya29.LIVE", expiresAt: Date.now() + 3_600_000 });
+    // The real send errors (e.g. Gmail API disabled).
+    callMcpToolMock.mockResolvedValue({ text: "Gmail API has not been used in project … or it is disabled.", isError: true });
+
+    llm.queue = [{ text: TOOL_ARGS("send_email", { to: "a@example.com", subject: "Hi", body: "Hello" }) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    llm.queue = [{ text: FINAL("The email could not be sent because the Gmail API is disabled.") }];
+    await resumeAfterApproval(user.id, approval.id, true);
+
+    // Audit records the failure, not a success.
+    const ev = await prisma.workflowRunEvent.findFirstOrThrow({
+      where: { workflowRunId: run.id, eventType: "mcp_tool_use" }, orderBy: { createdAt: "desc" }
+    });
+    expect(ev.title).toContain("(failed)");
+    expect((ev.metadata as Record<string, unknown>).error).toBe(true);
+    expect(String((ev.metadata as Record<string, unknown>).toolOutput)).toContain("[tool error]");
+
+    // The model was told the action FAILED — never that it was performed.
+    const resumePrompt = llm.prompts[llm.prompts.length - 1];
+    expect(resumePrompt).toContain("❌ FAILED");
+    expect(resumePrompt).not.toContain("ACTION EXECUTED");
   });
 });

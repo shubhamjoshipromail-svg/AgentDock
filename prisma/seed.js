@@ -102,6 +102,24 @@ async function main() {
       credentialProvider: "google"
     }
   ];
+  // Web search is a real, executable MCP tool: it routes to the first-party
+  // `search` stdio server's web_search tool. Without mcpServerKey/mcpToolName it
+  // would be a dead catalog row and every research step would return "unavailable".
+  gmailMcpServers.push({
+    name: "search-mcp",
+    displayName: "Search MCP",
+    description: "Public web discovery for research and market monitoring workflows.",
+    registrySource: "agentdock-curated",
+    registryId: "agentdock:search-mcp",
+    category: "Public info",
+    riskLevel: "low",
+    verificationStatus: "verified",
+    recommendedPermission: "read_only",
+    mcpServerKey: "search",
+    mcpToolName: "web_search",
+    isExternalSend: false,
+    credentialProvider: null
+  });
   for (const srv of gmailMcpServers) {
     await prisma.mcpServer.upsert({
       where: { registrySource_registryId: { registrySource: srv.registrySource, registryId: srv.registryId } },

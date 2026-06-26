@@ -722,6 +722,10 @@ async function executeAllowedTool(
   let output: string;
   let costCents = 0;
   let real = false;
+  // True when the tool ran but returned an error (or could not run). The engine
+  // must NEVER signal success in this case — fabricating "action performed" is
+  // what let an agent claim an email was sent after the send actually errored.
+  let toolErrored = false;
   let toolInputForAudit = input;
 
   // --- Idempotency guard for real external-send tools -----------------------
@@ -763,7 +767,15 @@ async function executeAllowedTool(
     // isolate this tool invocation. The gate, idempotency guard, and all
     // audit logic above this line stay trusted and unchanged.
     // ═══════════════════════════════════════════════════════════════════
-    const structuredArgs = args ?? {};
+    // Prefer the model's structured arguments. Fall back to the legacy single
+    // string `input` mapped to `query` (web search and similar read tools) so a
+    // call made with the legacy envelope still carries its argument instead of
+    // running with an empty query.
+    const structuredArgs = args && Object.keys(args).length > 0
+      ? args
+      : input
+        ? { query: input }
+        : {};
     toolInputForAudit = JSON.stringify(structuredArgs);
     // Issue the credential through the broker's guarded path. For an external
     // send, the broker enforces the grant mandate (scope/limit/expiry/revocation)
@@ -776,36 +788,46 @@ async function executeAllowedTool(
     if (!envResult.ok) {
       output = `[policy] credential broker refused: ${envResult.reason}`;
       real = false;
+      toolErrored = true;
     } else {
       const res = await callMcpTool(tool.server.mcpServerKey!, tool.server.mcpToolName!, structuredArgs, { userId: ctx.userId, env: envResult.env });
+      // A tool that ran but reported an error did NOT succeed. Keep real=true for
+      // audit (it executed) but flag the error so the agent is told it FAILED.
       output = res.isError ? `[tool error] ${res.text}` : res.text;
       real = true;
+      toolErrored = res.isError;
     }
   } else {
     // Allowed by policy, but not an MCP tool — there is no other execution path.
     // Be explicit and never fabricate success; the unavailable note re-enters
     // context as untrusted data.
     output = `[unavailable] no MCP executor for this tool`;
+    toolErrored = true;
   }
   await meter(ctx.runId, costCents);
   await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { toolCallCount: { increment: 1 } } });
   await appendEvent({
     runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "mcp_tool_use",
-    title: `${tool.toolName} ${real ? "(real)" : "(unavailable)"}`,
+    // "(real)" succeeded, "(failed)" ran but errored, "(unavailable)" never ran.
+    title: `${tool.toolName} ${real ? (toolErrored ? "(failed)" : "(real)") : "(unavailable)"}`,
     description: `${agent.name} used ${tool.toolName} (${action}). ${reason}`,
     decision: "allowed", costCents, actorType: "agent", actorId: agent.agentId,
     resourceType: "tool", resourceId: tool.server.id, authorityRef: tool.grant.id, untrusted: true,
     metadata: {
       real,
+      error: toolErrored,
       toolName: tool.toolName,
       toolInput: capText(toolInputForAudit, TOOL_INPUT_META_LIMIT),
       toolOutput: capText(output, TOOL_OUTPUT_META_LIMIT),
       idempotencyKey: willBeReal && isExternal ? idempotencyKey : undefined
     }
   });
-  // Result re-enters context tagged untrusted.
-  // Add a clear success signal for safe tools — the agent should finalize, not loop.
-  const successNote = real && !tool.isExternalSend
+  // Result re-enters context tagged untrusted. The signal MUST match reality: a
+  // failed/unavailable tool is never reported as success, or the agent will claim
+  // it did something it did not (e.g. "email sent" after the send errored).
+  const successNote = toolErrored
+    ? " ❌ FAILED — this action did NOT complete (see the error above). Do NOT claim it succeeded; report the failure honestly and explain what went wrong."
+    : real && !tool.isExternalSend
     ? " ✅ SUCCESS — this action completed. You have your result. Now produce your final answer."
     : real && tool.isExternalSend
     ? " ⚠️ ACTION EXECUTED — the external action was performed. Now produce your final answer."

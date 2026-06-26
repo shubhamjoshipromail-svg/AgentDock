@@ -18,9 +18,15 @@ export const curatedServers: NormalizedMcpServer[] = [
     riskLevel: "low" as McpRiskLevel,
     verificationStatus: verified,
     recommendedPermission: "read_only",
+    // Real, executable MCP identity: routes to the first-party `search` stdio
+    // server's `web_search` tool via the single execution path. Without these
+    // columns the row is a dead catalog entry (no executor) and research silently
+    // returns "[unavailable]".
+    mcpServerKey: "search",
+    mcpToolName: "web_search",
+    isExternalSend: false,
     tools: [
-      { name: "search_web", description: "Search public web results.", riskLevel: "low" },
-      { name: "summarize_result", description: "Summarize public pages into workflow notes.", riskLevel: "low" }
+      { name: "web_search", description: "Search the public web for a query and return result snippets.", riskLevel: "low" }
     ]
   },
   {
