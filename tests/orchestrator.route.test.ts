@@ -21,6 +21,18 @@ vi.mock("../lib/llm", () => ({
   getProvider: () => llmState.provider
 }));
 
+const runProviderState = vi.hoisted(() => ({
+  provider: null as null | {
+    name: string;
+    model: string;
+    completeJson: (params: unknown) => Promise<{ text: string; usage: { inputTokens: number; outputTokens: number }; costCents: number }>;
+  }
+}));
+
+vi.mock("../lib/execution/provider", () => ({
+  getRunProvider: vi.fn(async () => runProviderState.provider)
+}));
+
 import { POST as planFlow } from "../app/api/flows/plan/route";
 
 function makeProvider() {
@@ -82,6 +94,7 @@ describe("POST /api/flows/plan", () => {
   beforeEach(async () => {
     await resetDatabase();
     llmState.provider = makeProvider();
+    runProviderState.provider = null;
     llmState.queue = [];
     llmState.calls = 0;
     setCurrentUser(null);
@@ -123,6 +136,24 @@ describe("POST /api/flows/plan", () => {
     expect(logs[0].eventType).toBe("orchestration");
     // Privacy: goal text is never logged.
     expect(logs[0].title + logs[0].description).not.toContain("Find AI roles");
+  });
+
+  it("prefers the signed-in user's BYO provider key over the system env provider", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    runProviderState.provider = {
+      ...makeProvider(),
+      name: "openrouter",
+      model: "openai/gpt-4.1"
+    };
+    llmState.queue = [{ text: VALID_PLAN_JSON, costCents: 2 }];
+
+    const res = await planFlow(planRequest("Find roles using my own model key."));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.planMeta.provider).toBe("openrouter");
+    expect(data.planMeta.model).toBe("openai/gpt-4.1");
   });
 
   it("retries once on invalid-then-valid output and marks retried", async () => {

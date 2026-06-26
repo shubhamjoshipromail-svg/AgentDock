@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../../lib/auth-user";
+import { getRunProvider } from "../../../../lib/execution/provider";
 import { getProvider } from "../../../../lib/llm";
 import { clampPermissions } from "../../../../lib/orchestrator/clamp";
 import { planToSaveInput } from "../../../../lib/orchestrator/convert";
@@ -102,10 +103,13 @@ export async function POST(request: Request) {
   }
 
   // --- Provider availability ---
-  const provider = getProvider();
+  // Prefer the signed-in user's BYO provider key when present (Profile →
+  // Provider Keys). Fall back to the system env provider so first-time users can
+  // still plan before adding a key.
+  const provider = await getRunProvider(user.id) ?? getProvider();
   if (!provider) {
     return NextResponse.json(
-      { message: "No model provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY to enable planning." },
+      { message: "No model provider configured. Add a provider key in Profile or set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY." },
       { status: 503 }
     );
   }

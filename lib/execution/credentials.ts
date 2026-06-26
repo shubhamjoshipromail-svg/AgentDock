@@ -60,8 +60,10 @@ export async function revokeCredential(userId: string, id: string): Promise<bool
   return result.count > 0;
 }
 
-// Server-only. Returns the decrypted key for the run engine, preferring Anthropic
-// then OpenAI (mirrors the env-provider preference). Never crosses to the client.
+// Server-only. Returns the decrypted key for the run engine. The Profile UI lets
+// users add one active key per provider, so when multiple providers are active
+// the newest active key is the user's most recent choice. Never crosses to the
+// client.
 export async function loadActiveProviderKey(
   userId: string
 ): Promise<{ provider: CredentialProvider; apiKey: string } | null> {
@@ -69,9 +71,7 @@ export async function loadActiveProviderKey(
     where: { userId, credentialType: "byo_api_key", status: "active" },
     orderBy: { createdAt: "desc" }
   });
-  const pick = rows.find((r) => r.provider === "anthropic")
-    ?? rows.find((r) => r.provider === "openai")
-    ?? rows.find((r) => r.provider === "openrouter");
+  const pick = rows.find((r) => ["anthropic", "openai", "openrouter"].includes(r.provider));
   if (!pick || !pick.encryptedKey || !pick.encryptionIv || !pick.encryptionAuthTag) return null;
   const apiKey = decryptSecret({
     encryptedKey: pick.encryptedKey,

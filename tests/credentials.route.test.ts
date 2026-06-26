@@ -66,6 +66,28 @@ describe("BYO credential intake (server-only, encrypted)", () => {
     expect(provider?.name).toBe("openrouter");
   });
 
+  it("uses the newest active provider key when multiple providers are active", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+
+    await addCredential(addRequest({ provider: "anthropic", key: SECRET }));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await addCredential(addRequest({ provider: "openrouter", key: "sk-or-v1-newer-router-key-5678" }));
+
+    const provider = await getRunProvider(user.id);
+    expect(provider?.name).toBe("openrouter");
+  });
+
+  it("falls back to an older active provider if it is the only active key", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+
+    await addCredential(addRequest({ provider: "anthropic", key: SECRET }));
+
+    const provider = await getRunProvider(user.id);
+    expect(provider?.name).toBe("anthropic");
+  });
+
   it("rejects an unknown provider with 400", async () => {
     const user = await createTestUser();
     setCurrentUser(user);
