@@ -229,6 +229,32 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     }
   });
 
+  it("a successful search that the model repeats once is nudged to finalize — it runs once and completes, never a repeat-loop halt", async () => {
+    const user = await createTestUser("repeat-search@example.com");
+    const { workflow } = await seedSearchFlow(user.id, "repeat");
+    callMcpToolMock.mockResolvedValue({ text: "1. Caterpillars of Vietnam ...", isError: false });
+
+    // The model searches, then redundantly asks to search again, then finalizes.
+    llm.queue = [
+      { text: TOOL_INPUT("web_search", "read", "vietnam caterpillars") },
+      { text: TOOL_INPUT("web_search", "read", "vietnam caterpillars") },
+      { text: FINAL("Vietnam is home to many caterpillar species, including ...") }
+    ];
+    await startRun(user.id, workflow.id);
+
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    // The run completes (no "repeated tool-call loop" halt) and search ran ONCE.
+    expect(run.status).toBe("completed");
+    expect(callMcpToolMock).toHaveBeenCalledTimes(1);
+
+    // The repeat was blocked with the corrected, non-grant message.
+    const events = await prisma.workflowRunEvent.findMany({ where: { workflowRunId: run.id } });
+    const repeatBlock = events.find((e) => e.title.startsWith("Already executed:"));
+    expect(repeatBlock).toBeTruthy();
+    expect(repeatBlock?.description).toMatch(/already ran successfully/i);
+    expect(repeatBlock?.description).not.toMatch(/grant this tool/i);
+  });
+
   it("a search that ERRORS halts honestly — never falls back to a hallucinated, completed run", async () => {
     const user = await createTestUser("search-error@example.com");
     const { workflow } = await seedSearchFlow(user.id, "err");

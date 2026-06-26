@@ -569,7 +569,7 @@ export function FlowWorkspace({
                       <div className="runStepBody">
                         <div>{s.title}</div>
                         <div className="runStepMeta">{s.description.slice(0, 140)}</div>
-                        {s.decision === "blocked" && flowId && (
+                        {s.decision === "blocked" && flowId && !s.title.startsWith("Already executed:") && (
                           <div style={{ marginTop: "0.25rem" }}>
                             <span style={{ fontSize: "0.65rem", color: "var(--muted)" }}>
                               Grant this tool to unblock — use the Grants panel on the right →
