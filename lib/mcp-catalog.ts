@@ -16,6 +16,10 @@ export type CuratedMcpServer = {
   version?: string;
   installCommand?: string;
   recommendedPermission: McpDefaultPermission;
+  mcpServerKey?: string;
+  mcpToolName?: string;
+  isExternalSend?: boolean;
+  credentialProvider?: string | null;
   tools: {
     name: string;
     description: string;
@@ -34,9 +38,12 @@ export const curatedMcpServers: CuratedMcpServer[] = [
     riskLevel: "low",
     verificationStatus: "verified",
     recommendedPermission: "read_only",
+    mcpServerKey: "search",
+    mcpToolName: "web_search",
+    isExternalSend: false,
+    credentialProvider: null,
     tools: [
-      { name: "search_web", description: "Search public web results.", riskLevel: "low" },
-      { name: "summarize_result", description: "Summarize public pages into workflow notes.", riskLevel: "low" }
+      { name: "web_search", description: "Search the public web for a query and return result snippets.", riskLevel: "low" }
     ]
   },
   {

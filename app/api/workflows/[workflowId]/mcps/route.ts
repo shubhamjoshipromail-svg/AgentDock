@@ -4,6 +4,7 @@ import type { McpDefaultPermission } from "@prisma/client";
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { defaultPermissionForRisk, grantTemplateForPermission } from "../../../../../lib/mcp-catalog";
 import { prisma } from "../../../../../lib/prisma";
+import { executableToolIdentity } from "../../../../../lib/execution/tool-identity";
 import { parseJsonBody } from "../../../../../lib/validation/parse";
 import { toolAttachSchema } from "../../../../../lib/validation/schemas";
 
@@ -107,6 +108,17 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
 
     if (!mcpServer) {
       return NextResponse.json({ message: "MCP server metadata not found. Sync the MCP registry first." }, { status: 404 });
+    }
+
+    const identity = await executableToolIdentity(mcpServer);
+    if (!identity) {
+      return NextResponse.json(
+        {
+          message:
+            "This tool is catalog metadata only and cannot be attached until it has a registered executable MCP identity."
+        },
+        { status: 400 }
+      );
     }
 
     const defaultPermission = body.defaultPermission ?? mcpServer.recommendedPermission;

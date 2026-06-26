@@ -532,6 +532,7 @@ model McpServer {
   @@index([verificationStatus])
   @@index([riskLevel])
   @@index([category])
+  @@index([mcpServerKey, mcpToolName])
   @@map("mcp_servers")
 }
 
