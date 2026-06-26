@@ -69,3 +69,41 @@ names, registry ids, card names, and workflow labels are presentation metadata.
 6. Tool errors must terminate or pause honestly; they must never be reintroduced
    as a success signal.
 
+## Resolution (Chunk 16 — shipped)
+
+All six targets are closed. Adding the next tool is **register → connect →
+discover → grant → run**, with no execution code.
+
+1. **Grantable rows must carry a canonical identity.** A DB trigger
+   (`enforce_grantable_mcp_tool_identity`, migration
+   `20260626000001_chunk16_phase1_tool_identity_guard`) rejects any
+   `McpAccessGrant` whose `McpServer` lacks `mcpServerKey`/`mcpToolName` or whose
+   key does not resolve to an enabled `ServerRegistration`. The migration first
+   deletes pre-existing invalid grants/attachments (GitHub/Docs/null-key rows).
+2. **The pair must resolve to an enabled registration.** The same trigger joins
+   `server_registrations` (`enabled = true`); the attach route
+   (`/api/workflows/[id]/mcps`) returns `400 "… cannot be attached until it has a
+   registered executable MCP identity"` instead of letting the guard throw.
+3. **One name from prompt to dispatch.** `loadRunnable` filters to rows with a
+   canonical identity and addresses each tool by its `mcpToolName` only — the
+   `toolNameFor(serverName)` fallback is deleted. The model prompt shows
+   `TOOL "<mcpToolName>"`; the executor dispatches `callMcpTool(mcpServerKey,
+   mcpToolName, …)`. Model-facing name === dispatch identity.
+4. **Discovery and seed converge.** Seed uses the discovered canonical identity
+   (`gmail-create-draft`/`gmail-send-email`, `search:web_search`) so live
+   discovery upserts the same rows — one row per canonical pair.
+5. **Schema-aware argument coercion.** `lib/execution/tool-args.ts` coerces the
+   model's output against the tool's discovered `inputSchema` (with a first-party
+   canonical fallback) before dispatch: structured `arguments` are used directly;
+   a legacy `input` string maps to the schema's single missing/primary string
+   field (name read from the schema, never hardcoded to `query`); a multi-field
+   tool given a bare string is an honest error naming the missing fields. A tool
+   with required fields never receives `{}` or a partial object.
+6. **Honest failures.** `executeAllowedTool` returns `{ text, runtimeError? }`. A
+   genuine runtime tool error (the tool ran and reported an error, or the now-dead
+   no-executor branch) halts the run `halted_error` with the real reason — never a
+   fabricated "sent"/"completed", never a hallucinated fallback. `resultText`
+   stays null. Missing-argument and governance/broker refusals are honest per-call
+   failures that do not halt (the model may self-correct or continue). The
+   `[unavailable]` branch is unreachable for grantable tools after target 1.
+
