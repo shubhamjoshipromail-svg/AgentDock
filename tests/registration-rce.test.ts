@@ -57,9 +57,10 @@ describe("registration cannot be abused for RCE", () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
-    // Nothing was registered or connected.
+    // Nothing was registered or connected — the attacker's serverKey created no
+    // registration row (only curated first-party rows seeded by resetDatabase exist).
     expect(await prisma.serverConnection.count()).toBe(0);
-    expect(await prisma.serverRegistration.count()).toBe(0);
+    expect(await prisma.serverRegistration.findUnique({ where: { serverKey: "pwn" } })).toBeNull();
     setCurrentUser(null);
   });
 

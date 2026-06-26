@@ -22,7 +22,12 @@ async function makeServer(slug: string) {
       registryId: `test.org/${slug}`,
       riskLevel: "low",
       verificationStatus: "verified",
-      recommendedPermission: "read_only"
+      recommendedPermission: "read_only",
+      // Executable canonical identity so the grant guard accepts it. Both rows
+      // resolve to the seeded, enabled `search` registration; distinct tool
+      // names keep them as separate canonical identities.
+      mcpServerKey: "search",
+      mcpToolName: slug
     }
   });
 }

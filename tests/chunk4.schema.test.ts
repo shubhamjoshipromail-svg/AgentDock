@@ -13,7 +13,8 @@ describe("chunk 4 execution schema", () => {
     const server = await prisma.mcpServer.create({
       data: {
         name: "search-mcp", displayName: "Search MCP", description: "Read-only web search.",
-        registrySource: "curated", riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only"
+        registrySource: "curated", riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only",
+        mcpServerKey: "search", mcpToolName: "web_search", isExternalSend: false
       }
     });
     const expiresAt = new Date(Date.now() + 86_400_000);

@@ -53,8 +53,12 @@ async function seedSendFlow(userId: string, opts: { serverKey: string; toolName:
   await prisma.workflowAgent.create({ data: { workflowId: workflow.id, agentId: agent.id, roleInWorkflow: "r", routeOrder: 1, defaultMode: "auto" } });
 
   // Registration row (DATA) — how the server is reached + which broker/env it uses.
-  await prisma.serverRegistration.create({
-    data: { serverKey: opts.serverKey, displayName: opts.serverKey, transport: "stdio", command: "node", args: ["x.js"], credentialProvider: opts.credentialProvider, tokenEnvVar: opts.tokenEnvVar }
+  // Upsert: first-party keys (gmail/search) are pre-seeded by resetDatabase, so a
+  // create would hit the unique constraint.
+  await prisma.serverRegistration.upsert({
+    where: { serverKey: opts.serverKey },
+    create: { serverKey: opts.serverKey, displayName: opts.serverKey, transport: "stdio", command: "node", args: ["x.js"], credentialProvider: opts.credentialProvider, tokenEnvVar: opts.tokenEnvVar },
+    update: { displayName: opts.serverKey, transport: "stdio", command: "node", args: ["x.js"], credentialProvider: opts.credentialProvider, tokenEnvVar: opts.tokenEnvVar }
   });
   // Discovered grantable tool row (MCP identity) — the generic execution columns.
   const server = await prisma.mcpServer.create({

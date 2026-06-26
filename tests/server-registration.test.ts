@@ -58,6 +58,8 @@ describe("server registration is data, not a code constant", () => {
   });
 
   it("a DB row overrides the curated fallback (data is authoritative)", async () => {
+    // Clear the seeded first-party rows so we test the genuine no-row state.
+    await prisma.serverRegistration.deleteMany();
     // No row → first-party curated fallback supplies the label.
     expect(await serverDisplayLabel("gmail")).toBe("Gmail");
 
@@ -68,7 +70,8 @@ describe("server registration is data, not a code constant", () => {
   });
 
   it("first-party gmail is reachable from the curated fallback with no row seeded", async () => {
-    // resetDatabase truncated everything — no rows. Curated data still resolves.
+    // Clear seeded rows so the curated data is genuinely what resolves.
+    await prisma.serverRegistration.deleteMany();
     expect(await isConnectableMcpServer("gmail")).toBe(true);
     expect(await serverAuthProvider("gmail")).toBe("google");
     expect(await mcpTokenEnvVar("gmail")).toBe("GMAIL_ACCESS_TOKEN");

@@ -24,7 +24,14 @@ async function createServer(name: string, displayName: string, riskLevel: "low" 
       description: `${displayName} for tests`,
       registrySource: "test",
       riskLevel,
-      verificationStatus: "verified"
+      verificationStatus: "verified",
+      // Executable canonical identity so the grant guard accepts it. Resolves to
+      // the seeded, enabled `search` registration; the tool name keeps each row a
+      // distinct canonical identity. (These tests assert grant/decision mechanics,
+      // not tool output.)
+      mcpServerKey: "search",
+      mcpToolName: name,
+      isExternalSend: false
     }
   });
 }

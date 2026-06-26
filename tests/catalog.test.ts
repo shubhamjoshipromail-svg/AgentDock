@@ -184,10 +184,13 @@ describe("Attaching unverified external server to Flow", () => {
     setCurrentUser(await createTestUser());
   });
 
-  it("produces approval_required read-only grant for unverified server", async () => {
+  it("refuses to attach a catalog-only server with no executable identity (connect & discover first)", async () => {
     const user = await createTestUser("attach-test@example.com", "Attach Test User");
     setCurrentUser(user);
 
+    // Catalog metadata only — no mcpServerKey/mcpToolName, so no executable
+    // identity. Post Chunk-16 you cannot grant such a tool; you must connect +
+    // discover the server first (which produces executable rows).
     const unverifiedServer = await prisma.mcpServer.create({
       data: {
         name: "reg:test.org/unverified-tool",
@@ -209,15 +212,12 @@ describe("Attaching unverified external server to Flow", () => {
       }),
       params({ workflowId: workflow.id })
     );
-    expect(attachResponse.status).toBe(201);
+    expect(attachResponse.status).toBe(400);
+    const body = await attachResponse.json();
+    expect(body.message).toMatch(/executable/i);
 
-    const { accessGrant } = await attachResponse.json();
-
-    // Grant must be approval-required and read-only (no write/execute/delete)
-    expect(accessGrant.requiresApproval).toBe(true);
-    expect(accessGrant.canWrite).toBe(false);
-    expect(accessGrant.canExecute).toBe(false);
-    expect(accessGrant.canDelete).toBe(false);
+    // Nothing was granted — deny-by-default holds.
+    expect(await prisma.mcpAccessGrant.count({ where: { mcpServerId: unverifiedServer.id } })).toBe(0);
   });
 
   it("GET /api/workflows/[id]/mcps returns attachments with grant details", async () => {
@@ -233,7 +233,12 @@ describe("Attaching unverified external server to Flow", () => {
         registryId: "test.org/get-mcps-tool",
         riskLevel: "low",
         verificationStatus: "unverified",
-        recommendedPermission: "approval_required"
+        recommendedPermission: "approval_required",
+        // Executable identity (resolves to the seeded `search` registration) so the
+        // attach succeeds and the GET returns a real attachment + grant.
+        mcpServerKey: "search",
+        mcpToolName: "web_search",
+        isExternalSend: false
       }
     });
 

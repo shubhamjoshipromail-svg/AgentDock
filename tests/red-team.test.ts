@@ -83,7 +83,7 @@ describe("red-team — guarantees hold under attack", () => {
     const user = await createTestUser();
     const { agent, workflow } = await baseAgentFlow(user.id);
     // Add a verified send tool granted draft_only, and a restricted memory read grant.
-    const gmail = await prisma.mcpServer.create({ data: { name: "gmail-mcp", displayName: "Gmail", description: "d", registrySource: "curated", registryId: "agentdock:gmail", riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "draft_only" } });
+    const gmail = await prisma.mcpServer.create({ data: { name: "gmail-mcp", displayName: "Gmail", description: "d", registrySource: "curated", registryId: "agentdock:gmail", riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "draft_only", mcpServerKey: "gmail", mcpToolName: "send_email", isExternalSend: true } });
     await prisma.mcpAccessGrant.create({ data: { userId: user.id, workflowId: workflow.id, agentId: agent.id, mcpServerId: gmail.id, canRead: true, canWrite: true, requiresApproval: false } });
     const part = await prisma.memoryPartition.create({ data: { userId: user.id, name: "Health Memory", type: "workflow", sensitivityLevel: "restricted", description: "d", defaultAccessPolicy: "workflow_scoped" } });
     await prisma.memoryItem.create({ data: { partitionId: part.id, userId: user.id, title: "t", content: "SENSITIVE", sourceType: "agent", sensitivityLevel: "restricted" } });

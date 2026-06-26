@@ -46,7 +46,11 @@ async function saveWorkflowWithApprovalTool() {
       description: "Draft-only email tool for tests.",
       registrySource: "test",
       riskLevel: "high",
-      verificationStatus: "verified"
+      verificationStatus: "verified",
+      // Executable canonical identity so the grant guard accepts it.
+      mcpServerKey: "gmail",
+      mcpToolName: "create_draft",
+      isExternalSend: false
     }
   });
 

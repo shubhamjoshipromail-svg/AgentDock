@@ -189,7 +189,7 @@ describe("run engine — bounded, gated, killable", () => {
       ]
     });
     const gmail = await prisma.mcpServer.create({
-      data: { name: "gmail-mcp", displayName: "Gmail", description: "Email.", registrySource: "curated", registryId: "agentdock:gmail-handoff", riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "draft_only" }
+      data: { name: "gmail-mcp", displayName: "Gmail", description: "Email.", registrySource: "curated", registryId: "agentdock:gmail-handoff", riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "draft_only", mcpServerKey: "gmail", mcpToolName: "send_email", isExternalSend: true }
     });
     await prisma.mcpAccessGrant.create({
       data: { userId: user.id, workflowId: workflow.id, agentId: second.id, mcpServerId: gmail.id, canRead: true, canWrite: true, requiresApproval: false }
@@ -208,7 +208,12 @@ describe("run engine — bounded, gated, killable", () => {
     expect(evs.some((e) => e.eventType === "approval_requested" && e.decision === "approval_required")).toBe(true);
   });
 
-  it("reports allowed but unimplemented tools as unavailable, never simulated success", async () => {
+  it("an unimplemented (non-executable) tool can never be granted — so it can never reach a run as fake success", async () => {
+    // Post Chunk-16: a tool with no canonical executable identity (mcpServerKey +
+    // mcpToolName resolving to an enabled registration) cannot be granted at all.
+    // The DB identity guard refuses the grant, so the old "[unavailable] no MCP
+    // executor" runtime branch is unreachable for grantable tools — there is no
+    // path by which an unimplemented tool enters a run and fabricates success.
     const user = await createTestUser();
     const agent = await prisma.agent.create({
       data: { userId: user.id, name: "Docs Agent", category: "Docs", provider: "OpenAI", verified: true, description: "Reads docs.", systemPrompt: "Use docs when available.", model: "claude-sonnet-4-6" }
@@ -220,27 +225,15 @@ describe("run engine — bounded, gated, killable", () => {
     const docs = await prisma.mcpServer.create({
       data: { name: "docs-mcp", displayName: "Docs", description: "Docs.", registrySource: "curated", registryId: "agentdock:docs-unavailable", riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only" }
     });
-    await prisma.mcpAccessGrant.create({
-      data: { userId: user.id, workflowId: workflow.id, agentId: agent.id, mcpServerId: docs.id, canRead: true, requiresApproval: false }
-    });
-    llm.queue = [
-      { text: TOOL("docs-mcp", "read", "roadmap doc") },
-      { text: FINAL("Could not read the document because the docs tool is unavailable.") }
-    ];
 
-    const outcome = await startRun(user.id, workflow.id);
-    expect(outcome.ok && outcome.result.status).toBe("completed");
-    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
-    const toolEvent = (await events(run.id)).find((e) => e.eventType === "mcp_tool_use");
-    expect(toolEvent?.title).toContain("(unavailable)");
-    expect(toolEvent?.metadata).toMatchObject({
-      real: false,
-      toolName: "docs-mcp",
-      toolInput: "roadmap doc",
-      toolOutput: "[unavailable] no MCP executor for this tool"
-    });
-    expect(JSON.stringify(toolEvent)).not.toContain("[simulated]");
-    expect(llm.userPrompts[1]).toContain("[unavailable] no MCP executor for this tool");
+    await expect(
+      prisma.mcpAccessGrant.create({
+        data: { userId: user.id, workflowId: workflow.id, agentId: agent.id, mcpServerId: docs.id, canRead: true, requiresApproval: false }
+      })
+    ).rejects.toThrow(/executable tool identity/i);
+
+    // No grant persisted → deny-by-default leaves the tool out of any run.
+    expect(await prisma.mcpAccessGrant.findFirst({ where: { mcpServerId: docs.id } })).toBeNull();
   });
 
   it("uses a substantive default prompt when an agent has no systemPrompt", async () => {
