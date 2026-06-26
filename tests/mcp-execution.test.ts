@@ -35,7 +35,31 @@ import { storeGoogleOAuthToken } from "../lib/execution/credentials";
 const callMcpToolMock = vi.mocked(callMcpTool);
 
 const TOOL_ARGS = (tool: string, args: Record<string, unknown>) => JSON.stringify({ type: "tool_call", tool, arguments: args });
+// Legacy single-string form the model sometimes emits instead of structured args.
+const TOOL_INPUT = (tool: string, action: string, input: string) => JSON.stringify({ type: "tool_call", tool, action, input });
 const FINAL = (text = "done") => JSON.stringify({ type: "final", text });
+
+async function seedSearchFlow(userId: string, suffix = "default") {
+  const agent = await prisma.agent.create({
+    data: { userId, name: "Research Agent", category: "Research", provider: "OpenAI", verified: true, description: "Researches.", systemPrompt: "Use web_search.", model: "claude-sonnet-4-6" }
+  });
+  const workflow = await prisma.workflow.create({
+    data: { userId, name: "Research Flow", goal: "Research a topic.", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "approval_gated" }
+  });
+  await prisma.workflowAgent.create({ data: { workflowId: workflow.id, agentId: agent.id, roleInWorkflow: "research", routeOrder: 1, defaultMode: "auto" } });
+  const server = await prisma.mcpServer.create({
+    data: {
+      name: `search-mcp-${suffix}`, displayName: "Search MCP", description: "Web search.",
+      registrySource: "first-party", registryId: `agentdock:search:web_search:${suffix}`,
+      riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only",
+      mcpServerKey: "search", mcpToolName: "web_search", isExternalSend: false
+    }
+  });
+  await prisma.mcpAccessGrant.create({
+    data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, requiresApproval: false }
+  });
+  return { agent, workflow };
+}
 
 async function seedGmailFlow(userId: string) {
   const agent = await prisma.agent.create({
@@ -170,5 +194,55 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const resumePrompt = llm.prompts[llm.prompts.length - 1];
     expect(resumePrompt).toContain("❌ FAILED");
     expect(resumePrompt).not.toContain("ACTION EXECUTED");
+  });
+
+  it("search reaches web_search with a non-empty query whether the model used legacy input OR structured args", async () => {
+    // Legacy single-string `input` form.
+    const u1 = await createTestUser("legacy-search@example.com");
+    const { workflow: w1 } = await seedSearchFlow(u1.id, "legacy");
+    llm.queue = [{ text: TOOL_INPUT("web_search", "read", "types of carp") }, { text: FINAL("Here are the carp types.") }];
+    await startRun(u1.id, w1.id);
+    expect(callMcpToolMock).toHaveBeenCalledTimes(1);
+    {
+      const [server, toolName, args] = callMcpToolMock.mock.calls[0];
+      expect(server).toBe("search");
+      expect(toolName).toBe("web_search");
+      expect(args).toEqual({ query: "types of carp" });
+    }
+
+    // Structured `arguments` form — same dispatch.
+    callMcpToolMock.mockClear();
+    const u2 = await createTestUser("structured-search@example.com");
+    const { workflow: w2 } = await seedSearchFlow(u2.id, "structured");
+    llm.queue = [{ text: TOOL_ARGS("web_search", { query: "lake victoria fish" }) }, { text: FINAL("Done.") }];
+    await startRun(u2.id, w2.id);
+    expect(callMcpToolMock).toHaveBeenCalledTimes(1);
+    {
+      const [, , args] = callMcpToolMock.mock.calls[0];
+      expect(args).toEqual({ query: "lake victoria fish" });
+    }
+  });
+
+  it("a send_email with no usable arguments fails honestly (missing fields) and never dispatches", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedGmailFlow(user.id);
+    await storeGoogleOAuthToken(user.id, { accessToken: "ya29.LIVE", expiresAt: Date.now() + 3_600_000 });
+
+    // Empty arguments object — required to/subject/body all missing.
+    llm.queue = [{ text: TOOL_ARGS("send_email", {}) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    llm.queue = [{ text: FINAL("The email could not be sent — required fields were missing.") }];
+    await resumeAfterApproval(user.id, approval.id, true);
+
+    // The tool was never dispatched with an empty/partial object.
+    expect(callMcpToolMock).not.toHaveBeenCalled();
+    const ev = await prisma.workflowRunEvent.findFirstOrThrow({
+      where: { workflowRunId: run.id, eventType: "mcp_tool_use" }, orderBy: { createdAt: "desc" }
+    });
+    expect(ev.title).toContain("(failed)");
+    expect(String((ev.metadata as Record<string, unknown>).toolOutput)).toMatch(/missing required argument/i);
   });
 });

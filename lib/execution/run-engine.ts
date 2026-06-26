@@ -4,6 +4,7 @@ import type { LlmProvider } from "../llm/types";
 import { prisma } from "../prisma";
 import { authorizeToolCall, effectiveGrantPermission, type ActionKind } from "./policy-gate";
 import { callMcpTool, mcpTokenEnvVar } from "./mcp-client";
+import { coerceToolArgs, resolveToolSchema } from "./tool-args";
 import { brokerCredentialForAction, type BrokerScopeContext } from "./credential-broker";
 import { getRunProvider } from "./provider";
 import { buildStepContext } from "./memory";
@@ -211,6 +212,10 @@ type AllowedTool = {
   grant: { id: string; canRead: boolean; canWrite: boolean; canExecute: boolean; canDelete: boolean; requiresApproval: boolean; revokedAt: Date | null; scope: string | null; limitCents: number | null; expiresAt: Date | null };
   // An external-send tool (write to the outside). Web search is never this.
   isExternalSend: boolean;
+  // The tool's discovered JSON input schema (captured at tools/list), used to
+  // coerce the model's arguments to what the tool actually requires. Null when
+  // the row has no discovered schema (a first-party fallback is applied instead).
+  inputSchema: unknown;
 };
 
 function isMcpTool(tool: AllowedTool): boolean {
@@ -248,7 +253,7 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
   // it is agent-scoped to that agent, or workflow-scoped to this workflow.
   const grants = await prisma.mcpAccessGrant.findMany({
     where: { userId, OR: [{ workflowId }, { agentId: { in: workflow.workflowAgents.map((wa) => wa.agentId) } }] },
-    include: { mcpServer: true }
+    include: { mcpServer: { include: { tools: true } } }
   });
 
   const agents: RunnableAgent[] = workflow.workflowAgents.map((wa, index) => {
@@ -277,7 +282,10 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
         // heuristic (a write-capable tool) covers any remaining non-MCP row.
         isExternalSend: isMcp
           ? g.mcpServer.isExternalSend
-          : (g.canWrite || g.canExecute || g.canDelete)
+          : (g.canWrite || g.canExecute || g.canDelete),
+        // The discovered schema for the canonical tool (McpTool row whose name
+        // equals the server's mcpToolName), used for schema-aware arg coercion.
+        inputSchema: g.mcpServer.tools.find((t) => t.name === g.mcpServer.mcpToolName)?.inputSchema ?? null
       };
     });
     return {
@@ -767,15 +775,31 @@ async function executeAllowedTool(
     // isolate this tool invocation. The gate, idempotency guard, and all
     // audit logic above this line stay trusted and unchanged.
     // ═══════════════════════════════════════════════════════════════════
-    // Prefer the model's structured arguments. Fall back to the legacy single
-    // string `input` mapped to `query` (web search and similar read tools) so a
-    // call made with the legacy envelope still carries its argument instead of
-    // running with an empty query.
-    const structuredArgs = args && Object.keys(args).length > 0
-      ? args
-      : input
-        ? { query: input }
-        : {};
+    // Schema-aware coercion: build arguments that satisfy the tool's discovered
+    // input schema from whatever the model produced (structured `arguments` or a
+    // legacy `input` string), without hardcoding a field name. A tool with
+    // required fields never receives `{}` or a partial object — if the arguments
+    // can't be satisfied it is an honest error naming the missing fields.
+    const schema = resolveToolSchema(tool.server.mcpServerKey, tool.server.mcpToolName, tool.inputSchema);
+    const coerced = coerceToolArgs(schema, args ?? null, input);
+    if (!coerced.ok) {
+      output = `[tool error] ${tool.toolName} is missing required argument(s): ${coerced.missing.join(", ")}. The model must supply them as structured arguments.`;
+      toolInputForAudit = JSON.stringify(args ?? {});
+      real = false;
+      toolErrored = true;
+      await meter(ctx.runId, costCents);
+      await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { toolCallCount: { increment: 1 } } });
+      await appendEvent({
+        runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "mcp_tool_use",
+        title: `${tool.toolName} (failed)`,
+        description: `${agent.name} called ${tool.toolName} without required arguments (${coerced.missing.join(", ")}).`,
+        decision: "allowed", costCents, actorType: "agent", actorId: agent.agentId,
+        resourceType: "tool", resourceId: tool.server.id, authorityRef: tool.grant.id, untrusted: true,
+        metadata: { real: false, error: true, toolName: tool.toolName, missingArgs: coerced.missing, toolOutput: capText(output, TOOL_OUTPUT_META_LIMIT) }
+      });
+      return `${tool.toolName} result: ${output} ❌ FAILED — this action did NOT complete. Do NOT claim it succeeded; report the failure honestly.`;
+    }
+    const structuredArgs = coerced.args;
     toolInputForAudit = JSON.stringify(structuredArgs);
     // Issue the credential through the broker's guarded path. For an external
     // send, the broker enforces the grant mandate (scope/limit/expiry/revocation)

@@ -149,7 +149,9 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
     const user = await createTestUser();
     const { workflow } = await seedExternalApprovalFlow(user.id);
     llm.queue = [
-      { text: TOOL("send_email", "send", "invoice") }
+      // send_email is a multi-field tool — a bare string can't satisfy it, so the
+      // model must emit structured arguments.
+      { text: JSON.stringify({ type: "tool_call", tool: "send_email", arguments: { to: "a@example.com", subject: "Invoice", body: "Please see the invoice." } }) }
     ];
 
     // First execution: pauses for approval.
