@@ -98,7 +98,7 @@ export type ToolAttachInput = z.infer<typeof toolAttachSchema>;
 // Chunk 4: BYO provider key intake. The key is write-only — accepted, encrypted,
 // never returned. Bounds keep an accidental paste of a huge blob out.
 export const createCredentialSchema = z.object({
-  provider: z.enum(["anthropic", "openai"]),
+  provider: z.enum(["anthropic", "openai", "openrouter"]),
   key: z.string().min(20).max(400)
 });
 

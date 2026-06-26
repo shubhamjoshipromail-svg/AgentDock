@@ -5,7 +5,7 @@ import { encryptSecret, decryptSecret, last4 } from "./crypto";
 // encrypted/decrypted. Nothing here returns plaintext to a caller that crosses
 // the network boundary — loadActiveProviderKey is used solely by the run engine.
 
-export type CredentialProvider = "anthropic" | "openai";
+export type CredentialProvider = "anthropic" | "openai" | "openrouter";
 
 export type CredentialMetadata = {
   id: string;
@@ -69,7 +69,9 @@ export async function loadActiveProviderKey(
     where: { userId, credentialType: "byo_api_key", status: "active" },
     orderBy: { createdAt: "desc" }
   });
-  const pick = rows.find((r) => r.provider === "anthropic") ?? rows.find((r) => r.provider === "openai");
+  const pick = rows.find((r) => r.provider === "anthropic")
+    ?? rows.find((r) => r.provider === "openai")
+    ?? rows.find((r) => r.provider === "openrouter");
   if (!pick || !pick.encryptedKey || !pick.encryptionIv || !pick.encryptionAuthTag) return null;
   const apiKey = decryptSecret({
     encryptedKey: pick.encryptedKey,

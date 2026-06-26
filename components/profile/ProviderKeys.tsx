@@ -12,7 +12,7 @@ export function ProviderKeys() {
   const { data: session } = useSession();
   const toast = useToast();
   const [credentials, setCredentials] = useState<CredentialMetadata[]>([]);
-  const [provider, setProvider] = useState<"anthropic" | "openai">("anthropic");
+  const [provider, setProvider] = useState<"anthropic" | "openai" | "openrouter">("anthropic");
   const [key, setKey] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -66,9 +66,10 @@ export function ProviderKeys() {
       {session?.user && (
         <>
           <div className="providerKeyForm">
-            <Select value={provider} onChange={(event) => setProvider(event.target.value as "anthropic" | "openai")} aria-label="Provider">
+            <Select value={provider} onChange={(event) => setProvider(event.target.value as "anthropic" | "openai" | "openrouter")} aria-label="Provider">
               <option value="anthropic">Anthropic</option>
               <option value="openai">OpenAI</option>
+              <option value="openrouter">OpenRouter</option>
             </Select>
             <input
               className="field providerKeyInput"

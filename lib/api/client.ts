@@ -197,7 +197,7 @@ export function listCredentials(fallbackMessage = "Unable to load provider keys.
   return request<{ credentials: CredentialMetadata[] }>("/api/credentials", fallbackMessage);
 }
 
-export function addCredential(provider: "anthropic" | "openai", key: string, fallbackMessage = "Unable to store provider key.") {
+export function addCredential(provider: "anthropic" | "openai" | "openrouter", key: string, fallbackMessage = "Unable to store provider key.") {
   return request<{ credential: CredentialMetadata }>("/api/credentials", fallbackMessage, jsonInit("POST", { provider, key }));
 }
 

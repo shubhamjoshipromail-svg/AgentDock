@@ -7,6 +7,7 @@ vi.mock("../lib/auth-user", () => mockAuthUserModule());
 
 import { GET as listCredentials, POST as addCredential } from "../app/api/credentials/route";
 import { POST as revokeCredential } from "../app/api/credentials/[id]/revoke/route";
+import { getRunProvider } from "../lib/execution/provider";
 
 const SECRET = "sk-ant-super-secret-key-value-1234";
 
@@ -47,6 +48,29 @@ describe("BYO credential intake (server-only, encrypted)", () => {
     const row = await prisma.scopedCredential.findFirstOrThrow({ where: { userId: user.id } });
     expect(row.encryptedKey).toBeTruthy();
     expect(JSON.stringify(row)).not.toContain(SECRET);
+  });
+
+  it("accepts an OpenRouter key and getRunProvider builds the OpenRouter provider for runs", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+
+    const OR_KEY = "sk-or-v1-super-secret-router-key-1234";
+    const res = await addCredential(addRequest({ provider: "openrouter", key: OR_KEY }));
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.credential.provider).toBe("openrouter");
+    expect(JSON.stringify(body)).not.toContain(OR_KEY);
+
+    // The run engine builds the OpenRouter provider from the user's BYO key.
+    const provider = await getRunProvider(user.id);
+    expect(provider?.name).toBe("openrouter");
+  });
+
+  it("rejects an unknown provider with 400", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const res = await addCredential(addRequest({ provider: "totally-made-up", key: SECRET }));
+    expect(res.status).toBe(400);
   });
 
   it("GET returns metadata only (no secret columns)", async () => {

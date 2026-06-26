@@ -21,8 +21,10 @@ export type CompleteJsonParams = {
   signal?: AbortSignal;
 };
 
+export type LlmProviderName = "anthropic" | "openai" | "openrouter";
+
 export interface LlmProvider {
-  readonly name: "anthropic" | "openai";
+  readonly name: LlmProviderName;
   readonly model: string;
   completeJson(params: CompleteJsonParams): Promise<LlmCompletion>;
 }

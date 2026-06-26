@@ -1,5 +1,6 @@
 import { createAnthropicProvider } from "../llm/anthropic";
 import { createOpenAiProvider } from "../llm/openai";
+import { createOpenRouterProvider } from "../llm/openrouter";
 import type { LlmProvider } from "../llm/types";
 import { loadActiveProviderKey } from "./credentials";
 
@@ -10,7 +11,13 @@ import { loadActiveProviderKey } from "./credentials";
 export async function getRunProvider(userId: string): Promise<LlmProvider | null> {
   const cred = await loadActiveProviderKey(userId);
   if (!cred) return null;
-  return cred.provider === "anthropic"
-    ? createAnthropicProvider(cred.apiKey)
-    : createOpenAiProvider(cred.apiKey);
+  switch (cred.provider) {
+    case "anthropic":
+      return createAnthropicProvider(cred.apiKey);
+    case "openrouter":
+      return createOpenRouterProvider(cred.apiKey);
+    case "openai":
+    default:
+      return createOpenAiProvider(cred.apiKey);
+  }
 }
