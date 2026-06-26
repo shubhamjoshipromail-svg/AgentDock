@@ -62,6 +62,49 @@ async function main() {
     });
   }
 
+  // Seed first-party Gmail McpServer catalog rows with full MCP execution identity.
+  // These are the rows the run engine loads via McpAccessGrant → McpServer; without
+  // mcpServerKey/mcpToolName/isExternalSend the tool is uncallable at runtime.
+  const gmailMcpServers = [
+    {
+      name: "gmail-draft-mcp",
+      displayName: "Gmail Draft MCP",
+      description: "Creates email drafts only. Safe, reversible — no approval needed.",
+      registrySource: "agentdock-curated",
+      registryId: "agentdock:gmail-draft-mcp",
+      category: "Communications",
+      riskLevel: "low",
+      verificationStatus: "verified",
+      recommendedPermission: "draft_only",
+      mcpServerKey: "gmail",
+      mcpToolName: "create_draft",
+      isExternalSend: false,
+      credentialProvider: "google"
+    },
+    {
+      name: "gmail-send-mcp",
+      displayName: "Gmail Send MCP",
+      description: "Sends a real email from the user's account. Always approval-gated — never auto-sends.",
+      registrySource: "agentdock-curated",
+      registryId: "agentdock:gmail-send-mcp",
+      category: "Communications",
+      riskLevel: "medium",
+      verificationStatus: "verified",
+      recommendedPermission: "approval_required",
+      mcpServerKey: "gmail",
+      mcpToolName: "send_email",
+      isExternalSend: true,
+      credentialProvider: "google"
+    }
+  ];
+  for (const srv of gmailMcpServers) {
+    await prisma.mcpServer.upsert({
+      where: { registrySource_registryId: { registrySource: srv.registrySource, registryId: srv.registryId } },
+      update: srv,
+      create: srv
+    });
+  }
+
   const agents = {};
   for (const { name, ...defaults } of agentDefaults) {
     agents[name] = await prisma.agent.upsert({

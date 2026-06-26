@@ -31,6 +31,10 @@ async function upsertServer(server: NormalizedMcpServer, now: Date): Promise<"up
         category: server.category ?? null,
         installCommand: server.installCommand ?? null,
         registryRaw: server.registryRaw ?? undefined,
+        mcpServerKey: server.mcpServerKey ?? null,
+        mcpToolName: server.mcpToolName ?? null,
+        isExternalSend: server.isExternalSend ?? false,
+        credentialProvider: server.credentialProvider ?? null,
         metadata: { source: server.registrySource, safety: "metadata_only_no_execution" },
         lastSyncedAt: now
       },
@@ -52,6 +56,10 @@ async function upsertServer(server: NormalizedMcpServer, now: Date): Promise<"up
         category: server.category ?? null,
         installCommand: server.installCommand ?? null,
         registryRaw: server.registryRaw ?? undefined,
+        mcpServerKey: server.mcpServerKey ?? null,
+        mcpToolName: server.mcpToolName ?? null,
+        isExternalSend: server.isExternalSend ?? false,
+        credentialProvider: server.credentialProvider ?? null,
         metadata: { source: server.registrySource, safety: "metadata_only_no_execution" },
         lastSyncedAt: now
       }

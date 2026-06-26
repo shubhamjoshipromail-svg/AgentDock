@@ -19,6 +19,11 @@ export type NormalizedMcpServer = {
   riskLevel: McpRiskLevel;
   recommendedPermission: McpDefaultPermission;
   registryRaw?: unknown;
+  // MCP execution identity — set only for first-party connectable servers.
+  mcpServerKey?: string;
+  mcpToolName?: string;
+  isExternalSend?: boolean;
+  credentialProvider?: string;
   tools: {
     name: string;
     description: string;
