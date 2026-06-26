@@ -38,42 +38,10 @@ export const curatedServers: NormalizedMcpServer[] = [
       { name: "draft_pr_comment", description: "Draft pull request comments without posting.", riskLevel: "medium" }
     ]
   },
-  {
-    name: "gmail-draft-mcp",
-    displayName: "Gmail Draft MCP",
-    description: "Creates email drafts only. Safe, reversible — no approval needed.",
-    registrySource: "agentdock-curated",
-    registryId: "agentdock:gmail-draft-mcp",
-    category: "Communications",
-    riskLevel: "low" as McpRiskLevel,
-    verificationStatus: verified,
-    recommendedPermission: "draft_only",
-    mcpServerKey: "gmail",
-    mcpToolName: "create_draft",
-    isExternalSend: false,
-    credentialProvider: "google",
-    tools: [
-      { name: "create_draft", description: "Create a draft email for human review.", riskLevel: "low" }
-    ]
-  },
-  {
-    name: "gmail-send-mcp",
-    displayName: "Gmail Send MCP",
-    description: "Sends a real email from the user's account. Always approval-gated — never auto-sends.",
-    registrySource: "agentdock-curated",
-    registryId: "agentdock:gmail-send-mcp",
-    category: "Communications",
-    riskLevel: "medium" as McpRiskLevel,
-    verificationStatus: verified,
-    recommendedPermission: "approval_required",
-    mcpServerKey: "gmail",
-    mcpToolName: "send_email",
-    isExternalSend: true,
-    credentialProvider: "google",
-    tools: [
-      { name: "send_email", description: "Send a real email. Always requires human approval.", riskLevel: "medium" }
-    ]
-  },
+  // Gmail tool rows (create_draft + send_email) are seeded under the canonical
+  // "discovered" identity in prisma/seed.js so they converge with the live
+  // connect→discover flow. They are intentionally NOT duplicated here as curated
+  // catalog entries — that produced two rows per tool (the Chunk-15 dedupe).
   {
     name: "google-calendar-mcp",
     displayName: "Google Calendar MCP",

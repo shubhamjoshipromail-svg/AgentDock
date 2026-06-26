@@ -7,6 +7,7 @@ import {
   connectServer,
   disconnectServer,
   discoverTools,
+  listConnectableServers,
   listConnections,
   listDiscoveredTools,
   syncToolCatalog,
@@ -19,12 +20,14 @@ import "./connect.css";
 
 type ConnectStep = "connect" | "discover" | "done";
 
-// Server keys that are registered and connectable (from SERVER_REGISTRY in mcp-client.ts).
-// Each entry: the server key and its display label.
-const REGISTERED_SERVERS: Record<string, string> = {
-  gmail: "Gmail",
-  "echo-mcp": "Echo MCP"
-};
+// Connectable servers are DATA: fetched from /api/mcp/registrations (the
+// ServerRegistration table + curated first-party defaults). Adding a registration
+// row makes a server appear here with no code change. This fallback is only used
+// if that fetch fails, so first-party servers still render.
+const FALLBACK_CONNECTABLE: { serverKey: string; displayName: string }[] = [
+  { serverKey: "gmail", displayName: "Gmail" },
+  { serverKey: "search", displayName: "Web Search" }
+];
 
 export function ConnectPanel() {
   const { data: session } = useSession();
@@ -45,14 +48,16 @@ export function ConnectPanel() {
     try {
       const connData = await listConnections();
       setConnections(connData.connections ?? []);
-      // Connectable servers: every key in REGISTERED_SERVERS is connectable.
-      setConnectable(
-        Object.entries(REGISTERED_SERVERS).map(([serverKey, displayName]) => ({
-          serverKey,
-          displayName,
-          id: serverKey
-        }))
-      );
+      // Connectable servers come from registration DATA (data-driven), with a
+      // first-party fallback if the fetch fails.
+      let servers: { serverKey: string; displayName: string }[] = FALLBACK_CONNECTABLE;
+      try {
+        const regData = await listConnectableServers();
+        if (regData.servers?.length) servers = regData.servers;
+      } catch {
+        // keep fallback
+      }
+      setConnectable(servers.map((s) => ({ serverKey: s.serverKey, displayName: s.displayName, id: s.serverKey })));
     } catch {
       // Silently fall back — the UI shows empty states.
     }

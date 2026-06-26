@@ -255,6 +255,12 @@ export type DiscoveredTool = {
   isExternalSend: boolean; riskLevel: string;
 };
 
+export type ConnectableServer = { serverKey: string; displayName: string; transport: string; credentialProvider: string | null };
+
+export function listConnectableServers(fallbackMessage = "Unable to load connectable servers.") {
+  return request<{ servers: ConnectableServer[] }>("/api/mcp/registrations", fallbackMessage);
+}
+
 export function listConnections(fallbackMessage = "Unable to load connections.") {
   return request<{ connections: PersistedConnection[] }>("/api/mcp/connections", fallbackMessage);
 }

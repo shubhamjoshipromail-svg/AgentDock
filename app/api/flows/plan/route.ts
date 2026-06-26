@@ -6,9 +6,9 @@ import { getProvider } from "../../../../lib/llm";
 import { clampPermissions } from "../../../../lib/orchestrator/clamp";
 import { planToSaveInput } from "../../../../lib/orchestrator/convert";
 import { buildPrompt } from "../../../../lib/orchestrator/prompt";
-import { resolvePlan } from "../../../../lib/orchestrator/resolve";
+import { resolvePlan, type ResolvedFlow } from "../../../../lib/orchestrator/resolve";
 import { buildCatalogSnapshot } from "../../../../lib/orchestrator/snapshot";
-import { flowPlanSchema, type FlowPlan, type PlannedFlowResponse } from "../../../../lib/orchestrator/schema";
+import { flowPlanSchema, type CatalogSnapshot, type FlowPlan, type PlannedFlowResponse } from "../../../../lib/orchestrator/schema";
 import { prisma } from "../../../../lib/prisma";
 import { parseJsonBody } from "../../../../lib/validation/parse";
 import { planFlowSchema } from "../../../../lib/validation/schemas";
@@ -35,6 +35,45 @@ function stripFences(text: string): string {
     return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   }
   return trimmed;
+}
+
+// Goals that imply the flow needs to look things up. Kept broad on purpose:
+// adding a read-only search tool is harmless, omitting it silently breaks research.
+const RESEARCH_GOAL = /research|look ?up|find|search|summar|investigat|gather|news|compan|brief|report|discover|monitor|analy|compare/i;
+
+// A snapshot tool is "web search" if it is a verified, read-only tool whose name
+// mentions search. Matches the curated search-mcp ("Search MCP") without hardcoding
+// an id — driven by the catalog data.
+function isSearchTool(t: { serverName: string; displayName: string; recommendedPermission: string; verificationStatus: string }): boolean {
+  return t.verificationStatus === "verified"
+    && t.recommendedPermission === "read_only"
+    && /search/i.test(`${t.serverName} ${t.displayName}`);
+}
+
+// Ensure a research flow has a read-only search tool attached. No-op if the goal
+// is not research-y, if search is already attached, or if no search tool exists
+// in the catalog snapshot.
+function ensureSearchAttached(
+  plan: ResolvedFlow,
+  snapshot: CatalogSnapshot,
+  goal: string,
+  warnings: string[]
+): void {
+  if (!RESEARCH_GOAL.test(goal)) return;
+  if (plan.tools.some((t) => isSearchTool(t))) return;
+  const search = snapshot.tools.find((t) => isSearchTool(t));
+  if (!search) return;
+  plan.tools.push({
+    serverName: search.serverName,
+    displayName: search.displayName,
+    mcpServerId: search.id,
+    requestedPermission: "read_only",
+    recommendedPermission: search.recommendedPermission,
+    riskLevel: search.riskLevel,
+    verificationStatus: search.verificationStatus,
+    rationale: "Auto-attached read-only web search so this research flow can look up public information."
+  });
+  warnings.push(`${search.displayName}: auto-attached (read_only) so this research flow can search.`);
 }
 
 type PlanIssue = { message: string; path?: readonly PropertyKey[] };
@@ -222,6 +261,12 @@ export async function POST(request: Request) {
 
   // --- Resolve unresolvable references, then clamp permissions server-side ---
   const resolved = resolvePlan(attempt.data, snapshot);
+
+  // Auto-attach web search (read_only) for research goals so a flow can never
+  // silently lack the ability to research (issue: some flows could research,
+  // some refused). Read-only is safe; this only ADDS a least-privilege tool.
+  ensureSearchAttached(resolved.plan, snapshot, goal, warnings);
+
   const clamped = clampPermissions(resolved.plan);
   warnings.push(...resolved.warnings, ...clamped.warnings);
 

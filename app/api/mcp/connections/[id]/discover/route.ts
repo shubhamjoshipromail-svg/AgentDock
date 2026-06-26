@@ -76,6 +76,9 @@ export async function POST(
     const name = `${connection.serverKey}-${tool.name.replace(/_/g, "-")}`;
     const registryId = `agentdock:discovered:${connection.serverKey}:${tool.name}`;
     const isExternalSend = classifyExternalSend(connection.serverKey, tool.name);
+    // An external-send tool (send_email, post, …) must recommend approval — it is
+    // never merely draft-safe. Reversible tools (create_draft, read) stay draft_only.
+    const recommendedPermission = isExternalSend ? "approval_required" : "draft_only";
 
     // Use upsert on the @@unique([registrySource, registryId]) compound key,
     // NOT the UUID id — avoids an invalid "" UUID fallback on new rows.
@@ -89,7 +92,7 @@ export async function POST(
         registryId,
         riskLevel: "medium",
         verificationStatus: "verified",
-        recommendedPermission: "draft_only",
+        recommendedPermission,
         mcpServerKey: connection.serverKey,
         mcpToolName: tool.name,
         credentialProvider: connection.authProvider,
@@ -99,6 +102,8 @@ export async function POST(
       update: {
         displayName: `${label}: ${tool.name}`,
         description: tool.description ?? `${tool.name} (discovered from ${connection.serverKey})`,
+        recommendedPermission,
+        isExternalSend,
         lastSyncedAt: now
       }
     });

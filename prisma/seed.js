@@ -65,13 +65,18 @@ async function main() {
   // Seed first-party Gmail McpServer catalog rows with full MCP execution identity.
   // These are the rows the run engine loads via McpAccessGrant → McpServer; without
   // mcpServerKey/mcpToolName/isExternalSend the tool is uncallable at runtime.
+  // Canonical Gmail tool rows use the SAME identity the live connect→discover
+  // flow produces (registrySource "discovered", registryId agentdock:discovered:
+  // gmail:<tool>, name gmail-<tool>). Seeding them under that identity means a
+  // later real discovery UPSERTS the same rows instead of creating duplicates —
+  // one create_draft row and one send_email row, never four.
   const gmailMcpServers = [
     {
-      name: "gmail-draft-mcp",
-      displayName: "Gmail Draft MCP",
+      name: "gmail-create-draft",
+      displayName: "Gmail: create_draft",
       description: "Creates email drafts only. Safe, reversible — no approval needed.",
-      registrySource: "agentdock-curated",
-      registryId: "agentdock:gmail-draft-mcp",
+      registrySource: "discovered",
+      registryId: "agentdock:discovered:gmail:create_draft",
       category: "Communications",
       riskLevel: "low",
       verificationStatus: "verified",
@@ -82,11 +87,11 @@ async function main() {
       credentialProvider: "google"
     },
     {
-      name: "gmail-send-mcp",
-      displayName: "Gmail Send MCP",
+      name: "gmail-send-email",
+      displayName: "Gmail: send_email",
       description: "Sends a real email from the user's account. Always approval-gated — never auto-sends.",
-      registrySource: "agentdock-curated",
-      registryId: "agentdock:gmail-send-mcp",
+      registrySource: "discovered",
+      registryId: "agentdock:discovered:gmail:send_email",
       category: "Communications",
       riskLevel: "medium",
       verificationStatus: "verified",
