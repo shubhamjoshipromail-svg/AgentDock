@@ -84,14 +84,6 @@
   padding: 1.25rem;
 }
 
-.workspaceRight {
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  background: var(--surface);
-}
-
 /* --- Participants list (left rail) --- */
 .participantsHead {
   padding: 1rem 1rem 0.75rem;
@@ -149,25 +141,6 @@
   justify-content: center;
   font-weight: 700;
 }
-
-.participantToolChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin-top: 0.5rem;
-}
-
-.toolChip {
-  font-size: 0.65rem;
-  padding: 0.125rem 0.4rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--muted);
-}
-
-.toolChip[data-granted="true"] { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
-.toolChip[data-risk="high"] { color: var(--warn); border-color: var(--warn); }
 
 /* --- Grants inline on the participant card --- */
 .pGrants {
@@ -302,23 +275,6 @@
 .participantsAddStep:hover { color: var(--accent); border-color: var(--accent); }
 
 /* --- Center: run area --- */
-.runBar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 1rem;
-}
-
-.runBar h2 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--foreground);
-  flex: 1;
-}
-
 .runOutput {
   flex: 1;
   background: var(--surface-elevated);
@@ -367,31 +323,6 @@
 
 .runStepBody { flex: 1; color: var(--foreground); }
 .runStepMeta { color: var(--muted); font-size: 0.65rem; }
-
-/* --- Right: inspector --- */
-.inspectorSection {
-  padding: 1rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.inspectorSection h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-}
-
-.inspectorGrantRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.375rem 0;
-  font-size: 0.8rem;
-}
-
-.inspectorGrantRow strong { color: var(--foreground); }
 
 /* --- Blast-radius mini radar --- */
 .radarContainer {
@@ -456,40 +387,6 @@
 
 .describeInput:focus { border-color: var(--accent); }
 
-/* --- Approvals inline --- */
-.approvalInline {
-  background: var(--warn-bg);
-  border: 1px solid var(--warn);
-  border-radius: var(--radius);
-  padding: 0.75rem 1rem;
-  margin-top: 0.75rem;
-}
-
-.approvalInlineHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.approvalInlineHead strong {
-  font-size: 0.8rem;
-  color: var(--foreground);
-}
-
-.approvalInlineDetail {
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-top: 0.25rem;
-  line-height: 1.4;
-}
-
-.approvalInlineActions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
 /* --- Run column head (center) --- */
 .runColHead {
   display: flex;
@@ -552,9 +449,12 @@
 }
 
 @media (max-width: 900px) {
+  /* Stack the two columns instead of hiding participants — the flow and the run
+     stay coherent, just vertically. */
   .workspaceRoot {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
+    grid-auto-rows: minmax(0, auto);
+    overflow-y: auto;
   }
-  .workspaceLeft, .workspaceRight { display: none; }
+  .wsHeader { flex-wrap: wrap; }
 }
