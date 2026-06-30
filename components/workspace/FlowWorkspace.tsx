@@ -27,7 +27,9 @@ import { recommendedBuilderNodes } from "../mock-data";
 import type { BuilderNode } from "../../lib/types";
 import "./workspace.css";
 
-type WorkspaceTab = "flow" | "builder" | "activity" | "connect";
+// In-place drawers that expand below the always-visible flow surface — never a
+// full-screen view swap. null = all collapsed.
+type WorkspaceDrawer = "build" | "connect" | "activity";
 
 type Participant = {
   agentId: string;
@@ -53,6 +55,7 @@ type RunState = {
   approvals: { id: string; title: string; description: string; status: string }[];
   toolCallCount: number;
   stepCount: number;
+  spentCents: number;
 };
 
 export function FlowWorkspace({
@@ -65,7 +68,8 @@ export function FlowWorkspace({
   const { data: session } = useSession();
   const toast = useToast();
 
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("flow");
+  const [openDrawer, setOpenDrawer] = useState<WorkspaceDrawer | null>(null);
+  const toggleDrawer = (d: WorkspaceDrawer) => setOpenDrawer((cur) => (cur === d ? null : d));
 
   // Builder state (moved in from page.tsx).
   const [builderPrompt, setBuilderPrompt] = useState("Describe an outcome…");
@@ -80,7 +84,7 @@ export function FlowWorkspace({
   const [connections, setConnections] = useState<PersistedConnection[]>([]);
   const [availableTools, setAvailableTools] = useState<DiscoveredTool[]>([]);
 
-  const [run, setRun] = useState<RunState>({ runId: null, status: "", output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0 });
+  const [run, setRun] = useState<RunState>({ runId: null, status: "", output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
   const [running, setRunning] = useState(false);
   const [pollId, setPollId] = useState<ReturnType<typeof setInterval> | null>(null);
 
@@ -178,8 +182,9 @@ export function FlowWorkspace({
 
   useEffect(() => { loadFlows(); loadConnectionsAndTools(); }, [loadFlows, loadConnectionsAndTools]);
   useEffect(() => { if (flowId) loadFlow(flowId); }, [flowId, loadFlow]);
-  // Refresh tools when switching back to the flow tab.
-  useEffect(() => { if (workspaceTab === "flow") { loadConnectionsAndTools(); loadFlows(); } }, [workspaceTab]);
+  // Closing the connect drawer is when new tools may have been discovered —
+  // refresh the grantable list so participants can grant them in place.
+  useEffect(() => { if (openDrawer === null) { loadConnectionsAndTools(); } }, [openDrawer, loadConnectionsAndTools]);
 
   // --- Run ---
   const handleRun = async () => {
@@ -194,7 +199,7 @@ export function FlowWorkspace({
     setRunning(true);
     try {
       const result = await startRealRun(flowId);
-      setRun({ runId: result.run.runId, status: result.run.status, output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0 });
+      setRun({ runId: result.run.runId, status: result.run.status, output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
       toast("Run queued. The worker will pick it up.", "ok");
 
       // Poll for updates.
@@ -209,7 +214,8 @@ export function FlowWorkspace({
             steps: r.events?.map((e) => ({ title: e.title, description: e.description, decision: e.decision, costCents: e.costCents })) ?? [],
             approvals: r.approvalRequests?.filter((a) => a.status === "pending") ?? [],
             toolCallCount: r.toolCallCount,
-            stepCount: r.stepCount
+            stepCount: r.stepCount,
+            spentCents: r.totalCostCents ?? 0
           });
           if (["completed", "halted_error", "halted_cost", "killed"].includes(r.status)) {
             clearInterval(id);
@@ -260,7 +266,8 @@ export function FlowWorkspace({
               steps: r.events?.map((e) => ({ title: e.title, description: e.description, decision: e.decision, costCents: e.costCents })) ?? [],
               approvals: r.approvalRequests?.filter((a) => a.status === "pending") ?? [],
               toolCallCount: r.toolCallCount,
-              stepCount: r.stepCount
+              stepCount: r.stepCount,
+              spentCents: r.totalCostCents ?? 0
             });
             if (["completed", "halted_error", "halted_cost", "killed"].includes(r.status)) {
               clearInterval(id);
@@ -332,83 +339,44 @@ export function FlowWorkspace({
     return <EmptyState icon={<span style={{ fontSize: 28 }}>🔐</span>} title="Sign in to use the workspace" body="Sign in with Google to build, grant, run, and watch your flows." />;
   }
 
-  // Tab bar
-  const tabBar = (
-    <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--border)", padding: "0 0.75rem", background: "var(--surface)" }}>
-      {(["flow", "builder", "activity", "connect"] as WorkspaceTab[]).map((t) => (
-        <button
-          key={t}
-          onClick={() => setWorkspaceTab(t)}
-          style={{
-            padding: "0.5rem 0.875rem",
-            fontSize: "0.78rem",
-            fontWeight: workspaceTab === t ? 600 : 400,
-            color: workspaceTab === t ? "var(--foreground)" : "var(--muted)",
-            border: "none",
-            borderBottom: workspaceTab === t ? "2px solid var(--accent)" : "2px solid transparent",
-            background: "transparent",
-            cursor: "pointer",
-            textTransform: "capitalize"
-          }}
-        >
-          {t}
-        </button>
-      ))}
-    </div>
-  );
-
-  // Render the active tab
-  if (workspaceTab === "builder") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        {tabBar}
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <Builder
-            prompt={builderPrompt}
-            setPrompt={setBuilderPrompt}
-            nodes={builderNodes}
-            selectedNodeId={selectedBuilderNodeId}
-            setSelectedNodeId={setSelectedBuilderNodeId}
-            saved={builderSaved}
-            onRecommend={recommendBuilderStack}
-            onAddNode={addBuilderNode}
-            onRemoveNode={removeBuilderNode}
-            onLoadWorkflow={loadWorkflowNodes}
-            onSave={() => setBuilderSaved(true)}
-            onViewLogs={() => setWorkspaceTab("activity")}
-            onSetDefault={() => {}}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (workspaceTab === "activity") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        {tabBar}
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <ControlPlane />
-        </div>
-      </div>
-    );
-  }
-
-  if (workspaceTab === "connect") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        {tabBar}
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <ConnectPanel />
-        </div>
-      </div>
-    );
-  }
+  const spend = run.spentCents / 100;
+  const cap = (flow?.maxRunBudgetCents ?? 0) / 100;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {tabBar}
-      <div className="workspaceRoot" style={{ flex: 1 }}>
+    <div className="wsShell">
+      {/* FULL-WIDTH RUN HEADER — flow selector + run controls + spend, always visible */}
+      <header className="wsHeader">
+        <div className="wsHeaderMain">
+          <select
+            className="wsFlowSelect"
+            aria-label="Select flow"
+            value={flowId ?? ""}
+            onChange={(e) => { if (onFlowChange) onFlowChange(e.target.value || null); if (e.target.value) loadFlow(e.target.value); }}
+          >
+            <option value="">Select a flow…</option>
+            {flows.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          {flow && <span className="wsFlowName">{flow.name}</span>}
+        </div>
+        <div className="wsHeaderControls">
+          {flow && (
+            <>
+              <Button variant="primary" size="sm" loading={running} onClick={handleRun} disabled={running}>
+                {running ? "Running…" : "▶ Run"}
+              </Button>
+              {running && <Button variant="danger" size="sm" onClick={handleKill}>■ Kill</Button>}
+              <span className="wsHeaderMeta">
+                spend ${spend.toFixed(2)}{cap ? ` / $${cap.toFixed(2)}` : ""} · {participants.length} participant{participants.length !== 1 ? "s" : ""}
+                {run.status && (
+                  <> · <span style={{ color: run.status === "completed" ? "var(--ok)" : run.status.includes("halted") ? "var(--danger)" : "var(--muted)" }}>{run.status}</span></>
+                )}
+              </span>
+            </>
+          )}
+        </div>
+      </header>
+
+      <div className="workspaceRoot">
       {/* LEFT: Flows list + Participants */}
       <div className="workspaceLeft">
         <div className="describeBar">
@@ -422,17 +390,6 @@ export function FlowWorkspace({
           <Button variant="primary" size="sm" loading={planning} onClick={handleDescribe}>
             Plan
           </Button>
-        </div>
-
-        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)" }}>
-          <select
-            style={{ width: "100%", background: "var(--surface)", color: "var(--foreground)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "0.4rem 0.5rem", fontSize: "0.8rem" }}
-            value={flowId ?? ""}
-            onChange={(e) => { if (onFlowChange) onFlowChange(e.target.value || null); if (e.target.value) loadFlow(e.target.value); }}
-          >
-            <option value="">Select a flow…</option>
-            {flows.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
         </div>
 
         <div className="participantsHead">
@@ -466,23 +423,15 @@ export function FlowWorkspace({
         ))}
       </div>
 
-      {/* CENTER: Run + Output */}
+      {/* CENTER: This run (output + live process + inline approval) */}
       <div className="workspaceCenter">
         {flow ? (
           <>
-            <div className="runBar">
-              <h2>{flow.name}</h2>
-              <Button variant="primary" size="sm" loading={running} onClick={handleRun} disabled={running}>
-                {running ? "Running…" : "▶ Run"}
-              </Button>
-              {running && (
-                <Button variant="danger" size="sm" onClick={handleKill}>
-                  Kill
-                </Button>
-              )}
+            <div className="runColHead">
+              <h2>This run</h2>
               {run.status && (
-                <span style={{ fontSize: "0.75rem", color: run.status === "completed" ? "var(--ok)" : run.status.includes("halted") ? "var(--danger)" : "var(--muted)" }}>
-                  {run.status} · {run.toolCallCount} tools · {run.stepCount} model steps
+                <span style={{ fontSize: "0.7rem", color: "var(--muted)" }}>
+                  {run.toolCallCount} tools · {run.stepCount} model steps
                 </span>
               )}
             </div>
@@ -501,16 +450,16 @@ export function FlowWorkspace({
                   Your agents need tools to act. Without tools, they can only produce text — no search, no email, no actions.
                 </p>
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <Button variant="secondary" size="sm" onClick={() => setWorkspaceTab("connect")}>
+                  <Button variant="secondary" size="sm" onClick={() => setOpenDrawer("connect")}>
                     1. Connect a server
                   </Button>
                   <span style={{ fontSize: "0.7rem", color: "var(--muted)", alignSelf: "center" }}>→</span>
-                  <Button variant="secondary" size="sm" onClick={() => setWorkspaceTab("connect")}>
+                  <Button variant="secondary" size="sm" onClick={() => setOpenDrawer("connect")}>
                     2. Discover tools
                   </Button>
                   <span style={{ fontSize: "0.7rem", color: "var(--muted)", alignSelf: "center" }}>→</span>
                   <span style={{ fontSize: "0.75rem", color: "var(--muted)", alignSelf: "center" }}>
-                    3. Grant tools to agents ↓
+                    3. Grant tools to agents →
                   </span>
                 </div>
               </div>
@@ -702,7 +651,48 @@ export function FlowWorkspace({
           <EmptyState title="Select a participant" body="Click an agent on the left to see its tools and grants." />
         )}
       </div>
-    </div>
+      </div>
+
+      {/* BOTTOM DRAWERS — heavy sub-tasks expand in place; they never replace the
+          flow surface, so you never lose sight of the flow to do a sub-task. */}
+      <div className="wsDrawers">
+        <div className="wsDrawerTabs">
+          <button className="wsDrawerTab" data-active={openDrawer === "build"} onClick={() => toggleDrawer("build")}>
+            {openDrawer === "build" ? "⌃" : "⌄"} Build canvas
+          </button>
+          <button className="wsDrawerTab" data-active={openDrawer === "connect"} onClick={() => toggleDrawer("connect")}>
+            {openDrawer === "connect" ? "⌃" : "⌄"} Connect a server
+          </button>
+          <button className="wsDrawerTab" data-active={openDrawer === "activity"} onClick={() => toggleDrawer("activity")}>
+            {openDrawer === "activity" ? "⌃" : "⌄"} Activity
+          </button>
+        </div>
+        {openDrawer === "build" && (
+          <div className="wsDrawerPanel">
+            <Builder
+              prompt={builderPrompt}
+              setPrompt={setBuilderPrompt}
+              nodes={builderNodes}
+              selectedNodeId={selectedBuilderNodeId}
+              setSelectedNodeId={setSelectedBuilderNodeId}
+              saved={builderSaved}
+              onRecommend={recommendBuilderStack}
+              onAddNode={addBuilderNode}
+              onRemoveNode={removeBuilderNode}
+              onLoadWorkflow={loadWorkflowNodes}
+              onSave={() => setBuilderSaved(true)}
+              onViewLogs={() => setOpenDrawer("activity")}
+              onSetDefault={() => {}}
+            />
+          </div>
+        )}
+        {openDrawer === "connect" && (
+          <div className="wsDrawerPanel"><ConnectPanel /></div>
+        )}
+        {openDrawer === "activity" && (
+          <div className="wsDrawerPanel"><ControlPlane /></div>
+        )}
+      </div>
     </div>
   );
 }

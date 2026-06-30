@@ -1,9 +1,70 @@
 /* FlowWorkspace — the glass box. One surface for build, grant, run, watch. */
 
+/* The single surface: run header (top) + always-present columns (middle) +
+   in-place drawers (bottom). No tab swaps — every zone stays coherent. */
+.wsShell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* --- Full-width run header --- */
+.wsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.wsHeaderMain {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.wsFlowSelect {
+  background: var(--surface-elevated);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  max-width: 280px;
+}
+
+.wsFlowName {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wsHeaderControls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.wsHeaderMeta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .workspaceRoot {
   display: grid;
   grid-template-columns: 280px 1fr 320px;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -294,6 +355,67 @@
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+/* --- Run column head (center) --- */
+.runColHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.runColHead h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- Bottom drawers (build canvas / connect / activity) --- */
+.wsDrawers {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  max-height: 60%;
+}
+
+.wsDrawerTabs {
+  display: flex;
+  gap: 0;
+}
+
+.wsDrawerTab {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.wsDrawerTab:hover { background: var(--surface-elevated); color: var(--foreground); }
+
+.wsDrawerTab[data-active="true"] {
+  color: var(--foreground);
+  background: var(--surface-elevated);
+  font-weight: 600;
+}
+
+.wsDrawerPanel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--border);
 }
 
 @media (max-width: 900px) {
