@@ -81,6 +81,8 @@ export function FlowWorkspace({
   const [flow, setFlow] = useState<PersistedWorkflow | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedP, setSelectedP] = useState<string | null>(null);
+  // Which participant's inline "+ grant tool" picker is open (agentId), if any.
+  const [grantPickerFor, setGrantPickerFor] = useState<string | null>(null);
   const [connections, setConnections] = useState<PersistedConnection[]>([]);
   const [availableTools, setAvailableTools] = useState<DiscoveredTool[]>([]);
 
@@ -332,8 +334,13 @@ export function FlowWorkspace({
   };
 
   // --- Derive ---
-  const selected = participants.find((p) => p.agentId === selectedP);
   const grantedToolIds = new Set(participants.flatMap((p) => p.tools.map((t) => t.serverId)));
+  // Permission state shown on each granted tool: external-write needs approval,
+  // everything else is allowed outright.
+  const permView = (permission: string) =>
+    permission === "approval_required"
+      ? { icon: "⚠", label: "approval", kind: "approval" }
+      : { icon: "✓", label: permission.replaceAll("_", " "), kind: "allowed" };
 
   if (!session?.user) {
     return <EmptyState icon={<span style={{ fontSize: 28 }}>🔐</span>} title="Sign in to use the workspace" body="Sign in with Google to build, grant, run, and watch your flows." />;
@@ -397,30 +404,100 @@ export function FlowWorkspace({
           <span style={{ fontSize: "0.7rem", color: "var(--muted)" }}>{participants.length} agent{participants.length !== 1 ? "s" : ""}</span>
         </div>
 
-        {participants.map((p) => (
-          <div
-            className="participantCard"
-            key={p.agentId}
-            data-selected={selectedP === p.agentId}
-            onClick={() => setSelectedP(p.agentId)}
-          >
-            <div className="participantCardTop">
-              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                <span className="participantOrder">{p.order}</span>
-                <strong>{p.agentName}</strong>
+        {participants.map((p) => {
+          const activeTools = p.tools.filter((t) => !t.revoked);
+          const pickerOpen = grantPickerFor === p.agentId;
+          const ungranted = availableTools.filter((t) => !grantedToolIds.has(t.serverRowId));
+          return (
+            <div
+              className="participantCard"
+              key={p.agentId}
+              data-selected={selectedP === p.agentId}
+              onClick={() => setSelectedP(p.agentId)}
+            >
+              <div className="participantCardTop">
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <span className="participantOrder">{p.order}</span>
+                  <strong>{p.agentName}</strong>
+                </div>
               </div>
+              <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: "0.2rem" }}>{p.role}</div>
+
+              {/* Grants live on the participant — permission state inline */}
+              <div className="pGrants">
+                {activeTools.length === 0 && <div className="pGrantEmpty">· no tools granted</div>}
+                {activeTools.map((t) => {
+                  const v = permView(t.permission);
+                  return (
+                    <div className="pGrantRow" key={t.serverId}>
+                      <span className="pGrantPerm" data-kind={v.kind}>{v.icon}</span>
+                      <span className="pGrantName">{t.toolName}</span>
+                      <span className="pGrantState">{v.label}</span>
+                      <button
+                        className="pGrantRevoke"
+                        title="Revoke"
+                        onClick={(e) => { e.stopPropagation(); handleRevoke(p, t.serverId); }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* + grant tool — opens an inline picker in place, no navigation */}
+              <button
+                className="pGrantAdd"
+                onClick={(e) => { e.stopPropagation(); setSelectedP(p.agentId); setGrantPickerFor(pickerOpen ? null : p.agentId); }}
+              >
+                {pickerOpen ? "× close" : "+ grant tool"}
+              </button>
+
+              {pickerOpen && (
+                <div className="pGrantPicker" onClick={(e) => e.stopPropagation()}>
+                  {ungranted.length === 0 ? (
+                    <div className="pGrantPickerEmpty">
+                      No discovered tools to grant.{" "}
+                      <button className="pGrantPickerLink" onClick={() => setOpenDrawer("connect")}>Connect a server →</button>
+                    </div>
+                  ) : (
+                    ungranted.slice(0, 12).map((t) => (
+                      <button
+                        className="pGrantPickerItem"
+                        key={t.serverRowId}
+                        onClick={() => { handleGrant(p, t); setGrantPickerFor(null); }}
+                      >
+                        <span className="pGrantPickerName">{t.toolName}</span>
+                        <Badge risk={t.isExternalSend ? "high" : "low"} />
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Blast-radius mini stays on the participant (expands when selected) */}
+              {selectedP === p.agentId && (
+                <div className="pBlast" onClick={(e) => e.stopPropagation()}>
+                  <div className="pBlastHead">blast radius</div>
+                  <div className="radarContainer">
+                    {["Read/Search", "Drafts", "External Send", "Memory Access"].map((cap) => {
+                      const level = cap === "External Send" ? 1 : cap === "Drafts" ? 2 : cap === "Read/Search" ? 3 : 2;
+                      return (
+                        <div className="radarAxis" key={cap}>
+                          <span className="radarAxisLabel">{cap}</span>
+                          <div className="radarAxisTrack">
+                            <div className="radarAxisFill" data-level={String(level)} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="pBlastNote">External-write always requires approval at run time.</p>
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: "0.2rem" }}>{p.role}</div>
-            <div className="participantToolChips">
-              {p.tools.length === 0 && <span className="toolChip" data-granted={false}>no tools granted</span>}
-              {p.tools.filter((t) => !t.revoked).map((t) => (
-                <span className="toolChip" key={t.serverId} data-granted={true} data-risk={t.isExternalSend ? "high" : undefined}>
-                  {t.toolName}
-                </span>
-              ))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* CENTER: This run (output + live process + inline approval) */}
@@ -554,103 +631,6 @@ export function FlowWorkspace({
         )}
       </div>
 
-      {/* RIGHT: Inspector — grants + blast radius */}
-      <div className="workspaceRight">
-        {selected ? (
-          <>
-            <div className="inspectorSection">
-              <h3>{selected.agentName}</h3>
-              <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{selected.role}</p>
-            </div>
-
-            <div className="inspectorSection">
-              <h3>Granted tools</h3>
-              {selected.tools.filter((t) => !t.revoked).map((t) => (
-                <div className="inspectorGrantRow" key={t.serverId}>
-                  <div>
-                    <strong>{t.toolName}</strong>
-                    <div style={{ fontSize: "0.65rem", color: "var(--muted)" }}>{t.permission.replaceAll("_", " ")}</div>
-                  </div>
-                  <Button variant="danger" size="sm" onClick={() => handleRevoke(selected, t.serverId)}>
-                    Revoke
-                  </Button>
-                </div>
-              ))}
-              {selected.tools.every((t) => t.revoked) && (
-                <div style={{ fontSize: "0.75rem", color: "var(--muted)", padding: "0.5rem 0" }}>
-                  No active grants. Grant tools below.
-                </div>
-              )}
-            </div>
-
-            {/* Quick-grant during run: show pending blocks/approvals with inline actions */}
-            {run.approvals.length > 0 && (
-              <div className="inspectorSection" style={{ background: "var(--warn-bg)", border: "1px solid var(--warn)", borderRadius: "var(--radius)" }}>
-                <h3 style={{ color: "var(--warn)" }}>⚠ Action Required</h3>
-                {run.approvals.map((a) => (
-                  <div key={a.id} style={{ marginBottom: "0.5rem" }}>
-                    <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground)" }}>{a.title}</div>
-                    <div style={{ fontSize: "0.7rem", color: "var(--muted)", margin: "0.25rem 0" }}>{a.description.slice(0, 120)}</div>
-                    <div style={{ display: "flex", gap: "0.375rem" }}>
-                      <Button variant="primary" size="sm" onClick={() => handleApprove(a.id, true)}>✓ Approve</Button>
-                      <Button variant="danger" size="sm" onClick={() => handleApprove(a.id, false)}>✗ Deny</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="inspectorSection">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h3 style={{ margin: 0 }}>Discover & grant</h3>
-                <Button variant="ghost" size="sm" onClick={() => loadConnectionsAndTools()}>
-                  ↻ Refresh
-                </Button>
-              </div>
-              {availableTools.filter((t) => !grantedToolIds.has(t.serverRowId)).slice(0, 8).map((t) => (
-                <div className="inspectorGrantRow" key={t.serverRowId}>
-                  <div>
-                    <strong>{t.toolName}</strong>
-                    <Badge risk={t.isExternalSend ? "high" : "low"} />
-                    <div style={{ fontSize: "0.65rem", color: "var(--muted)" }}>{t.description?.slice(0, 80)}</div>
-                  </div>
-                  <Button variant="secondary" size="sm" onClick={() => handleGrant(selected, t)}>
-                    Grant
-                  </Button>
-                </div>
-              ))}
-              {availableTools.length === 0 && (
-                <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                  No discovered tools. Connect a server and discover its tools first, then click ↻ Refresh.
-                </div>
-              )}
-            </div>
-
-            {/* Blast-radius mini: permission depth per capability */}
-            <div className="inspectorSection">
-              <h3>Blast radius (permission depth)</h3>
-              <div className="radarContainer">
-                {["Read/Search", "Drafts", "External Send", "Memory Access"].map((cap) => {
-                  const level = cap === "External Send" ? 1 : cap === "Drafts" ? 2 : cap === "Read/Search" ? 3 : 2;
-                  return (
-                    <div className="radarAxis" key={cap}>
-                      <span className="radarAxisLabel">{cap}</span>
-                      <div className="radarAxisTrack">
-                        <div className="radarAxisFill" data-level={String(level)} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "0.5rem" }}>
-                Drag to adjust. External-write always requires approval at run time.
-              </p>
-            </div>
-          </>
-        ) : (
-          <EmptyState title="Select a participant" body="Click an agent on the left to see its tools and grants." />
-        )}
-      </div>
       </div>
 
       {/* BOTTOM DRAWERS — heavy sub-tasks expand in place; they never replace the

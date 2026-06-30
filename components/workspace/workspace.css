@@ -60,9 +60,10 @@
   white-space: nowrap;
 }
 
+/* Two always-present columns: participants (with inline grants) | this run. */
 .workspaceRoot {
   display: grid;
-  grid-template-columns: 280px 1fr 320px;
+  grid-template-columns: 360px 1fr;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -167,6 +168,125 @@
 
 .toolChip[data-granted="true"] { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
 .toolChip[data-risk="high"] { color: var(--warn); border-color: var(--warn); }
+
+/* --- Grants inline on the participant card --- */
+.pGrants {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.5rem;
+}
+
+.pGrantEmpty {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.pGrantRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--foreground);
+}
+
+.pGrantPerm { flex-shrink: 0; width: 1rem; text-align: center; }
+.pGrantPerm[data-kind="allowed"] { color: var(--ok); }
+.pGrantPerm[data-kind="approval"] { color: var(--warn); }
+
+.pGrantName { font-weight: 500; }
+
+.pGrantState {
+  margin-left: auto;
+  font-size: 0.62rem;
+  color: var(--muted);
+  text-transform: lowercase;
+}
+
+.pGrantRevoke {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+.pGrantRevoke:hover { color: var(--danger); }
+
+.pGrantAdd {
+  margin-top: 0.5rem;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.pGrantAdd:hover { color: var(--accent); border-color: var(--accent); }
+
+.pGrantPicker {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.pGrantPickerEmpty { font-size: 0.7rem; color: var(--muted); }
+
+.pGrantPickerLink {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0;
+}
+
+.pGrantPickerItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--foreground);
+  text-align: left;
+}
+.pGrantPickerItem:hover { border-color: var(--accent); }
+.pGrantPickerName { font-weight: 500; }
+
+/* --- Blast-radius mini on the selected participant --- */
+.pBlast {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.pBlastHead {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+.pBlastNote {
+  font-size: 0.62rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
 
 /* --- Center: run area --- */
 .runBar {
