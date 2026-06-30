@@ -288,6 +288,19 @@
   margin-top: 0.4rem;
 }
 
+.participantsAddStep {
+  margin: 0.75rem 1rem;
+  padding: 0.5rem;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.participantsAddStep:hover { color: var(--accent); border-color: var(--accent); }
+
 /* --- Center: run area --- */
 .runBar {
   display: flex;

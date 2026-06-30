@@ -54,7 +54,8 @@ export function Builder({
   onRemoveNode,
   onLoadWorkflow,
   onSave,
-  onViewLogs
+  onViewLogs,
+  activeFlowId
 }: {
   prompt: string;
   setPrompt: (value: string) => void;
@@ -69,6 +70,10 @@ export function Builder({
   onSave: () => void;
   onViewLogs: () => void;
   onSetDefault: (agent: string) => void;
+  // When the canvas is embedded as the workspace's "Build canvas" drawer, this is
+  // the flow currently being watched — the canvas loads THAT flow so the thing you
+  // edit is the thing you run.
+  activeFlowId?: string | null;
 }) {
   const { data: session } = useSession();
   const toast = useToast();
@@ -124,6 +129,26 @@ export function Builder({
     loadSavedWorkflows();
     loadMcpServers();
   }, [session?.user?.email]);
+
+  // Sync the canvas to the flow being watched in the workspace, so editing the
+  // graph edits the same flow you run — no separate flow selection in the drawer.
+  useEffect(() => {
+    if (!activeFlowId || !session?.user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await listFlows("Unable to load saved Flows.");
+        const fresh = (data.workflows ?? []).find((w) => w.id === activeFlowId);
+        if (!fresh || cancelled) return;
+        setSavedWorkflows(data.workflows ?? []);
+        setSavedWorkflowId(fresh.id);
+        setBuilderMode("saved");
+        onLoadWorkflow(workflowToBuilderNodes(fresh));
+      } catch { /* mute — the workspace surfaces flow errors */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFlowId, session?.user?.email]);
 
   // Honest elapsed timer while a plan request is in flight (no fake step labels).
   useEffect(() => {

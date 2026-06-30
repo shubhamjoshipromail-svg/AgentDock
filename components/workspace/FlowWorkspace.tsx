@@ -184,9 +184,15 @@ export function FlowWorkspace({
 
   useEffect(() => { loadFlows(); loadConnectionsAndTools(); }, [loadFlows, loadConnectionsAndTools]);
   useEffect(() => { if (flowId) loadFlow(flowId); }, [flowId, loadFlow]);
-  // Closing the connect drawer is when new tools may have been discovered —
-  // refresh the grantable list so participants can grant them in place.
-  useEffect(() => { if (openDrawer === null) { loadConnectionsAndTools(); } }, [openDrawer, loadConnectionsAndTools]);
+  // Closing a drawer is when state may have changed under it — refresh the
+  // grantable tool list (connect drawer) and the flow itself (build canvas may
+  // have rewired participants) so the always-visible surface stays current.
+  useEffect(() => {
+    if (openDrawer === null) {
+      loadConnectionsAndTools();
+      if (flowId) loadFlow(flowId);
+    }
+  }, [openDrawer, flowId, loadConnectionsAndTools, loadFlow]);
 
   // --- Run ---
   const handleRun = async () => {
@@ -498,6 +504,14 @@ export function FlowWorkspace({
             </div>
           );
         })}
+
+        {/* Edit structure in place — expands the build canvas drawer, never a swap */}
+        <button
+          className="participantsAddStep"
+          onClick={() => setOpenDrawer(openDrawer === "build" ? null : "build")}
+        >
+          ✎ {participants.length ? "Edit graph / add a step" : "Build a flow on the canvas"}
+        </button>
       </div>
 
       {/* CENTER: This run (output + live process + inline approval) */}
@@ -663,6 +677,7 @@ export function FlowWorkspace({
               onSave={() => setBuilderSaved(true)}
               onViewLogs={() => setOpenDrawer("activity")}
               onSetDefault={() => {}}
+              activeFlowId={flowId}
             />
           </div>
         )}
