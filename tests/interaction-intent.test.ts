@@ -45,7 +45,7 @@ const CHOICE_PAYLOAD = {
   maxSelect: 2
 };
 
-async function seedAgentFlow(userId: string, opts: { withSend?: boolean } = {}) {
+async function seedAgentFlow(userId: string, opts: { withSend?: boolean; withDraft?: boolean } = {}) {
   const agent = await prisma.agent.create({
     data: { userId, name: "Concierge", category: "c", provider: "p", verified: true, description: "d", systemPrompt: "Ask, then act.", model: "claude-sonnet-4-6" }
   });
@@ -64,8 +64,28 @@ async function seedAgentFlow(userId: string, opts: { withSend?: boolean } = {}) 
     });
     await prisma.mcpAccessGrant.create({ data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, canWrite: true, requiresApproval: false } });
   }
+  if (opts.withDraft) {
+    const server = await prisma.mcpServer.create({
+      data: {
+        name: "gmail-create-draft", displayName: "Gmail: create_draft", description: "d",
+        registrySource: "first-party", registryId: "agentdock:gmail:create_draft",
+        riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "draft_only",
+        mcpServerKey: "gmail", mcpToolName: "create_draft", credentialProvider: "google", isExternalSend: false
+      }
+    });
+    await prisma.mcpAccessGrant.create({ data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, canWrite: true, requiresApproval: false } });
+  }
   return { agent, workflow };
 }
+
+const FORM_PAYLOAD = {
+  prompt: "Tell me about the piece",
+  fields: [
+    { name: "audience", label: "Audience", type: "string", required: true },
+    { name: "tone", label: "Tone", type: "string", required: true },
+    { name: "key_point", label: "Key point", type: "string", required: true }
+  ]
+};
 
 describe("interaction-intent validation (schema-constrained, never arbitrary)", () => {
   it("accepts a well-formed choice payload and rejects malformed ones", () => {
@@ -183,5 +203,38 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     const approval = await prisma.approvalRequest.findFirst({ where: { workflowRunId: run.id, intentType: "approval" } });
     expect(approval).toBeTruthy();
     expect(approval?.status).toBe("pending");
+  });
+
+  it("form → draft: the agent asks a form, then drafts from the answers (showcase flow 2)", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow } = await seedAgentFlow(user.id, { withDraft: true });
+
+    // The agent asks for a 3-field brief.
+    llm.queue = [{ text: INTENT("form", FORM_PAYLOAD) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const form = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id, intentType: "form" } });
+
+    // Answer, then the agent drafts (create_draft is not external-send → no approval).
+    await resolveApproval(
+      new Request(`http://localhost/api/approvals/${form.id}/resolve`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: { values: { audience: "execs", tone: "crisp", key_point: "ship it" } } })
+      }),
+      { params: Promise.resolve({ id: form.id }) }
+    );
+    llm.queue = [
+      { text: TOOL_ARGS("create_draft", { to: "u@example.com", subject: "For execs", body: "Crisp note: ship it." }) },
+      { text: FINAL("Draft created from your brief.") }
+    ];
+    const result = await resumeAfterApproval(user.id, form.id, true);
+    expect(result?.status).toBe("completed");
+    expect(callMcpToolMock).toHaveBeenCalledTimes(1);
+    const [, toolName] = callMcpToolMock.mock.calls[0];
+    expect(toolName).toBe("create_draft");
+    // The agent saw the user's answers as framed data.
+    const draftPrompt = llm.prompts[llm.prompts.length - 1];
+    expect(draftPrompt).toContain("execs");
   });
 });
