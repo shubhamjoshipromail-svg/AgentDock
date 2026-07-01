@@ -513,6 +513,7 @@ async function runStep(
     if (k) {
       await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked", title: "Run killed", description: k, decision: "denied", actorType: "system" });
       await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "killed", killedAt: new Date(), killReason: k, endedAt: new Date() } });
+      await expirePendingIntents(ctx.runId);
       return { kind: "killed" };
     }
     const t = await totals(ctx.runId);
@@ -1066,9 +1067,19 @@ async function executeApprovedTool(
   return { kind: "executed", result: executed.text };
 }
 
+// A terminal run has no live surface — expire any pending interaction intents so
+// none are left orphaned (a killed/halted run can never resume to answer them).
+async function expirePendingIntents(runId: string): Promise<void> {
+  await prisma.approvalRequest.updateMany({
+    where: { workflowRunId: runId, status: "pending" },
+    data: { status: "expired", resolvedAt: new Date() }
+  });
+}
+
 async function haltCost(ctx: Ctx) {
   await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "spend_event", title: "Run halted on cost", description: `Run reached the per-run cost cap (${ctx.c.maxCostCents}c).`, decision: "denied", actorType: "system" });
   await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "halted_cost", endedAt: new Date() } });
+  await expirePendingIntents(ctx.runId);
 }
 
 async function haltError(ctx: Ctx, reason: string, meta?: Record<string, unknown>) {
@@ -1080,6 +1091,7 @@ async function haltError(ctx: Ctx, reason: string, meta?: Record<string, unknown
     metadata: { haltReason: reason, ...(meta ?? {}) } as RunEventMeta
   });
   await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "halted_error", endedAt: new Date() } });
+  await expirePendingIntents(ctx.runId);
 }
 
 // --- Drivers -----------------------------------------------------------------
@@ -1369,6 +1381,7 @@ export async function killRun(userId: string, runId: string, reason = "killed by
   const run = await prisma.workflowRun.findFirst({ where: { id: runId, userId } });
   if (!run) return false;
   await prisma.workflowRun.update({ where: { id: runId }, data: { status: "killed", killedAt: new Date(), killReason: reason, endedAt: new Date() } });
+  await expirePendingIntents(runId);
   await appendEvent({ runId, userId, eventType: "action_blocked", title: "Kill switch", description: reason, decision: "denied", actorType: "human" });
   return true;
 }
