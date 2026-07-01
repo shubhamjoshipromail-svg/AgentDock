@@ -2,13 +2,12 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
+import { isTerminalRunStatus } from "../../../../../lib/runs/terminal";
 
 const POLL_MS = 1_000;
 // How long to keep the SSE connection open when the run is terminal but the
 // client hasn't closed yet — gives a final window for the last events.
 const TERMINAL_DRAIN_MS = 2_000;
-
-const TERMINAL = new Set(["completed", "halted_cost", "halted_error", "killed"]);
 
 function sseChunk(data: unknown): Uint8Array {
   const json = JSON.stringify(data);
@@ -73,25 +72,49 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         }
       };
 
-      // Prime the stream with existing events.
+      // Emit a run snapshot: the authoritative run status + counts + result +
+      // any pending approval/intent surfaces. The client renders run state from
+      // this (never inventing it), so it stays truthful and stops on its own.
+      const sendSnapshot = async () => {
+        const fresh = await prisma.workflowRun.findUnique({
+          where: { id: runId },
+          select: { status: true, totalCostCents: true, stepCount: true, toolCallCount: true, resultText: true }
+        });
+        if (!fresh) return null;
+        const approvals = await prisma.approvalRequest.findMany({
+          where: { workflowRunId: runId, status: "pending" },
+          orderBy: { requestedAt: "asc" },
+          select: { id: true, title: true, description: true, status: true }
+        });
+        controller.enqueue(sseChunk({
+          type: "run_snapshot",
+          runId,
+          status: fresh.status,
+          totalCostCents: fresh.totalCostCents,
+          stepCount: fresh.stepCount,
+          toolCallCount: fresh.toolCallCount,
+          resultText: fresh.resultText ?? null,
+          approvals
+        }));
+        return fresh.status;
+      };
+
+      // Prime the stream with existing events + a first snapshot.
       await sendInitial();
+      await sendSnapshot();
 
       // Poll for new events until the run is terminal or client disconnects.
       const interval = setInterval(async () => {
         try {
           await sendInitial();
+          const status = await sendSnapshot();
 
-          const fresh = await prisma.workflowRun.findUnique({
-            where: { id: runId },
-            select: { status: true }
-          });
-
-          if (fresh && TERMINAL.has(fresh.status)) {
+          if (status && isTerminalRunStatus(status)) {
             if (!drained) {
               drained = true;
               // Send the terminal-status event so the client can close.
               controller.enqueue(
-                sseChunk({ type: "run_terminal", runId, status: fresh.status })
+                sseChunk({ type: "run_terminal", runId, status })
               );
               setTimeout(() => {
                 try { controller.close(); } catch { /* already closed */ }

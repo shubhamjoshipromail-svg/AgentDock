@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
+
+import { isTerminalRunStatus } from "../../lib/runs/terminal";
 
 import {
   attachToolToFlow,
-  getRealRun,
   killRealRun,
   listConnections,
   listDiscoveredTools,
@@ -14,8 +15,7 @@ import {
   resolveApproval,
   startRealRun,
   type DiscoveredTool,
-  type PersistedConnection,
-  type RealRun
+  type PersistedConnection
 } from "../../lib/api/client";
 import type { PersistedWorkflow } from "../../lib/types";
 import { Badge, Button, EmptyState } from "../layout/primitives";
@@ -47,11 +47,13 @@ type Participant = {
   }[];
 };
 
+type RunStep = { id: string; eventType: string; title: string; description: string; decision: string | null; costCents: number };
+
 type RunState = {
   runId: string | null;
   status: string;
   output: string | null;
-  steps: { title: string; description: string; decision: string | null; costCents: number }[];
+  steps: RunStep[];
   approvals: { id: string; title: string; description: string; status: string }[];
   toolCallCount: number;
   stepCount: number;
@@ -87,8 +89,9 @@ export function FlowWorkspace({
   const [availableTools, setAvailableTools] = useState<DiscoveredTool[]>([]);
 
   const [run, setRun] = useState<RunState>({ runId: null, status: "", output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
-  const [running, setRunning] = useState(false);
-  const [pollId, setPollId] = useState<ReturnType<typeof setInterval> | null>(null);
+  // Server truth: a run is "running" until it reaches a terminal status. Derived
+  // from the streamed status — never a local flag that can wedge on "Running…".
+  const running = run.runId != null && run.status !== "" && !isTerminalRunStatus(run.status);
 
   // Describe-to-build
   const [describeText, setDescribeText] = useState("");
@@ -194,7 +197,66 @@ export function FlowWorkspace({
     }
   }, [openDrawer, flowId, loadConnectionsAndTools, loadFlow]);
 
-  // --- Run ---
+  // --- Run: live SSE truth (no polling) ---
+  // Subscribe to the run's event stream, keyed on runId. One subscription per
+  // run; the browser's EventSource reconnects on a blip (the server re-sends
+  // everything, deduped by event id here), and we close it on any terminal
+  // status so the stream never outlives the run.
+  const terminalToastedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const runId = run.runId;
+    if (!runId) return;
+    const es = new EventSource(`/api/runs/${runId}/stream`);
+
+    es.onmessage = (msg) => {
+      let data: Record<string, unknown>;
+      try { data = JSON.parse(msg.data); } catch { return; }
+
+      if (data.type === "run_snapshot") {
+        setRun((prev) => prev.runId !== runId ? prev : {
+          ...prev,
+          status: String(data.status ?? prev.status),
+          output: (data.resultText as string | null) ?? prev.output,
+          approvals: (data.approvals as RunState["approvals"]) ?? [],
+          toolCallCount: Number(data.toolCallCount ?? prev.toolCallCount),
+          stepCount: Number(data.stepCount ?? prev.stepCount),
+          spentCents: Number(data.totalCostCents ?? prev.spentCents)
+        });
+        return;
+      }
+
+      if (data.type === "run_terminal") {
+        const status = String(data.status);
+        setRun((prev) => prev.runId !== runId ? prev : { ...prev, status });
+        if (terminalToastedRef.current !== runId) {
+          terminalToastedRef.current = runId;
+          toast(status === "completed" ? "Run complete." : `Run ended: ${status}`, status === "completed" ? "ok" : "warn");
+        }
+        es.close(); // never let a terminal run keep a stream open / auto-reconnect
+        return;
+      }
+
+      // Otherwise it's a WorkflowRunEvent row — upsert into the step list by id.
+      if (typeof data.id === "string") {
+        const step: RunStep = {
+          id: data.id,
+          eventType: String(data.eventType ?? ""),
+          title: String(data.title ?? ""),
+          description: String(data.description ?? ""),
+          decision: (data.decision as string | null) ?? null,
+          costCents: Number(data.costCents ?? 0)
+        };
+        setRun((prev) => {
+          if (prev.runId !== runId) return prev;
+          const exists = prev.steps.some((s) => s.id === step.id);
+          return { ...prev, steps: exists ? prev.steps.map((s) => (s.id === step.id ? step : s)) : [...prev.steps, step] };
+        });
+      }
+    };
+
+    return () => { es.close(); };
+  }, [run.runId, toast]);
+
   const handleRun = async () => {
     if (!flowId) return toast("Select a flow first.", "warn");
 
@@ -204,39 +266,14 @@ export function FlowWorkspace({
       return toast("This flow has no tools granted. Agents can only produce text — they cannot search, draft, or send. Grant tools from the right panel first.", "warn");
     }
 
-    setRunning(true);
     try {
+      terminalToastedRef.current = null;
       const result = await startRealRun(flowId);
-      setRun({ runId: result.run.runId, status: result.run.status, output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
-      toast("Run queued. The worker will pick it up.", "ok");
-
-      // Poll for updates.
-      const id = setInterval(async () => {
-        try {
-          const data = await getRealRun(result.run.runId);
-          const r: RealRun = data.run;
-          setRun({
-            runId: r.id,
-            status: r.status,
-            output: r.resultText ?? null,
-            steps: r.events?.map((e) => ({ title: e.title, description: e.description, decision: e.decision, costCents: e.costCents })) ?? [],
-            approvals: r.approvalRequests?.filter((a) => a.status === "pending") ?? [],
-            toolCallCount: r.toolCallCount,
-            stepCount: r.stepCount,
-            spentCents: r.totalCostCents ?? 0
-          });
-          if (["completed", "halted_error", "halted_cost", "killed"].includes(r.status)) {
-            clearInterval(id);
-            setRunning(false);
-            setPollId(null);
-            toast(r.status === "completed" ? "Run complete." : `Run ended: ${r.status}`, r.status === "completed" ? "ok" : "warn");
-          }
-        } catch { /* poll error, skip */ }
-      }, 2000);
-      setPollId(id);
+      // Set runId → the effect above subscribes to the live stream from here.
+      setRun({ runId: result.run.runId, status: result.run.status || "queued", output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
+      toast("Run queued. Streaming live…", "ok");
     } catch (error) {
       toast(error instanceof Error ? error.message : "Run failed.", "danger");
-      setRunning(false);
     }
   };
 
@@ -245,8 +282,7 @@ export function FlowWorkspace({
     try {
       await killRealRun(run.runId);
       toast("Run killed.", "warn");
-      if (pollId) clearInterval(pollId);
-      setRunning(false);
+      // The stream reports the killed status and closes itself.
     } catch (error) {
       toast(error instanceof Error ? error.message : "Kill failed.", "danger");
     }
@@ -255,37 +291,10 @@ export function FlowWorkspace({
   const handleApprove = async (approvalId: string, approved: boolean) => {
     try {
       await resolveApproval(approvalId, approved ? "approved" : "denied");
-      // Clear this approval from the UI immediately so the button disappears.
-      setRun((prev) => ({
-        ...prev,
-        approvals: prev.approvals.filter((a) => a.id !== approvalId)
-      }));
-      toast(approved ? "Approved — worker will resume." : "Denied — run halted.", approved ? "ok" : "warn");
-      // Resume polling if the run was paused.
-      if (approved && !pollId) {
-        const id = setInterval(async () => {
-          try {
-            const data = await getRealRun(run.runId!);
-            const r: RealRun = data.run;
-            setRun({
-              runId: r.id,
-              status: r.status,
-              output: r.resultText ?? null,
-              steps: r.events?.map((e) => ({ title: e.title, description: e.description, decision: e.decision, costCents: e.costCents })) ?? [],
-              approvals: r.approvalRequests?.filter((a) => a.status === "pending") ?? [],
-              toolCallCount: r.toolCallCount,
-              stepCount: r.stepCount,
-              spentCents: r.totalCostCents ?? 0
-            });
-            if (["completed", "halted_error", "halted_cost", "killed"].includes(r.status)) {
-              clearInterval(id);
-              setRunning(false);
-              toast(r.status === "completed" ? "Run complete." : `Run ended: ${r.status}`, r.status === "completed" ? "ok" : "warn");
-            }
-          } catch { /* skip */ }
-        }, 2000);
-        setPollId(id);
-      }
+      // Optimistically clear the card; the same live stream reports the resumed
+      // run — no new subscription, no stacked pollers.
+      setRun((prev) => ({ ...prev, approvals: prev.approvals.filter((a) => a.id !== approvalId) }));
+      toast(approved ? "Approved — resuming…" : "Denied — run halted.", approved ? "ok" : "warn");
     } catch (error) {
       toast(error instanceof Error ? error.message : "Approval failed.", "danger");
     }
