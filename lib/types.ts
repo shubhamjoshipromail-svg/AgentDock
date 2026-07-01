@@ -15,7 +15,7 @@ export type EventType = "memory access" | "credential minting" | "Agent handoff"
 
 export type RunEventMeta = {
   modelOutput?: string;
-  envelopeType?: "final" | "tool_call";
+  envelopeType?: "final" | "tool_call" | "intent";
   inputTokens?: number;
   outputTokens?: number;
   toolName?: string;

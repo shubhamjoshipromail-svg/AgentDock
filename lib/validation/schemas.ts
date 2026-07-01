@@ -44,8 +44,11 @@ export const simulateRunSchema = z.object({
 });
 
 export const approvalResolveSchema = z.object({
-  status: z.enum(["approved", "denied", "edited"]),
-  editedArgs: z.record(z.string(), z.string()).optional()
+  // Approval intents carry a status; choice/form/confirmation intents carry a
+  // response instead (validated server-side against the intent payload).
+  status: z.enum(["approved", "denied", "edited"]).optional(),
+  editedArgs: z.record(z.string(), z.string()).optional(),
+  response: z.record(z.string(), z.unknown()).optional()
 });
 
 export const toolGrantPatchSchema = z.object({

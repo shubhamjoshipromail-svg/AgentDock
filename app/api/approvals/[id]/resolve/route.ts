@@ -6,6 +6,7 @@ import { prisma } from "../../../../../lib/prisma";
 import { parseJsonBody } from "../../../../../lib/validation/parse";
 import { approvalResolveSchema } from "../../../../../lib/validation/schemas";
 import { enqueueRunJob, markRunJobFailed } from "../../../../../lib/execution/run-queue";
+import { validateIntentResponse } from "../../../../../lib/execution/interaction-intent";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -37,6 +38,31 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (!approval) {
       return NextResponse.json({ message: "Approval request not found for the signed-in user." }, { status: 404 });
+    }
+
+    // Non-approval interaction intent (choice/form/confirmation): validate the
+    // response against the intent payload, store it, and resume the run. Choice is
+    // not authorization — a consequential action still hits its own approval intent.
+    if (approval.intentType && approval.intentType !== "approval") {
+      const validation = validateIntentResponse(approval.intentType, approval.payload, body.response);
+      if (!validation.ok) {
+        return NextResponse.json({ message: `Invalid response: ${validation.error}` }, { status: 400 });
+      }
+      const updated = await prisma.approvalRequest.update({
+        where: { id: approval.id },
+        data: { status: "responded", response: validation.data as Prisma.InputJsonValue, resolvedAt: new Date() },
+        include: { workflowRun: true, agent: true }
+      });
+      const queued = await enqueueRunJob(user.id, approval.workflowRunId);
+      return NextResponse.json({
+        approvalRequest: updated,
+        run: queued.ok ? { runId: approval.workflowRunId, status: queued.status ?? "queued" } : null
+      });
+    }
+
+    // Approval intent — a status is required.
+    if (!body.status) {
+      return NextResponse.json({ message: "An approval decision (status) is required." }, { status: 400 });
     }
 
     const updatedApproval = await prisma.$transaction(async (tx) => {

@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { authorizeToolCall, effectiveGrantPermission, type ActionKind } from "./policy-gate";
 import { callMcpTool, mcpTokenEnvVar } from "./mcp-client";
 import { coerceToolArgs, resolveToolSchema } from "./tool-args";
+import { AGENT_INTENT_TYPES, validateIntentPayload, summarizeIntent, frameIntentResponse } from "./interaction-intent";
 import { brokerCredentialForAction, type BrokerScopeContext } from "./credential-broker";
 import { getRunProvider } from "./provider";
 import { buildStepContext } from "./memory";
@@ -97,11 +98,16 @@ const SECURITY_PREAMBLE =
   'or {"type":"tool_call","tool":"<tool name>","action":"read|write|send|delete|execute","input":"<string>"}. ' +
   'For tools that declare an input schema (e.g. email tools), put the structured fields in an "arguments" object ' +
   'matching that schema, e.g. {"type":"tool_call","tool":"send_email","arguments":{"to":"user@example.com","subject":"Your summary","body":"..."}}. ' +
-  'When the goal says to send something: CALL the send/draft tool immediately. Do not write a message asking for permission — the gate handles that.';
+  'When the goal says to send something: CALL the send/draft tool immediately. Do not write a message asking for permission — the gate handles that. ' +
+  'When you genuinely need the USER to decide something (which options to act on, a few details, a go/no-go), ask with an interaction intent instead of guessing: ' +
+  '{"type":"intent","intentType":"choice","payload":{"prompt":"...","options":[{"id":"a","title":"...","description":"..."}],"maxSelect":2}} for a pick-list, ' +
+  '{"type":"intent","intentType":"form","payload":{"prompt":"...","fields":[{"name":"tone","label":"Tone","type":"string"}]}} for a few typed fields, ' +
+  'or {"type":"intent","intentType":"confirmation","payload":{"prompt":"Proceed?"}}. The run pauses; the user\'s answer returns as untrusted data you then act on. Only ask when it materially changes what you do.';
 
 type Envelope =
   | { type: "final"; text: string }
-  | { type: "tool_call"; tool: string; action: ActionKind; input: string; arguments?: Record<string, unknown> };
+  | { type: "tool_call"; tool: string; action: ActionKind; input: string; arguments?: Record<string, unknown> }
+  | { type: "intent"; intentType: string; payload: unknown };
 
 function parseEnvelope(text: string): Envelope {
   let body = text.trim();
@@ -112,6 +118,10 @@ function parseEnvelope(text: string): Envelope {
   // Try direct JSON parse first.
   try {
     const json = JSON.parse(body);
+    // A2UI: the agent asks the human something (choice/form/confirmation).
+    if (json && json.type === "intent" && typeof json.intentType === "string") {
+      return { type: "intent", intentType: String(json.intentType), payload: json.payload };
+    }
     if (json && json.type === "tool_call" && typeof json.tool === "string") {
       const action: ActionKind = ["read", "write", "send", "delete", "execute"].includes(json.action) ? json.action : "read";
       const args =
@@ -479,13 +489,14 @@ async function runStep(
   agent: RunnableAgent,
   seedResults: string[],
   handoffContent: string | null,
-  approvedCall: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null } | null
+  approvedCall: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null } | null,
+  resumingStep = false
 ): Promise<StepOutcome> {
   const toolResults = [...seedResults];
-  // Resuming this step (an approved call is queued): re-read memory for the
-  // forward model call, but do NOT re-emit the memory_access events already
-  // recorded before the pause.
-  const resuming = approvedCall != null;
+  // Resuming this step (an approved call queued, or an intent response injected):
+  // re-read memory for the forward model call, but do NOT re-emit the
+  // memory_access events already recorded before the pause.
+  const resuming = resumingStep || approvedCall != null;
   const memoryContext = await buildStepContext(ctx.userId, agent.agentId, ctx.runId, resuming);
   // Count how many times the model re-requested an already-succeeded tool. One
   // repeat earns a nudge to finalize; a second is a runaway loop and is halted —
@@ -581,6 +592,48 @@ async function runStep(
         metadata: { modelOutput: capText(finalText, MODEL_OUTPUT_META_LIMIT), envelopeType: "final" }
       });
       return { kind: "done", finalText };
+    }
+
+    // A2UI: the agent raised an interaction intent (choice/form/confirmation).
+    // Validate the schema-constrained payload, create the intent, and pause the
+    // run exactly like an approval — same paused status, same worker semantics.
+    if (envelope.type === "intent") {
+      if (!(AGENT_INTENT_TYPES as readonly string[]).includes(envelope.intentType)) {
+        toolResults.push(`[policy] '${envelope.intentType}' is not a valid interaction intent. Valid types: ${AGENT_INTENT_TYPES.join(", ")}. Emit a valid intent or produce your final answer.`);
+        continue;
+      }
+      const validation = validateIntentPayload(envelope.intentType, envelope.payload);
+      if (!validation.ok) {
+        // Malformed surface — do NOT render best-effort; tell the agent honestly.
+        await appendEvent({
+          runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "action_blocked",
+          title: `Invalid ${envelope.intentType} surface`, description: validation.error,
+          decision: "denied", actorType: "agent", actorId: agent.agentId
+        });
+        toolResults.push(`[policy] Your ${envelope.intentType} surface was invalid: ${validation.error}. Fix the payload to match the schema, or produce your final answer.`);
+        continue;
+      }
+      const intent = await prisma.approvalRequest.create({
+        data: {
+          userId: ctx.userId, workflowRunId: ctx.runId, agentId: agent.agentId,
+          intentType: envelope.intentType,
+          payload: validation.data as Prisma.InputJsonValue,
+          title: `${agent.name} needs your input`,
+          description: summarizeIntent(envelope.intentType, validation.data),
+          actionType: "tool_scope_change",
+          riskLevel: "low",
+          status: "pending", stepIndex: agent.index,
+          metadata: { seedResults: toolResults, handoffContent } as Prisma.InputJsonObject
+        }
+      });
+      await appendEvent({
+        runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "approval_requested",
+        title: `The agent is asking you (${envelope.intentType})`, description: summarizeIntent(envelope.intentType, validation.data),
+        decision: "approval_required", actorType: "agent", actorId: agent.agentId,
+        metadata: { stepIndex: agent.index, approvalId: intent.id, intentType: envelope.intentType }
+      });
+      await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "paused_for_approval" } });
+      return { kind: "paused", approvalId: intent.id };
     }
 
     // If this is the last iteration and the model produced a tool_call,
@@ -1034,6 +1087,9 @@ async function haltError(ctx: Ctx, reason: string, meta?: Record<string, unknown
 export type DriveOptions = {
   /** Called after each agent step completes (not on pause/kill/halt). */
   onAgentStepComplete?: (stepIndex: number) => Promise<void>;
+  /** Resuming the fromStep (intent response injected) even though no approved
+   *  tool call is queued — skip re-emitting handoff/memory for that step. */
+  firstStepResuming?: boolean;
 };
 
 async function drive(
@@ -1056,7 +1112,7 @@ async function drive(
     const stepHandoff = handoff?.content ?? null;
     // On resume, the fromStep's handoff event was already emitted before the
     // pause — do not re-emit it. Later steps are genuinely new.
-    const resumingThisStep = i === fromStep && firstApprovedCall != null;
+    const resumingThisStep = i === fromStep && (firstApprovedCall != null || Boolean(opts?.firstStepResuming));
     if (stepHandoff && !resumingThisStep) {
       // ROADMAP (Chunk 10, D-1): this is a bespoke linear handoff — the previous
       // agent's output forwarded as untrusted data — NOT the A2A protocol. The DB
@@ -1074,7 +1130,7 @@ async function drive(
         }
       });
     }
-    const outcome = await runStep(ctx, agent, i === fromStep ? firstStepSeed : [], stepHandoff, i === fromStep ? firstApprovedCall : null);
+    const outcome = await runStep(ctx, agent, i === fromStep ? firstStepSeed : [], stepHandoff, i === fromStep ? firstApprovedCall : null, resumingThisStep);
     if (outcome.kind === "paused") return { runId: ctx.runId, status: "paused_for_approval" };
     if (outcome.kind === "killed") return { runId: ctx.runId, status: "killed" };
     if (outcome.kind === "halted") return { runId: ctx.runId, status: outcome.status };
@@ -1234,8 +1290,10 @@ export async function executeExistingRun(
 }
 
 export async function resumeRunFromLatestApproval(userId: string, runId: string): Promise<RunResult | null> {
+  // The latest RESOLVED interaction intent (an approval that was approved/edited,
+  // or a choice/form/confirmation that was responded to) is what we resume from.
   const approval = await prisma.approvalRequest.findFirst({
-    where: { userId, workflowRunId: runId, status: "approved" },
+    where: { userId, workflowRunId: runId, status: { in: ["approved", "edited", "responded"] } },
     orderBy: { resolvedAt: "desc" },
     select: { id: true }
   });
@@ -1243,12 +1301,15 @@ export async function resumeRunFromLatestApproval(userId: string, runId: string)
   return resumeAfterApproval(userId, approval.id, true);
 }
 
-// Resume a paused run after an approval decision. approved → execute the pending
-// tool and continue; denied → halt.
+// Resume a paused run after an interaction intent is resolved.
+//   • approval → authorize + execute the pending tool and continue (denied → halt);
+//   • choice/form/confirmation → deliver the human's response as framed untrusted
+//     data and continue forward (no authorization, no tool execution).
 export async function resumeAfterApproval(userId: string, approvalId: string, approved: boolean): Promise<RunResult | null> {
   const approval = await prisma.approvalRequest.findFirst({ where: { id: approvalId, userId }, include: { workflowRun: true } });
   if (!approval || !approval.workflowRun) return null;
   const runId = approval.workflowRunId;
+  const isApproval = !approval.intentType || approval.intentType === "approval";
 
   // Kill switch wins: never resume a run that has been killed or already ended.
   const fresh = await prisma.workflowRun.findUnique({ where: { id: runId }, select: { status: true } });
@@ -1256,18 +1317,21 @@ export async function resumeAfterApproval(userId: string, approvalId: string, ap
     return { runId, status: fresh?.status ?? "killed" };
   }
 
-  if (!approved) {
+  if (isApproval && !approved) {
     await prisma.approvalRequest.update({ where: { id: approval.id }, data: { status: "denied", resolvedAt: new Date() } });
     await appendEvent({ runId, userId, eventType: "action_blocked", title: "Approval denied", description: "Human denied the requested action. Run halted.", decision: "denied", actorType: "human" });
     await prisma.workflowRun.update({ where: { id: runId }, data: { status: "halted_error", endedAt: new Date() } });
     return { runId, status: "halted_error" };
   }
 
-  // Mark the intent resolved (idempotent with the resolve route) so the idempotent
-  // reuse check treats it as AUTHORIZED — a re-reached gate for this action never
-  // re-asks or re-runs.
-  await prisma.approvalRequest.update({ where: { id: approval.id }, data: { status: "approved", resolvedAt: new Date() } });
-  await appendEvent({ runId, userId, eventType: "orchestration", title: "Approval granted", description: "Human approved the requested action. Resuming run.", decision: "approved", actorType: "human", authorityRef: approval.id });
+  if (isApproval) {
+    // Mark resolved (idempotent with the resolve route) so the idempotent reuse
+    // check treats it as AUTHORIZED — a re-reached gate never re-asks or re-runs.
+    await prisma.approvalRequest.update({ where: { id: approval.id }, data: { status: "approved", resolvedAt: new Date() } });
+    await appendEvent({ runId, userId, eventType: "orchestration", title: "Approval granted", description: "Human approved the requested action. Resuming run.", decision: "approved", actorType: "human", authorityRef: approval.id });
+  } else {
+    await appendEvent({ runId, userId, eventType: "orchestration", title: "Response received", description: `Human answered the ${approval.intentType} — resuming run.`, decision: "info", actorType: "human", authorityRef: approval.id });
+  }
 
   const runnable = await loadRunnable(userId, approval.workflowRun.workflowId);
   if (!runnable) return null;
@@ -1281,10 +1345,21 @@ export async function resumeAfterApproval(userId: string, approvalId: string, ap
   await prisma.workflowRun.update({ where: { id: runId }, data: { status: "running" } });
 
   const meta = (approval.metadata ?? {}) as { toolName?: string; serverId?: string; action?: ActionKind; input?: string; arguments?: Record<string, unknown> | null; seedResults?: string[]; handoffContent?: string | null };
+  const fromStep = approval.stepIndex ?? 0;
+
+  if (!isApproval) {
+    // Deliver the response as framed untrusted data, continue forward.
+    if (approval.response == null) {
+      await haltError(ctx, `resumed a ${approval.intentType} intent with no response`);
+      return { runId, status: "halted_error" };
+    }
+    const framed = frameIntentResponse(approval.intentType, approval.payload, approval.response);
+    return drive(ctx, fromStep, [...(meta.seedResults ?? []), framed], meta.handoffContent ?? null, null, { firstStepResuming: true });
+  }
+
   const approvedCall = meta.toolName
     ? { toolName: meta.toolName, serverId: meta.serverId ?? "", action: (meta.action ?? "read") as ActionKind, input: meta.input ?? "", arguments: meta.arguments ?? null }
     : null;
-  const fromStep = approval.stepIndex ?? 0;
   return drive(ctx, fromStep, meta.seedResults ?? [], meta.handoffContent ?? null, approvedCall);
 }
 

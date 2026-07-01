@@ -84,7 +84,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         const approvals = await prisma.approvalRequest.findMany({
           where: { workflowRunId: runId, status: "pending" },
           orderBy: { requestedAt: "asc" },
-          select: { id: true, title: true, description: true, status: true }
+          select: { id: true, title: true, description: true, status: true, intentType: true, payload: true }
         });
         controller.enqueue(sseChunk({
           type: "run_snapshot",

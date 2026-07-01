@@ -119,6 +119,8 @@ enum ApprovalRequestStatus {
   denied
   edited
   expired
+  // Chunk 18: a non-approval intent (choice/form/confirmation) that the human answered.
+  responded
 }
 
 enum RunJobStatus {
@@ -435,11 +437,22 @@ model WorkflowRunEvent {
   @@map("workflow_run_events")
 }
 
+// Chunk 18: the ONE human-in-the-loop interaction primitive. An approval is one
+// intent type; choice/form/confirmation are the others. Same table, same
+// pause/resume spine, same resolve route — a first-class InteractionIntent, not a
+// parallel system. (Table name kept for back-compat via @@map.)
 model ApprovalRequest {
   id            String                @id @default(uuid()) @db.Uuid
   userId        String                @map("user_id") @db.Uuid
   workflowRunId String                @map("workflow_run_id") @db.Uuid
   agentId       String?               @map("agent_id") @db.Uuid
+  // The interaction kind: approval | choice | form | confirmation.
+  intentType    String                @default("approval") @map("intent_type")
+  // The agent-provided, schema-validated surface (options/fields/context). Never
+  // HTML/URL/script — a fixed vocabulary rendered by a whitelist.
+  payload       Json?
+  // The human's structured response (framed as untrusted data back into the run).
+  response      Json?
   title         String
   description   String
   actionType    ApprovalActionType    @map("action_type")
