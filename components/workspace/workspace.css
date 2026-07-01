@@ -407,6 +407,83 @@
   letter-spacing: 0.05em;
 }
 
+/* --- Interaction surfaces (choice / form / confirmation / approval) --- */
+.intentStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.intentCard {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg, 8px);
+  padding: 0.9rem 1.1rem;
+}
+
+.intentCard[data-kind="approval"] { border-left-color: var(--warn); }
+.intentCard[data-kind="error"] { border-left-color: var(--danger); }
+
+.intentAsking {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+.intentCard[data-kind="approval"] .intentAsking { color: var(--warn); }
+
+.intentTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 0.5rem;
+}
+
+.intentDesc {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+.intentOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.intentOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.intentOption:hover { border-color: var(--accent); }
+.intentOption[data-selected="true"] { border-color: var(--accent); background: var(--surface-elevated); }
+
+.intentOptionMark { flex-shrink: 0; color: var(--accent); font-size: 0.85rem; line-height: 1.4; }
+.intentOptionBody { display: flex; flex-direction: column; gap: 0.1rem; }
+.intentOptionTitle { font-size: 0.8rem; color: var(--foreground); font-weight: 500; }
+.intentOptionDesc { font-size: 0.68rem; color: var(--muted); }
+
+.intentHint { font-size: 0.65rem; color: var(--muted); margin-bottom: 0.5rem; }
+
+.intentFields { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.6rem; }
+.intentField { display: flex; flex-direction: column; gap: 0.2rem; }
+.intentFieldLabel { font-size: 0.7rem; color: var(--muted); }
+
+.intentActions { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+
 /* --- Bottom drawers (build canvas / connect / activity) --- */
 .wsDrawers {
   flex-shrink: 0;

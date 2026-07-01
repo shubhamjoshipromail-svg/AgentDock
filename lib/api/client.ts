@@ -100,6 +100,20 @@ export function resolveApproval(
   );
 }
 
+// Respond to a non-approval interaction intent (choice/form/confirmation). The
+// response is validated server-side against the intent payload.
+export function respondToIntent(
+  intentId: string,
+  response: Record<string, unknown>,
+  fallbackMessage = "Unable to submit your response."
+) {
+  return request<{ approvalRequest: PersistedApprovalRequest; run?: { runId: string; status: string } | null }>(
+    `/api/approvals/${intentId}/resolve`,
+    fallbackMessage,
+    jsonInit("POST", { response })
+  );
+}
+
 export function listActivity(fallbackMessage = "Unable to load Timeline.") {
   return request<{ activityLogs: PersistedActivityLog[] }>("/api/activity", fallbackMessage);
 }

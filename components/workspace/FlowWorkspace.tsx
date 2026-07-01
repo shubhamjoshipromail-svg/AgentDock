@@ -13,6 +13,7 @@ import {
   listFlows,
   removeToolGrant,
   resolveApproval,
+  respondToIntent,
   startRealRun,
   type DiscoveredTool,
   type PersistedConnection
@@ -23,6 +24,7 @@ import { useToast } from "../layout/Toast";
 import { Builder } from "../build/Builder";
 import { ControlPlane } from "../control/ControlPlane";
 import { ConnectPanel } from "../connect/ConnectPanel";
+import { IntentSurface } from "./IntentSurface";
 import { recommendedBuilderNodes } from "../mock-data";
 import type { BuilderNode } from "../../lib/types";
 import "./workspace.css";
@@ -54,7 +56,7 @@ type RunState = {
   status: string;
   output: string | null;
   steps: RunStep[];
-  approvals: { id: string; title: string; description: string; status: string }[];
+  approvals: { id: string; title: string; description: string; status: string; intentType?: string | null; payload?: unknown }[];
   toolCallCount: number;
   stepCount: number;
   spentCents: number;
@@ -297,6 +299,16 @@ export function FlowWorkspace({
       toast(approved ? "Approved — resuming…" : "Denied — run halted.", approved ? "ok" : "warn");
     } catch (error) {
       toast(error instanceof Error ? error.message : "Approval failed.", "danger");
+    }
+  };
+
+  const handleRespond = async (intentId: string, response: Record<string, unknown>) => {
+    try {
+      await respondToIntent(intentId, response);
+      setRun((prev) => ({ ...prev, approvals: prev.approvals.filter((a) => a.id !== intentId) }));
+      toast("Response sent — resuming…", "ok");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not submit your response.", "danger");
     }
   };
 
@@ -565,36 +577,17 @@ export function FlowWorkspace({
               </div>
             )}
 
-            {/* --- APPROVAL ACTIONS — always visible when pending, before output --- */}
+            {/* --- INTERACTION SURFACES — the agent is asking you (choice/form/
+                 confirmation) or requesting approval. One constrained renderer. --- */}
             {run.approvals.length > 0 && (
-              <div style={{
-                background: "var(--warn-bg, #78350f20)",
-                border: "2px solid var(--warn, #f59e0b)",
-                borderRadius: "var(--radius-lg, 8px)",
-                padding: "1rem 1.25rem",
-                marginBottom: "0.75rem"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-                  <strong style={{ fontSize: "0.9rem", color: "var(--warn, #f59e0b)" }}>
-                    ⚠ {run.approvals.length} action{run.approvals.length > 1 ? "s" : ""} need{run.approvals.length === 1 ? "s" : ""} your approval
-                  </strong>
-                  <Badge risk="high" />
-                </div>
+              <div className="intentStack">
                 {run.approvals.map((a) => (
-                  <div key={a.id} style={{ marginBottom: "0.5rem" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--foreground)", fontWeight: 600 }}>{a.title}</div>
-                    <div style={{ fontSize: "0.72rem", color: "var(--muted)", margin: "0.25rem 0", lineHeight: 1.4 }}>
-                      {a.description.slice(0, 200)}
-                    </div>
-                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-                      <Button variant="primary" size="sm" onClick={() => handleApprove(a.id, true)}>
-                        ✓ Approve & Resume
-                      </Button>
-                      <Button variant="danger" size="sm" onClick={() => handleApprove(a.id, false)}>
-                        ✗ Deny & Halt
-                      </Button>
-                    </div>
-                  </div>
+                  <IntentSurface
+                    key={a.id}
+                    intent={a}
+                    onRespond={handleRespond}
+                    onResolveApproval={handleApprove}
+                  />
                 ))}
               </div>
             )}
