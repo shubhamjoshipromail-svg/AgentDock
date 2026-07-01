@@ -9,7 +9,10 @@ import { prisma } from "../prisma";
 // Returns a delimited, untrusted context string (possibly empty). The returned
 // text is the EXACT bytes the step's prompt will contain for memory — a step
 // without a grant to a partition has zero bytes of it here.
-export async function buildStepContext(userId: string, agentId: string, runId: string): Promise<string> {
+// `silent` (resume) rebuilds the SAME context string for the forward model call
+// without re-emitting the memory_access events that were already recorded on the
+// first pass — resume continues forward, it does not replay what already happened.
+export async function buildStepContext(userId: string, agentId: string, runId: string, silent = false): Promise<string> {
   const grants = await prisma.memoryAccessGrant.findMany({
     where: { userId, agentId, canRead: true },
     include: { partition: { include: { memoryItems: true } } }
@@ -23,7 +26,7 @@ export async function buildStepContext(userId: string, agentId: string, runId: s
     if (grant.expiresAt && grant.expiresAt.getTime() < now) continue;
     const partition = grant.partition;
     if (grant.requiresApproval) {
-      await prisma.workflowRunEvent.create({
+      if (!silent) await prisma.workflowRunEvent.create({
         data: {
           workflowRunId: runId, userId, agentId, eventType: "memory_access",
           title: `Approval required for ${partition.name}`,
@@ -41,7 +44,7 @@ export async function buildStepContext(userId: string, agentId: string, runId: s
     blocks.push(`${tag}Memory partition "${partition.name}":\n${items || "(empty)"}`);
 
     // Immutable audit event for the read, with the grant as the authority ref.
-    await prisma.workflowRunEvent.create({
+    if (!silent) await prisma.workflowRunEvent.create({
       data: {
         workflowRunId: runId, userId, agentId, eventType: "memory_access",
         title: `Read ${partition.name}`, description: `${agentId} read memory partition ${partition.name}.`,

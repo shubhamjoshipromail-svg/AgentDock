@@ -482,7 +482,11 @@ async function runStep(
   approvedCall: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null } | null
 ): Promise<StepOutcome> {
   const toolResults = [...seedResults];
-  const memoryContext = await buildStepContext(ctx.userId, agent.agentId, ctx.runId);
+  // Resuming this step (an approved call is queued): re-read memory for the
+  // forward model call, but do NOT re-emit the memory_access events already
+  // recorded before the pause.
+  const resuming = approvedCall != null;
+  const memoryContext = await buildStepContext(ctx.userId, agent.agentId, ctx.runId, resuming);
   // Count how many times the model re-requested an already-succeeded tool. One
   // repeat earns a nudge to finalize; a second is a runaway loop and is halted —
   // otherwise a model stuck repeating an identical call burns model calls until
@@ -674,21 +678,65 @@ async function runStep(
     }
 
     if (gate.decision === "approval_required") {
-      const t2 = await totals(ctx.runId);
-      const approval = await prisma.approvalRequest.create({
-        data: {
-          userId: ctx.userId, workflowRunId: ctx.runId, agentId: agent.agentId,
-          title: `${agent.name} wants to use ${envelope.tool}`,
-          description: `${agent.name} requested ${envelope.tool} (${envelope.action}): ${gate.reason}`,
-          actionType: tool?.isExternalSend ? "email_send" : "tool_scope_change",
-          riskLevel: tool?.server.riskLevel ?? "high",
-          status: "pending", stepIndex: agent.index, scope: `${envelope.tool}:${actionKind}`,
-          metadata: {
-            toolName: envelope.tool, serverId: tool?.server.id ?? "", action: actionKind,
-            input: envelope.input, arguments: envelope.arguments ?? null, seedResults: toolResults, handoffContent
-          } as Prisma.InputJsonObject
-        }
+      const scope = `${envelope.tool}:${actionKind}`;
+      // Idempotent authorization: one approval intent per (run, step, action).
+      // A re-reached gate (forward synthesis re-emitting an already-decided call,
+      // or a re-drive) reuses the existing intent instead of ever creating a
+      // second card for the same action.
+      const existing = await prisma.approvalRequest.findFirst({
+        where: { workflowRunId: ctx.runId, stepIndex: agent.index, scope, status: { in: ["pending", "approved", "edited"] } },
+        orderBy: { requestedAt: "desc" }
       });
+      if (existing && existing.status !== "pending") {
+        // Already approved this exact action (and executed it on resume). Never
+        // re-ask, never re-run — nudge the model to finalize.
+        await appendEvent({
+          runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "action_blocked",
+          title: `Already approved: ${envelope.tool}`,
+          description: `'${envelope.tool}' was already approved and executed in this step; not re-requesting.`,
+          decision: "blocked", actorType: "system", resourceType: "tool", resourceId: tool?.server.id
+        });
+        toolResults.push(`[policy] '${envelope.tool}' was already approved and executed in this step. Do NOT request it again — produce your final answer now.`);
+        continue;
+      }
+      if (existing && existing.status === "pending") {
+        // A pending request for this action already exists — re-pause on it,
+        // never create a duplicate card.
+        await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "paused_for_approval" } });
+        return { kind: "paused", approvalId: existing.id };
+      }
+      const t2 = await totals(ctx.runId);
+      let approval;
+      try {
+        approval = await prisma.approvalRequest.create({
+          data: {
+            userId: ctx.userId, workflowRunId: ctx.runId, agentId: agent.agentId,
+            title: `${agent.name} wants to use ${envelope.tool}`,
+            description: `${agent.name} requested ${envelope.tool} (${envelope.action}): ${gate.reason}`,
+            actionType: tool?.isExternalSend ? "email_send" : "tool_scope_change",
+            riskLevel: tool?.server.riskLevel ?? "high",
+            status: "pending", stepIndex: agent.index, scope,
+            metadata: {
+              toolName: envelope.tool, serverId: tool?.server.id ?? "", action: actionKind,
+              input: envelope.input, arguments: envelope.arguments ?? null, seedResults: toolResults, handoffContent
+            } as Prisma.InputJsonObject
+          }
+        });
+      } catch (err) {
+        // DB uniqueness lost a race — an active intent for this action already
+        // exists. Re-pause on it rather than erroring or duplicating.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          const raced = await prisma.approvalRequest.findFirst({
+            where: { workflowRunId: ctx.runId, stepIndex: agent.index, scope, status: { in: ["pending", "approved", "edited"] } },
+            orderBy: { requestedAt: "desc" }
+          });
+          if (raced) {
+            await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "paused_for_approval" } });
+            return { kind: "paused", approvalId: raced.id };
+          }
+        }
+        throw err;
+      }
       await appendEvent({
         runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId, eventType: "approval_requested",
         title: `Approval required: ${envelope.tool}`, description: gate.reason, decision: "approval_required",
@@ -1006,7 +1054,10 @@ async function drive(
   for (let i = fromStep; i < ctx.agents.length; i++) {
     const agent = ctx.agents[i];
     const stepHandoff = handoff?.content ?? null;
-    if (stepHandoff) {
+    // On resume, the fromStep's handoff event was already emitted before the
+    // pause — do not re-emit it. Later steps are genuinely new.
+    const resumingThisStep = i === fromStep && firstApprovedCall != null;
+    if (stepHandoff && !resumingThisStep) {
       // ROADMAP (Chunk 10, D-1): this is a bespoke linear handoff — the previous
       // agent's output forwarded as untrusted data — NOT the A2A protocol. The DB
       // enum value `a2a_handoff` is retained to avoid a migration; real **A2A**
@@ -1206,11 +1257,16 @@ export async function resumeAfterApproval(userId: string, approvalId: string, ap
   }
 
   if (!approved) {
+    await prisma.approvalRequest.update({ where: { id: approval.id }, data: { status: "denied", resolvedAt: new Date() } });
     await appendEvent({ runId, userId, eventType: "action_blocked", title: "Approval denied", description: "Human denied the requested action. Run halted.", decision: "denied", actorType: "human" });
     await prisma.workflowRun.update({ where: { id: runId }, data: { status: "halted_error", endedAt: new Date() } });
     return { runId, status: "halted_error" };
   }
 
+  // Mark the intent resolved (idempotent with the resolve route) so the idempotent
+  // reuse check treats it as AUTHORIZED — a re-reached gate for this action never
+  // re-asks or re-runs.
+  await prisma.approvalRequest.update({ where: { id: approval.id }, data: { status: "approved", resolvedAt: new Date() } });
   await appendEvent({ runId, userId, eventType: "orchestration", title: "Approval granted", description: "Human approved the requested action. Resuming run.", decision: "approved", actorType: "human", authorityRef: approval.id });
 
   const runnable = await loadRunnable(userId, approval.workflowRun.workflowId);

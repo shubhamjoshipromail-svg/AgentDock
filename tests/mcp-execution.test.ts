@@ -300,4 +300,73 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     expect(ev.title).toContain("(failed)");
     expect(String((ev.metadata as Record<string, unknown>).toolOutput)).toMatch(/missing required argument/i);
   });
+
+  it("resume is idempotent: an approved send executes once, no duplicate approval when synthesis re-emits it", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedGmailFlow(user.id);
+    await storeGoogleOAuthToken(user.id, { accessToken: "ya29.LIVE", expiresAt: Date.now() + 3_600_000 });
+
+    // Start → the send pauses for approval.
+    llm.queue = [{ text: TOOL_ARGS("send_email", { to: "a@example.com", subject: "Hi", body: "Hello" }) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    // Resume: the model redundantly re-emits the same send, then finalizes.
+    llm.queue = [
+      { text: TOOL_ARGS("send_email", { to: "a@example.com", subject: "Hi", body: "Hello" }) },
+      { text: FINAL("The email was sent.") }
+    ];
+    await resumeAfterApproval(user.id, approval.id, true);
+
+    // The approved action executed exactly once (idempotency intact).
+    expect(callMcpToolMock).toHaveBeenCalledTimes(1);
+    // No second approval card was ever created for the same step + action.
+    expect(await prisma.approvalRequest.count({ where: { workflowRunId: run.id } })).toBe(1);
+    const finalRun = await prisma.workflowRun.findFirstOrThrow({ where: { id: run.id } });
+    expect(finalRun.status).toBe("completed");
+  });
+
+  it("resume does not re-emit the memory_access events already recorded before the pause", async () => {
+    const user = await createTestUser();
+    const { agent, workflow } = await seedGmailFlow(user.id);
+    await storeGoogleOAuthToken(user.id, { accessToken: "ya29.LIVE", expiresAt: Date.now() + 3_600_000 });
+
+    // Give the agent a readable memory partition — it is read (and recorded) on
+    // the first pass, and must NOT be re-recorded on resume.
+    const part = await prisma.memoryPartition.create({
+      data: { userId: user.id, name: "Notes", type: "workflow", sensitivityLevel: "low", description: "d", defaultAccessPolicy: "workflow_scoped" }
+    });
+    await prisma.memoryItem.create({ data: { partitionId: part.id, userId: user.id, title: "t", content: "c", sourceType: "agent", sensitivityLevel: "low" } });
+    await prisma.memoryAccessGrant.create({ data: { userId: user.id, partitionId: part.id, agentId: agent.id, canRead: true } });
+
+    llm.queue = [{ text: TOOL_ARGS("send_email", { to: "a@example.com", subject: "Hi", body: "Hello" }) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    llm.queue = [{ text: FINAL("Done.") }];
+    await resumeAfterApproval(user.id, approval.id, true);
+
+    // The partition was read once (pre-pause), not re-read/re-logged on resume.
+    const memReads = await prisma.workflowRunEvent.count({
+      where: { workflowRunId: run.id, eventType: "memory_access", memoryPartitionId: part.id }
+    });
+    expect(memReads).toBe(1);
+  });
+
+  it("deny halts the run honestly (no execution)", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedGmailFlow(user.id);
+    await storeGoogleOAuthToken(user.id, { accessToken: "ya29.LIVE", expiresAt: Date.now() + 3_600_000 });
+
+    llm.queue = [{ text: TOOL_ARGS("send_email", { to: "a@example.com", subject: "Hi", body: "Hello" }) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    const result = await resumeAfterApproval(user.id, approval.id, false);
+    expect(result?.status).toBe("halted_error");
+    expect(callMcpToolMock).not.toHaveBeenCalled();
+  });
 });
