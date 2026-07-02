@@ -48,6 +48,7 @@ export function clampPermissions(flow: ResolvedFlow): { plan: PlannedFlow; warni
     }
 
     return {
+      key: tool.key,
       serverName: tool.serverName,
       displayName: tool.displayName,
       mcpServerId: tool.mcpServerId,

@@ -18,24 +18,47 @@ export function permissionRank(permission: McpDefaultPermission): number {
 
 // ---- The raw plan the model must return (validated verbatim) ----
 
-export const flowPlanAgentSchema = z.object({
-  agentName: z.string().min(1), // resolved against the catalog later (resolve.ts)
-  role: z.string().min(3).max(120),
-  order: z.number().int().min(1),
-  rationale: z.string().min(3).max(300)
-});
+// IDENTITY RULE (Chunk 19): nothing authoritative binds by display string.
+// Tools are referenced by the Chunk-16 canonical execution identity
+// (`mcpServerKey:mcpToolName`, e.g. "search:web_search"); agents/memory by their
+// stable catalog ids ("participant identity" — the same field later binds
+// external participants by their protocol-native id). Names may accompany for
+// readability; the key/id is authoritative. Name-only stays accepted as a
+// fallback (normalized + alias matching in resolve.ts), never as the contract.
 
-export const flowPlanToolSchema = z.object({
-  serverName: z.string().min(1), // resolved against the catalog snapshot later
-  requestedPermission: z.enum(PERMISSION_VALUES),
-  rationale: z.string().min(3).max(300)
-});
+export const flowPlanAgentSchema = z
+  .object({
+    agentId: z.string().min(1).optional(), // stable catalog id — authoritative
+    agentName: z.string().min(1).optional(), // readability / legacy fallback
+    role: z.string().min(3).max(120),
+    order: z.number().int().min(1),
+    rationale: z.string().min(3).max(300)
+  })
+  .refine((agent) => Boolean(agent.agentId || agent.agentName), {
+    message: "agentId (preferred) or agentName is required"
+  });
 
-export const flowPlanMemorySchema = z.object({
-  partitionName: z.string().min(1),
-  access: z.enum(["read", "read_write"]),
-  rationale: z.string().min(3).max(300)
-});
+export const flowPlanToolSchema = z
+  .object({
+    key: z.string().min(1).optional(), // canonical `serverKey:toolName` — authoritative
+    serverName: z.string().min(1).optional(), // readability / legacy fallback
+    requestedPermission: z.enum(PERMISSION_VALUES),
+    rationale: z.string().min(3).max(300)
+  })
+  .refine((tool) => Boolean(tool.key || tool.serverName), {
+    message: "key (preferred) or serverName is required"
+  });
+
+export const flowPlanMemorySchema = z
+  .object({
+    partitionId: z.string().min(1).optional(), // stable catalog id — authoritative
+    partitionName: z.string().min(1).optional(),
+    access: z.enum(["read", "read_write"]),
+    rationale: z.string().min(3).max(300)
+  })
+  .refine((memory) => Boolean(memory.partitionId || memory.partitionName), {
+    message: "partitionId (preferred) or partitionName is required"
+  });
 
 export const flowPlanApprovalGateSchema = z.object({
   afterAgentOrder: z.number().int(),
@@ -69,18 +92,22 @@ export type FlowPlanApprovalGate = z.infer<typeof flowPlanApprovalGateSchema>;
 export type FlowPlanRisk = z.infer<typeof flowPlanRiskSchema>;
 
 // ---- The catalog snapshot sent to the model ----
-// Carries internal ids for resolution, but prompt.ts serializes only name +
-// one-line description (ids and policy ceilings never leak into the prompt).
+// Serves each entry with its AUTHORITATIVE identity: tools carry the Chunk-16
+// canonical execution key (`serverKey:toolName`); agents/memory their stable
+// catalog ids. prompt.ts enumerates `key/id — name — description`; the DB UUID
+// for tools stays internal FK plumbing (never prompted).
 
 export type CatalogSnapshotAgent = {
+  id: string; // stable catalog id — the authoritative planning reference
   name: string;
   category: string;
   description: string;
 };
 
 export type CatalogSnapshotTool = {
-  id: string; // mcpServer.id — used by convert.ts to attach by id; never prompted
-  serverName: string; // display name; the verbatim key the model must reuse
+  id: string; // mcpServer.id — internal FK for the save path; never prompted
+  key: string | null; // canonical `mcpServerKey:mcpToolName`; null = metadata-only row (not attachable)
+  serverName: string; // display name (readability; never authoritative)
   displayName: string;
   description: string;
   riskLevel: McpRiskLevel;
@@ -90,6 +117,7 @@ export type CatalogSnapshotTool = {
 };
 
 export type CatalogSnapshotMemory = {
+  id: string; // stable catalog id — the authoritative planning reference
   partitionName: string;
   domain: string;
   sensitivity: string;
@@ -110,7 +138,18 @@ export type CatalogSnapshot = {
 
 // ---- The clamped, resolved plan + response returned to the client ----
 
+// A resolved agent reference: both the stable catalog id (authoritative) and the
+// canonical name (display) are guaranteed after resolution.
+export type ResolvedPlanAgent = {
+  agentId: string;
+  agentName: string;
+  role: string;
+  order: number;
+  rationale: string;
+};
+
 export type PlannedFlowTool = {
+  key: string; // canonical `serverKey:toolName` — the one identity across plan → grant → execute
   serverName: string;
   displayName: string;
   mcpServerId: string; // resolved id for the save path
@@ -125,7 +164,7 @@ export type PlannedFlowTool = {
 export type PlannedFlow = {
   name: string;
   goal: string;
-  agents: FlowPlanAgent[];
+  agents: ResolvedPlanAgent[];
   tools: PlannedFlowTool[];
   memoryAttachments: FlowPlanMemory[];
   approvalGates: FlowPlanApprovalGate[];

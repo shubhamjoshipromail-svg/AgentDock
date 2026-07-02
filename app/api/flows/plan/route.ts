@@ -41,18 +41,18 @@ function stripFences(text: string): string {
 // adding a read-only search tool is harmless, omitting it silently breaks research.
 const RESEARCH_GOAL = /research|look ?up|find|search|summar|investigat|gather|news|compan|brief|report|discover|monitor|analy|compare/i;
 
-// A snapshot tool is "web search" if it is a verified, read-only tool whose name
-// mentions search. Matches the curated search-mcp ("Search MCP") without hardcoding
-// an id — driven by the catalog data.
-function isSearchTool(t: { serverName: string; displayName: string; recommendedPermission: string; verificationStatus: string }): boolean {
+// A snapshot tool is "web search" if it is a verified, read-only tool whose
+// CANONICAL identity mentions search (key first — display name as fallback).
+// Driven by catalog data, never a hardcoded id.
+function isSearchTool(t: { key?: string | null; serverName: string; displayName: string; recommendedPermission: string; verificationStatus: string }): boolean {
   return t.verificationStatus === "verified"
     && t.recommendedPermission === "read_only"
-    && /search/i.test(`${t.serverName} ${t.displayName}`);
+    && /search/i.test(`${t.key ?? ""} ${t.serverName} ${t.displayName}`);
 }
 
 // Ensure a research flow has a read-only search tool attached. No-op if the goal
-// is not research-y, if search is already attached, or if no search tool exists
-// in the catalog snapshot.
+// is not research-y, if search is already attached, or if no ATTACHABLE (canonical
+// key present) search tool exists in the catalog snapshot.
 function ensureSearchAttached(
   plan: ResolvedFlow,
   snapshot: CatalogSnapshot,
@@ -61,9 +61,10 @@ function ensureSearchAttached(
 ): void {
   if (!RESEARCH_GOAL.test(goal)) return;
   if (plan.tools.some((t) => isSearchTool(t))) return;
-  const search = snapshot.tools.find((t) => isSearchTool(t));
-  if (!search) return;
+  const search = snapshot.tools.find((t) => t.key && isSearchTool(t));
+  if (!search?.key) return;
   plan.tools.push({
+    key: search.key,
     serverName: search.serverName,
     displayName: search.displayName,
     mcpServerId: search.id,

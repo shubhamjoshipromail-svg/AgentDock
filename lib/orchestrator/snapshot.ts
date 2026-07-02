@@ -53,8 +53,14 @@ export async function buildCatalogSnapshot(userId: string, goal: string): Promis
     })
   ]);
 
+  // Canonical Chunk-16 execution identity: the ONE key that runs plan → resolve
+  // → save → grant → execute. null = metadata-only catalog row (not attachable).
+  const canonicalKey = (server: { mcpServerKey: string | null; mcpToolName: string | null }): string | null =>
+    server.mcpServerKey && server.mcpToolName ? `${server.mcpServerKey}:${server.mcpToolName}` : null;
+
   const verifiedTools: CatalogSnapshotTool[] = verifiedServers.map((server) => ({
     id: server.id,
+    key: canonicalKey(server),
     serverName: server.displayName,
     displayName: server.displayName,
     description: server.description,
@@ -73,6 +79,7 @@ export async function buildCatalogSnapshot(userId: string, goal: string): Promis
     .slice(0, SNAPSHOT_EXTERNAL_LIMIT)
     .map(({ server }) => ({
       id: server.id,
+      key: canonicalKey(server),
       serverName: server.displayName,
       displayName: server.displayName,
       description: server.description,
@@ -84,12 +91,14 @@ export async function buildCatalogSnapshot(userId: string, goal: string): Promis
 
   return {
     agents: agents.map((agent) => ({
+      id: agent.id,
       name: agent.name,
       category: agent.category,
       description: agent.description
     })),
     tools: [...verifiedTools, ...rankedExternal],
     memory: partitions.map((partition) => ({
+      id: partition.id,
       partitionName: partition.name,
       domain: partition.type,
       sensitivity: partition.sensitivityLevel

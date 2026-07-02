@@ -79,7 +79,10 @@ async function seedCatalog(userId: string) {
     data: {
       name: "ext-mcp", displayName: "Some External MCP", description: "Third-party outreach and roles research tool.",
       registrySource: "mcp-official-registry", registryId: "ext/mcp",
-      riskLevel: "medium", verificationStatus: "unverified", recommendedPermission: "approval_required"
+      riskLevel: "medium", verificationStatus: "unverified", recommendedPermission: "approval_required",
+      // Executable canonical identity (Chunk 19): metadata-only rows are refused
+      // at resolve time, so a plannable tool must carry a discovered identity.
+      mcpServerKey: "ext", mcpToolName: "do_thing"
     }
   });
   await prisma.memoryPartition.create({

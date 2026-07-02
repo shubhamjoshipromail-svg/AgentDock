@@ -2,39 +2,49 @@ import { describe, expect, it } from "vitest";
 
 import { clampPermissions } from "../lib/orchestrator/clamp";
 import { planToSaveInput } from "../lib/orchestrator/convert";
+import { buildExample, buildPrompt } from "../lib/orchestrator/prompt";
 import { resolvePlan } from "../lib/orchestrator/resolve";
 import type { ResolvedFlow, ResolvedTool } from "../lib/orchestrator/resolve";
 import type { CatalogSnapshot, FlowPlan } from "../lib/orchestrator/schema";
 import { createFlowSchema } from "../lib/validation/schemas";
 
+const AGENT_A_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const AGENT_B_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const MEMORY_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
 const snapshot: CatalogSnapshot = {
   agents: [
-    { name: "Job Discovery Agent", category: "Search", description: "Finds roles." },
-    { name: "Outreach Draft Agent", category: "Comms", description: "Drafts outreach." }
+    { id: AGENT_A_ID, name: "Job Discovery Agent", category: "Search", description: "Finds roles." },
+    { id: AGENT_B_ID, name: "Outreach Draft Agent", category: "Comms", description: "Drafts outreach." }
   ],
   tools: [
     {
-      id: "11111111-1111-4111-8111-111111111111",
+      id: "11111111-1111-4111-8111-111111111111", key: "search:web_search",
       serverName: "Search MCP", displayName: "Search MCP", description: "Public web search.",
-      riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only", toolNames: ["search_web"]
+      riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only", toolNames: ["web_search"]
     },
     {
-      id: "22222222-2222-4222-8222-222222222222",
+      id: "22222222-2222-4222-8222-222222222222", key: "gmail:create_draft",
       serverName: "Gmail Draft MCP", displayName: "Gmail Draft MCP", description: "Email drafts.",
       riskLevel: "high", verificationStatus: "verified", recommendedPermission: "draft_only", toolNames: ["create_draft"]
     },
     {
-      id: "33333333-3333-4333-8333-333333333333",
+      id: "33333333-3333-4333-8333-333333333333", key: "external:do_thing",
       serverName: "Some External MCP", displayName: "Some External MCP", description: "Third-party tool.",
       riskLevel: "medium", verificationStatus: "unverified", recommendedPermission: "approval_required", toolNames: []
     },
     {
-      id: "44444444-4444-4444-8444-444444444444",
+      id: "44444444-4444-4444-8444-444444444444", key: "stripe:create_payment",
       serverName: "Stripe MCP later", displayName: "Stripe MCP later", description: "Payments.",
       riskLevel: "restricted", verificationStatus: "unverified", recommendedPermission: "blocked", toolNames: []
+    },
+    {
+      id: "55555555-5555-4555-8555-555555555555", key: null,
+      serverName: "Metadata Only MCP", displayName: "Metadata Only MCP", description: "Catalog entry not yet connected.",
+      riskLevel: "medium", verificationStatus: "unverified", recommendedPermission: "approval_required", toolNames: []
     }
   ],
-  memory: [{ partitionName: "Job Search Memory", domain: "workflow", sensitivity: "medium" }],
+  memory: [{ id: MEMORY_ID, partitionName: "Job Search Memory", domain: "workflow", sensitivity: "medium" }],
   policy: { weeklyBudgetCents: 500, maxRunBudgetCents: 150, approvalMode: "approval_gated" }
 };
 
@@ -86,6 +96,72 @@ describe("resolvePlan", () => {
     ]);
   });
 
+  it("resolves 100% by canonical identity (agentId + tool key + partitionId)", () => {
+    const plan: FlowPlan = {
+      name: "Canonical flow",
+      goal: "A canonical id-driven goal.",
+      agents: [{ agentId: AGENT_A_ID, role: "Find roles", order: 1, rationale: "Finds roles." }],
+      tools: [{ key: "search:web_search", requestedPermission: "read_only", rationale: "Search." }],
+      memoryAttachments: [{ partitionId: MEMORY_ID, access: "read", rationale: "Notes." }],
+      approvalGates: [], estimatedBudgetCents: 100, risks: []
+    };
+    const { plan: resolved, warnings } = resolvePlan(plan, snapshot);
+    expect(warnings).toEqual([]);
+    expect(resolved.agents).toHaveLength(1);
+    expect(resolved.agents[0]).toMatchObject({ agentId: AGENT_A_ID, agentName: "Job Discovery Agent" });
+    expect(resolved.tools).toHaveLength(1);
+    expect(resolved.tools[0]).toMatchObject({ key: "search:web_search", mcpServerId: "11111111-1111-4111-8111-111111111111" });
+    expect(resolved.memoryAttachments[0]).toMatchObject({ partitionId: MEMORY_ID, partitionName: "Job Search Memory" });
+  });
+
+  it("renaming a tool's displayName does NOT break planning (the Chunk-16-rename scenario)", () => {
+    // The catalog row was renamed — display strings changed, canonical key did not.
+    const renamed: CatalogSnapshot = {
+      ...snapshot,
+      tools: snapshot.tools.map((t) =>
+        t.key === "search:web_search" ? { ...t, serverName: "Web Search (renamed)", displayName: "Web Search (renamed)" } : t
+      )
+    };
+    const plan: FlowPlan = {
+      name: "Rename flow", goal: "Rename resilience goal.",
+      agents: [{ agentId: AGENT_A_ID, role: "Find", order: 1, rationale: "Finds." }],
+      tools: [{ key: "search:web_search", requestedPermission: "read_only", rationale: "Search." }],
+      memoryAttachments: [], approvalGates: [], estimatedBudgetCents: 100, risks: []
+    };
+    const { plan: resolved, warnings } = resolvePlan(plan, renamed);
+    expect(warnings).toEqual([]);
+    expect(resolved.tools[0].key).toBe("search:web_search");
+    expect(resolved.tools[0].displayName).toBe("Web Search (renamed)");
+  });
+
+  it("normalized alias fallback matches legacy name forms (case/punctuation-insensitive)", () => {
+    const plan: FlowPlan = {
+      name: "Alias flow", goal: "Alias fallback goal here.",
+      agents: [{ agentName: "job discovery agent", role: "Find", order: 1, rationale: "Finds." }],
+      tools: [
+        { serverName: "web_search", requestedPermission: "read_only", rationale: "By tool name." },
+        { serverName: "GMAIL: create-draft?", requestedPermission: "draft_only", rationale: "Messy name." }
+      ],
+      memoryAttachments: [], approvalGates: [], estimatedBudgetCents: 100, risks: []
+    };
+    const { plan: resolved, warnings } = resolvePlan(plan, snapshot);
+    expect(warnings).toEqual([]);
+    expect(resolved.agents[0].agentId).toBe(AGENT_A_ID);
+    expect(resolved.tools.map((t) => t.key).sort()).toEqual(["gmail:create_draft", "search:web_search"]);
+  });
+
+  it("a metadata-only catalog row (no canonical key) is refused at resolve time, not deferred to save", () => {
+    const plan: FlowPlan = {
+      name: "Metadata flow", goal: "Metadata-only tool goal.",
+      agents: [{ agentId: AGENT_A_ID, role: "Find", order: 1, rationale: "Finds." }],
+      tools: [{ serverName: "Metadata Only MCP", requestedPermission: "read_only", rationale: "Not connected." }],
+      memoryAttachments: [], approvalGates: [], estimatedBudgetCents: 100, risks: []
+    };
+    const { plan: resolved, warnings } = resolvePlan(plan, snapshot);
+    expect(resolved.tools).toHaveLength(0);
+    expect(warnings.some((w) => w.includes("catalog metadata only"))).toBe(true);
+  });
+
   it("re-points an approval gate whose target agent was dropped", () => {
     const plan: FlowPlan = {
       name: "Gate flow", goal: "Gate test goal here.",
@@ -103,7 +179,7 @@ describe("resolvePlan", () => {
 
 function resolvedTool(partial: Partial<ResolvedTool> & Pick<ResolvedTool, "requestedPermission">): ResolvedTool {
   return {
-    serverName: "T", displayName: "T", mcpServerId: "00000000-0000-4000-8000-000000000000",
+    key: "t:do_thing", serverName: "T", displayName: "T", mcpServerId: "00000000-0000-4000-8000-000000000000",
     recommendedPermission: "read_only", riskLevel: "low", verificationStatus: "verified", rationale: "because",
     ...partial
   };
@@ -230,5 +306,34 @@ describe("planToSaveInput", () => {
 
     expect(createFlowSchema.safeParse(payload).success).toBe(true);
     expect(payload.tools?.[0].defaultPermission).toBe("blocked");
+  });
+});
+
+describe("prompt integrity (Chunk 19: plan by canonical identity)", () => {
+  it("the emitted prompt enumerates canonical keys/ids and requires them in the contract", () => {
+    const { system, user } = buildPrompt("Research something interesting.", snapshot);
+    // Catalog lines lead with the authoritative identity.
+    expect(user).toContain("key=search:web_search");
+    expect(user).toContain(`id=${AGENT_A_ID}`);
+    expect(user).toContain(`id=${MEMORY_ID}`);
+    // Metadata-only rows are marked non-selectable.
+    expect(user).toContain("not connectable yet");
+    // The response contract demands the key/id fields.
+    expect(system).toContain("\"agentId\"");
+    expect(system).toContain("\"key\"");
+    expect(system).toContain("AUTHORITATIVE");
+  });
+
+  it("the example is generated from the live snapshot — it never teaches a dead name", () => {
+    const example = buildExample(snapshot);
+    // Uses a real agent id and a real canonical key from THIS snapshot.
+    expect(example).toContain(AGENT_A_ID);
+    expect(example).toContain("search:web_search");
+
+    // With an empty catalog, placeholders are unmistakably not real identifiers.
+    const empty = buildExample({ agents: [], tools: [], memory: [], policy: snapshot.policy });
+    expect(empty).toContain("<agent-id-from-AGENTS>");
+    expect(empty).toContain("<key-from-TOOLS>");
+    expect(empty).not.toContain("Search MCP");
   });
 });

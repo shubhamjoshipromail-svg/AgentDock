@@ -130,7 +130,7 @@ export function plannedFlowToGraph(plan: PlannedFlow): GraphInput {
     goal: plan.goal,
     agents: plan.agents.map((a) => ({ id: `agent-${a.order}-${a.agentName}`, name: a.agentName, subtitle: a.role, order: a.order })),
     tools: plan.tools.map((t) => ({ id: `tool-${t.mcpServerId}`, name: t.displayName, subtitle: t.effectivePermission.replaceAll("_", " "), tone: riskTone(t.riskLevel) })),
-    memory: plan.memoryAttachments.map((m) => ({ id: `mem-${m.partitionName}`, name: m.partitionName, subtitle: m.access.replaceAll("_", " ") })),
+    memory: plan.memoryAttachments.map((m) => ({ id: `mem-${m.partitionId ?? m.partitionName}`, name: m.partitionName ?? m.partitionId ?? "memory", subtitle: m.access.replaceAll("_", " ") })),
     gates: plan.approvalGates.map((g, i) => ({ id: `gate-${i}`, afterOrder: g.afterAgentOrder, label: g.actionType }))
   };
 }

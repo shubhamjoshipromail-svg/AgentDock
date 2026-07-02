@@ -18,6 +18,8 @@ export function planToSaveInput(plan: PlannedFlow): CreateFlowInput {
     maxRunBudgetCents,
     approvalMode: plan.approvalGates.length > 0 ? "approval_gated" : "manual",
     agents: plan.agents.map((agent) => ({
+      // Bind by stable catalog id (authoritative); name accompanies for display.
+      agentId: agent.agentId,
       agentName: agent.agentName,
       roleInWorkflow: agent.role,
       routeOrder: agent.order,
@@ -28,7 +30,9 @@ export function planToSaveInput(plan: PlannedFlow): CreateFlowInput {
       purpose: tool.rationale,
       defaultPermission: tool.effectivePermission
     })),
-    memory: plan.memoryAttachments.map((attachment) => ({ partitionName: attachment.partitionName })),
+    memory: plan.memoryAttachments
+      .map((attachment) => ({ partitionName: attachment.partitionName ?? "" }))
+      .filter((attachment) => attachment.partitionName.length > 0),
     // Persist the plan so the future visual builder can restore it.
     layout: { source: "orchestrator", plan: plan as unknown as Record<string, unknown> }
   };
