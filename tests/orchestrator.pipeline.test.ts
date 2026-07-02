@@ -70,14 +70,20 @@ describe("resolvePlan", () => {
       risks: []
     };
 
-    const { plan: resolved, warnings } = resolvePlan(plan, snapshot);
+    const { plan: resolved, failures } = resolvePlan(plan, snapshot);
     expect(resolved.agents).toHaveLength(1);
     expect(resolved.agents[0].agentName).toBe("Job Discovery Agent");
     expect(resolved.tools).toHaveLength(1);
     expect(resolved.memoryAttachments).toHaveLength(1);
-    expect(warnings.some((w) => w.includes("Ghost Agent"))).toBe(true);
-    expect(warnings.some((w) => w.includes("Made Up MCP"))).toBe(true);
-    expect(warnings.some((w) => w.includes("Fake Memory"))).toBe(true);
+    // Misses are FIRST-CLASS FAILURES with closest-match suggestions — never
+    // just warning strings.
+    expect(failures.map((f) => [f.kind, f.asked])).toEqual([
+      ["agent", "Ghost Agent"],
+      ["tool", "Made Up MCP"],
+      ["memory", "Fake Memory"]
+    ]);
+    const toolFailure = failures.find((f) => f.kind === "tool");
+    expect(toolFailure?.closestMatches.length).toBeGreaterThan(0);
   });
 
   it("re-normalizes agent order to contiguous 1..n preserving relative order", () => {
@@ -157,9 +163,9 @@ describe("resolvePlan", () => {
       tools: [{ serverName: "Metadata Only MCP", requestedPermission: "read_only", rationale: "Not connected." }],
       memoryAttachments: [], approvalGates: [], estimatedBudgetCents: 100, risks: []
     };
-    const { plan: resolved, warnings } = resolvePlan(plan, snapshot);
+    const { plan: resolved, failures } = resolvePlan(plan, snapshot);
     expect(resolved.tools).toHaveLength(0);
-    expect(warnings.some((w) => w.includes("catalog metadata only"))).toBe(true);
+    expect(failures.some((f) => f.kind === "tool" && f.reason.includes("catalog metadata only"))).toBe(true);
   });
 
   it("re-points an approval gate whose target agent was dropped", () => {

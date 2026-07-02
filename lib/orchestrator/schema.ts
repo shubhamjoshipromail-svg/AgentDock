@@ -181,8 +181,27 @@ export type PlanMeta = {
   durationMs: number;
 };
 
+// The resolution report — first-class, rendered by the UI BEFORE the user saves:
+// what was attached, what was clamped/adjusted, and what FAILED to resolve
+// (prominently, never a footnote). No path exists from "model asked for X" to
+// "X quietly absent."
+export type ResolutionReportEntry = {
+  kind: "agent" | "tool" | "memory";
+  asked: string;
+  reason: string;
+  closestMatches: string[];
+};
+
+export type ResolutionReport = {
+  attached: { kind: "agent" | "tool" | "memory"; id: string; name: string }[];
+  clamped: string[]; // permission clamps + other visible adjustments
+  failed: ResolutionReportEntry[];
+  replanned: boolean; // one automatic feedback re-plan was attempted
+};
+
 export type PlannedFlowResponse = {
   plan: PlannedFlow;
   warnings: string[];
+  report: ResolutionReport;
   planMeta: PlanMeta;
 };

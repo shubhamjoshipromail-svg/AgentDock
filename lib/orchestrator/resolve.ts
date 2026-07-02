@@ -33,6 +33,16 @@ export type ResolvedFlow = {
   risks: FlowPlan["risks"];
 };
 
+// A first-class resolution failure: something the plan asked for that did not
+// resolve. NEVER a quiet omission — the route feeds these back to the model for
+// one automatic re-plan, then surfaces the remainder loudly to the user.
+export type ResolutionFailure = {
+  kind: "agent" | "tool" | "memory";
+  asked: string; // what the model asked for (key/id/name as emitted)
+  reason: string;
+  closestMatches: string[]; // canonical keys/names the model likely meant
+};
+
 // IDENTITY DISCIPLINE: resolution binds by canonical key/id FIRST (the value the
 // model was told to emit). Name matching survives only as a fallback and is
 // normalized (case/punctuation-insensitive) over an alias set derived from the
@@ -101,20 +111,50 @@ function findPartition(snapshot: CatalogSnapshot, ref: { partitionId?: string; p
   return undefined;
 }
 
+// Rank catalog candidates by normalized-token similarity to what was asked —
+// cheap, dependency-free "did you mean" for the failure report.
+function closestMatches(asked: string, candidates: string[], limit = 3): string[] {
+  const wanted = normalizeRef(asked);
+  if (!wanted) return candidates.slice(0, limit);
+  return candidates
+    .map((candidate) => {
+      const c = normalizeRef(candidate);
+      let score = 0;
+      if (c.includes(wanted) || wanted.includes(c)) score += 2;
+      // Shared 3-gram overlap as a crude similarity signal.
+      for (let i = 0; i + 3 <= wanted.length; i++) if (c.includes(wanted.slice(i, i + 3))) score += 1;
+      return { candidate, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .filter((entry) => entry.score > 0)
+    .slice(0, limit)
+    .map((entry) => entry.candidate);
+}
+
 // Resolves every plan reference against the catalog snapshot by canonical
 // identity (with normalized-name fallback), re-normalizes agent order to a
-// contiguous 1..n, and re-points approval gates. Misses are recorded as warnings
-// (Phase 2 upgrades them to loud resolution failures). Never auto-creates
-// anything — plan-time references must already exist.
-export function resolvePlan(plan: FlowPlan, snapshot: CatalogSnapshot): { plan: ResolvedFlow; warnings: string[] } {
+// contiguous 1..n, and re-points approval gates. Misses are FIRST-CLASS
+// FAILURES (never quiet omissions); degradations (gate re-points) stay
+// warnings. Never auto-creates anything — plan-time references must exist.
+export function resolvePlan(
+  plan: FlowPlan,
+  snapshot: CatalogSnapshot
+): { plan: ResolvedFlow; warnings: string[]; failures: ResolutionFailure[] } {
   const warnings: string[] = [];
+  const failures: ResolutionFailure[] = [];
 
   // --- Agents: resolve by id (fallback normalized name), then re-normalize order ---
   const matchedAgents = plan.agents
     .map((agent) => ({ agent, match: findAgent(snapshot, agent) }))
     .filter((entry) => {
       if (!entry.match) {
-        warnings.push(`Dropped agent "${entry.agent.agentName ?? entry.agent.agentId}" — not in your agent catalog.`);
+        const asked = entry.agent.agentName ?? entry.agent.agentId ?? "(unnamed)";
+        failures.push({
+          kind: "agent",
+          asked,
+          reason: "not in your agent catalog",
+          closestMatches: closestMatches(asked, snapshot.agents.map((a) => a.name))
+        });
         return false;
       }
       return true;
@@ -134,19 +174,34 @@ export function resolvePlan(plan: FlowPlan, snapshot: CatalogSnapshot): { plan: 
   }));
 
   // --- Tools: resolve by canonical key (fallback normalized aliases) ---
+  // Suggestions draw from canonical keys AND display names (a hallucinated
+  // display-ish name still gets a useful "did you mean" pointing at a real key).
+  const attachableKeys = snapshot.tools
+    .filter((t) => t.key)
+    .flatMap((t) => [t.key as string, `${t.key} (${t.displayName})`]);
   const tools: ResolvedTool[] = [];
   for (const tool of plan.tools) {
     const asked = tool.key ?? tool.serverName ?? "(unnamed)";
     const match = findTool(snapshot, tool);
     if (!match) {
-      warnings.push(`Dropped tool "${asked}" — not in the available tool catalog.`);
+      failures.push({
+        kind: "tool",
+        asked,
+        reason: "not in the available tool catalog",
+        closestMatches: closestMatches(asked, attachableKeys)
+      });
       continue;
     }
     if (!match.key) {
       // Catalog metadata only (no Chunk-16 executable identity): it cannot be
       // attached or granted, so resolving it would only defer the failure to
       // save time. Refuse it here, honestly.
-      warnings.push(`Dropped tool "${asked}" — "${match.displayName}" is catalog metadata only (connect & discover it first).`);
+      failures.push({
+        kind: "tool",
+        asked,
+        reason: `"${match.displayName}" is catalog metadata only — connect & discover it first`,
+        closestMatches: closestMatches(asked, attachableKeys)
+      });
       continue;
     }
     tools.push({
@@ -168,7 +223,12 @@ export function resolvePlan(plan: FlowPlan, snapshot: CatalogSnapshot): { plan: 
     const asked = attachment.partitionName ?? attachment.partitionId ?? "(unnamed)";
     const match = findPartition(snapshot, attachment);
     if (!match) {
-      warnings.push(`Dropped memory "${asked}" — not one of your memory partitions.`);
+      failures.push({
+        kind: "memory",
+        asked,
+        reason: "not one of your memory partitions",
+        closestMatches: closestMatches(asked, snapshot.memory.map((m) => m.partitionName))
+      });
       continue;
     }
     memoryAttachments.push({ ...attachment, partitionId: match.id, partitionName: match.partitionName });
@@ -207,6 +267,7 @@ export function resolvePlan(plan: FlowPlan, snapshot: CatalogSnapshot): { plan: 
       estimatedBudgetCents: plan.estimatedBudgetCents,
       risks: plan.risks
     },
-    warnings
+    warnings,
+    failures
   };
 }

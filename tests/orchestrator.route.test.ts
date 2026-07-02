@@ -159,6 +159,50 @@ describe("POST /api/flows/plan", () => {
     expect(data.planMeta.model).toBe("openai/gpt-4.1");
   });
 
+  it("a plan with one bad reference triggers exactly one feedback re-plan and then resolves", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    const badRef = JSON.stringify({
+      ...JSON.parse(VALID_PLAN_JSON),
+      tools: [{ key: "nonexistent:tool", requestedPermission: "read_only", rationale: "Hallucinated key." }]
+    });
+    llmState.queue = [
+      { text: badRef, costCents: 2 },
+      { text: VALID_PLAN_JSON, costCents: 2 } // corrected after failure feedback
+    ];
+
+    const res = await planFlow(planRequest("Find AI roles and draft outreach for approval."));
+    expect(res.status).toBe(200);
+    expect(llmState.calls).toBe(2); // exactly one re-plan
+    const data = await res.json();
+    expect(data.report.replanned).toBe(true);
+    expect(data.report.failed).toEqual([]);
+    expect(data.plan.tools).toHaveLength(1); // the corrected reference resolved
+  });
+
+  it("an unresolvable reference after the re-plan surfaces as a visible error — never a silent drop", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    const badRef = JSON.stringify({
+      ...JSON.parse(VALID_PLAN_JSON),
+      tools: [{ key: "nonexistent:tool", requestedPermission: "read_only", rationale: "Hallucinated key." }]
+    });
+    llmState.queue = [
+      { text: badRef, costCents: 2 },
+      { text: badRef, costCents: 2 } // the model repeats its mistake
+    ];
+
+    const res = await planFlow(planRequest("Find AI roles and draft outreach for approval."));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.report.failed).toHaveLength(1);
+    expect(data.report.failed[0]).toMatchObject({ kind: "tool", asked: "nonexistent:tool" });
+    // Mirrored into warnings for older clients — visible either way.
+    expect(data.warnings.some((w: string) => w.includes("nonexistent:tool"))).toBe(true);
+  });
+
   it("retries once on invalid-then-valid output and marks retried", async () => {
     const user = await createTestUser();
     setCurrentUser(user);

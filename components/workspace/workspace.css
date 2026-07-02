@@ -407,6 +407,44 @@
   letter-spacing: 0.05em;
 }
 
+/* --- Plan resolution report (attached / clamped / failed) --- */
+.planReport {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-lg, 8px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
+}
+.planReport[data-failed="true"] { border-left-color: var(--danger); }
+
+.planReportHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 0.4rem;
+}
+.planReport[data-failed="true"] .planReportHead { color: var(--danger); }
+
+.planReportClose {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.planReportRow { color: var(--foreground); padding: 0.15rem 0; line-height: 1.45; }
+.planReportRow[data-kind="failed"] { color: var(--danger); }
+.planReportRow[data-kind="clamped"] { color: var(--warn); }
+.planReportRow[data-kind="attached"] { color: var(--muted); }
+.planReportHint { color: var(--muted); }
+
 /* --- Interaction surfaces (choice / form / confirmation / approval) --- */
 .intentStack {
   display: flex;

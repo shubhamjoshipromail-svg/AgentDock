@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { isTerminalRunStatus } from "../../lib/runs/terminal";
+import type { ResolutionReport } from "../../lib/orchestrator/schema";
 
 import {
   attachToolToFlow,
@@ -98,6 +99,9 @@ export function FlowWorkspace({
   // Describe-to-build
   const [describeText, setDescribeText] = useState("");
   const [planning, setPlanning] = useState(false);
+  // The resolution report from the last plan: what was attached, clamped, or
+  // FAILED to resolve — shown before anything saves, never a footnote.
+  const [planReport, setPlanReport] = useState<ResolutionReport | null>(null);
 
   // Builder helpers
   const recommendBuilderStack = () => {
@@ -343,11 +347,24 @@ export function FlowWorkspace({
   const handleDescribe = async () => {
     if (!describeText.trim()) return toast("Describe what you want done first.", "warn");
     setPlanning(true);
+    setPlanReport(null);
     try {
       const { planFlow } = await import("../../lib/api/client");
       const { planToSaveInput } = await import("../../lib/orchestrator/convert");
       const { saveFlow } = await import("../../lib/api/client");
       const data = await planFlow(describeText);
+      const report = data.report ?? { attached: [], clamped: [], failed: [], replanned: false };
+      setPlanReport(report);
+
+      // No silent drops: unresolved references block the save, loudly.
+      if (report.failed.length > 0) {
+        toast(`Plan has ${report.failed.length} unresolved reference${report.failed.length > 1 ? "s" : ""} — review before saving.`, "danger");
+        return;
+      }
+      if (data.plan.agents.length === 0) {
+        toast("The plan resolved zero agents — nothing to save. Rephrase your goal.", "danger");
+        return;
+      }
       const saveResult = await saveFlow(planToSaveInput(data.plan), "Flow save failed.");
       toast("Flow planned and saved. Opening it now.", "ok");
       await loadFlows();
@@ -537,6 +554,33 @@ export function FlowWorkspace({
 
       {/* CENTER: This run (output + live process + inline approval) */}
       <div className="workspaceCenter">
+        {/* PLAN RESOLUTION REPORT — attached / clamped / FAILED, before saving.
+            Failures are prominent errors, never a footnote; a failed plan does
+            not save. */}
+        {planReport && (planReport.failed.length > 0 || planReport.clamped.length > 0) && (
+          <div className="planReport" data-failed={planReport.failed.length > 0}>
+            <div className="planReportHead">
+              {planReport.failed.length > 0
+                ? `⚠ Plan not saved — ${planReport.failed.length} reference${planReport.failed.length > 1 ? "s" : ""} could not be resolved${planReport.replanned ? " (after an automatic re-plan)" : ""}`
+                : "Plan adjustments"}
+              <button className="planReportClose" onClick={() => setPlanReport(null)}>×</button>
+            </div>
+            {planReport.failed.map((f, i) => (
+              <div className="planReportRow" data-kind="failed" key={`f-${i}`}>
+                <strong>{f.kind}</strong> “{f.asked}” — {f.reason}
+                {f.closestMatches.length > 0 && <span className="planReportHint"> Did you mean: {f.closestMatches.join(", ")}?</span>}
+              </div>
+            ))}
+            {planReport.clamped.map((c, i) => (
+              <div className="planReportRow" data-kind="clamped" key={`c-${i}`}>{c}</div>
+            ))}
+            {planReport.attached.length > 0 && (
+              <div className="planReportRow" data-kind="attached">
+                Attached: {planReport.attached.map((a) => a.name).join(", ")}
+              </div>
+            )}
+          </div>
+        )}
         {flow ? (
           <>
             <div className="runColHead">

@@ -260,8 +260,35 @@ export async function POST(request: Request) {
     );
   }
 
-  // --- Resolve unresolvable references, then clamp permissions server-side ---
-  const resolved = resolvePlan(attempt.data, snapshot);
+  // --- Resolve by canonical identity. Misses are NEVER silent drops: one
+  // automatic feedback re-plan, then any remainder is surfaced loudly. ---
+  let resolved = resolvePlan(attempt.data, snapshot);
+  let replanned = false;
+
+  if (resolved.failures.length > 0 && totalCostCents <= maxCostPerCall * 2) {
+    replanned = true;
+    const failureLines = resolved.failures
+      .map((f) => `- ${f.kind} "${f.asked}": ${f.reason}${f.closestMatches.length ? ` (did you mean: ${f.closestMatches.join(", ")}?)` : ""}`)
+      .join("\n");
+    const replanPrompt = `${userPrompt}\n\nYOUR PREVIOUS PLAN HAD UNRESOLVABLE REFERENCES:\n${failureLines}\nCorrect the plan using ONLY the exact ids/keys from the catalog above. If a capability is genuinely unavailable in the catalog, plan without it. Respond with ONLY corrected JSON.`;
+    try {
+      const replanCall = await callProvider(replanPrompt);
+      totalCostCents += replanCall.costCents;
+      inputTokens += replanCall.usage.inputTokens;
+      outputTokens += replanCall.usage.outputTokens;
+      const replanAttempt = checkAndParse(replanCall.text);
+      if (replanAttempt.ok) {
+        const reResolved = resolvePlan(replanAttempt.data, snapshot);
+        // Adopt the re-plan only if it is strictly better (fewer failures).
+        if (reResolved.failures.length < resolved.failures.length) {
+          resolved = reResolved;
+        }
+      }
+    } catch {
+      // Re-plan call failed (timeout/provider) — keep the first resolution and
+      // surface its failures; never lose the plan we already paid for.
+    }
+  }
 
   // Auto-attach web search (read_only) for research goals so a flow can never
   // silently lack the ability to research (issue: some flows could research,
@@ -270,6 +297,8 @@ export async function POST(request: Request) {
 
   const clamped = clampPermissions(resolved.plan);
   warnings.push(...resolved.warnings, ...clamped.warnings);
+  // Failures also mirror into warnings so older clients still see them.
+  warnings.push(...resolved.failures.map((f) => `FAILED ${f.kind} "${f.asked}": ${f.reason}`));
 
   // Convert availability check: confirm the plan maps onto the real save payload.
   if (!createFlowSchema.safeParse(planToSaveInput(clamped.plan)).success) {
@@ -278,12 +307,23 @@ export async function POST(request: Request) {
 
   await logPlan(
     "Flow plan generated",
-    `Planned ${clamped.plan.agents.length} agents and ${clamped.plan.tools.length} tools.`
+    `Planned ${clamped.plan.agents.length} agents and ${clamped.plan.tools.length} tools.`,
+    { resolutionFailures: resolved.failures.length, replanned }
   );
 
   const response: PlannedFlowResponse = {
     plan: clamped.plan,
     warnings,
+    report: {
+      attached: [
+        ...clamped.plan.agents.map((a) => ({ kind: "agent" as const, id: a.agentId, name: a.agentName })),
+        ...clamped.plan.tools.map((t) => ({ kind: "tool" as const, id: t.key, name: t.displayName })),
+        ...clamped.plan.memoryAttachments.map((m) => ({ kind: "memory" as const, id: m.partitionId ?? "", name: m.partitionName ?? "" }))
+      ],
+      clamped: clamped.warnings,
+      failed: resolved.failures,
+      replanned
+    },
     planMeta: {
       provider: provider.name,
       model: provider.model,
