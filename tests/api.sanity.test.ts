@@ -86,6 +86,19 @@ describe("API sanity (regression net)", () => {
     expect(stored?.workflowAgents).toHaveLength(2);
   });
 
+  it("refuses to save a workflow with zero agents (no more empty-shell flows)", async () => {
+    for (const agents of [[], undefined]) {
+      const res = await createWorkflow(
+        jsonRequest("http://localhost/api/workflows", { ...workflowPayload, name: "Empty Shell", agents })
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.message).toMatch(/no agents/i);
+    }
+    // Nothing persisted.
+    expect(await prisma.workflow.count({ where: { name: "Empty Shell" } })).toBe(0);
+  });
+
   it("POST /api/workflow-runs/simulate creates a run with events and approvals", async () => {
     const workflow = await saveWorkflowWithApprovalTool();
 

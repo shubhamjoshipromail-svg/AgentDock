@@ -407,6 +407,18 @@
   letter-spacing: 0.05em;
 }
 
+/* --- Flow repair state (zero-agent shells from failed plans) --- */
+.flowRepair {
+  margin: 0.75rem 1rem;
+  padding: 0.75rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+}
+.flowRepair strong { color: var(--danger); display: block; margin-bottom: 0.3rem; }
+.flowRepair p { color: var(--muted); margin: 0 0 0.5rem; line-height: 1.5; }
+
 /* --- Plan resolution report (attached / clamped / failed) --- */
 .planReport {
   background: var(--surface-elevated);

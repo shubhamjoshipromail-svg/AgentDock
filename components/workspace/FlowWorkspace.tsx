@@ -366,7 +366,17 @@ export function FlowWorkspace({
         return;
       }
       const saveResult = await saveFlow(planToSaveInput(data.plan), "Flow save failed.");
-      toast("Flow planned and saved. Opening it now.", "ok");
+      const skipped = [
+        ...(saveResult.skippedAgents ?? []),
+        ...(saveResult.skippedTools ?? []),
+        ...((saveResult as { skippedMemory?: string[] }).skippedMemory ?? [])
+      ];
+      if (skipped.length > 0) {
+        // A partial save is an error the user must see — never a footnote.
+        toast(`Saved, but ${skipped.length} reference${skipped.length > 1 ? "s were" : " was"} skipped: ${skipped.join(", ")}. Review before running.`, "danger");
+      } else {
+        toast("Flow planned and saved. Opening it now.", "ok");
+      }
       await loadFlows();
       if (onFlowChange) onFlowChange(saveResult.workflow?.id ?? null);
       if (saveResult.workflow?.id) loadFlow(saveResult.workflow.id);
@@ -405,7 +415,11 @@ export function FlowWorkspace({
             onChange={(e) => { if (onFlowChange) onFlowChange(e.target.value || null); if (e.target.value) loadFlow(e.target.value); }}
           >
             <option value="">Select a flow…</option>
-            {flows.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            {flows.map((f) => (
+              <option key={f.id} value={f.id}>
+                {(f.workflowAgents?.length ?? 0) === 0 ? `⚠ ${f.name} (needs re-plan)` : f.name}
+              </option>
+            ))}
           </select>
           {flow && <span className="wsFlowName">{flow.name}</span>}
         </div>
@@ -447,6 +461,18 @@ export function FlowWorkspace({
           <h2>Participants</h2>
           <span style={{ fontSize: "0.7rem", color: "var(--muted)" }}>{participants.length} agent{participants.length !== 1 ? "s" : ""}</span>
         </div>
+
+        {/* REPAIR STATE: a zero-agent flow (saved by the old buggy plan path)
+            can never run — say so and offer the repair, not a mystery error. */}
+        {flow && participants.length === 0 && (
+          <div className="flowRepair">
+            <strong>⚠ This flow has no agents — it needs a re-plan.</strong>
+            <p>It was saved from a failed plan and can never run. Describe the goal again above (Plan), or add agents on the build canvas.</p>
+            <Button variant="secondary" size="sm" onClick={() => { setDescribeText(flow.goal ?? ""); setOpenDrawer(null); }}>
+              ↺ Re-plan from this goal
+            </Button>
+          </div>
+        )}
 
         {participants.map((p) => {
           const activeTools = p.tools.filter((t) => !t.revoked);

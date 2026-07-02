@@ -46,7 +46,7 @@ export async function createQueuedRun(
 ): Promise<{ ok: true; result: RunResult } | { ok: false; status: number; message: string }> {
   const runnable = await loadRunnable(userId, workflowId);
   if (!runnable) return { ok: false, status: 404, message: "Flow not found." };
-  if (runnable.agents.length === 0) return { ok: false, status: 400, message: "Flow has no agents to run." };
+  if (runnable.agents.length === 0) return { ok: false, status: 400, message: "This flow has no agents — it was likely saved from a failed plan. Re-plan it (describe the goal again) or add agents on the build canvas." };
 
   const run = await prisma.$transaction(async (tx) => {
     const created = await tx.workflowRun.create({

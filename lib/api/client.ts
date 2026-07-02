@@ -68,7 +68,13 @@ export function listFlows(fallbackMessage = "Unable to load saved Flows.") {
 }
 
 export function saveFlow(payload: SaveFlowInput, fallbackMessage = "Flow save failed.") {
-  return request<{ workflow: PersistedWorkflow; skippedAgents: string[] }>(
+  return request<{
+    workflow: PersistedWorkflow;
+    skippedAgents: string[];
+    skippedTools?: string[];
+    skippedMemory?: string[];
+    message?: string;
+  }>(
     "/api/workflows",
     fallbackMessage,
     jsonInit("POST", payload)

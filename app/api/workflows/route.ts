@@ -311,7 +311,30 @@ export async function POST(request: Request) {
 
   const body = parsed.data;
 
+  // SAVE INTEGRITY (Chunk 19): a flow with zero resolved agents cannot be saved
+  // — it could never run ("Flow has no agents to run" shells). Refused up front
+  // with the resolution detail, before anything persists.
+  const resolvedAgents = await resolveWorkflowAgents(user.id, body.agents ?? []);
+  if (resolvedAgents.workflowAgents.length === 0) {
+    return NextResponse.json(
+      {
+        message: "This flow has no agents, so it could never run. Add at least one agent (or re-plan the goal) before saving.",
+        skippedAgents: resolvedAgents.skippedAgents
+      },
+      { status: 400 }
+    );
+  }
+
   const { workflow, skippedAgents, skippedTools, skippedMemory } = await saveWorkflowForUser(user.id, body);
 
-  return NextResponse.json({ workflow, skippedAgents, skippedTools, skippedMemory }, { status: 201 });
+  // Silently-partial saves are errors the UI must show, not footnotes.
+  const skippedTotal = skippedAgents.length + skippedTools.length + skippedMemory.length;
+  const partialMessage = skippedTotal > 0
+    ? `Saved with ${skippedTotal} unresolved reference${skippedTotal > 1 ? "s" : ""} skipped — review before running.`
+    : undefined;
+
+  return NextResponse.json(
+    { workflow, skippedAgents, skippedTools, skippedMemory, ...(partialMessage ? { message: partialMessage } : {}) },
+    { status: 201 }
+  );
 }
