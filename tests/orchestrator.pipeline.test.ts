@@ -21,27 +21,27 @@ const snapshot: CatalogSnapshot = {
     {
       id: "11111111-1111-4111-8111-111111111111", key: "search:web_search",
       serverName: "Search MCP", displayName: "Search MCP", description: "Public web search.",
-      riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only", toolNames: ["web_search"]
+      isExternalSend: false, riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only", toolNames: ["web_search"]
     },
     {
       id: "22222222-2222-4222-8222-222222222222", key: "gmail:create_draft",
       serverName: "Gmail Draft MCP", displayName: "Gmail Draft MCP", description: "Email drafts.",
-      riskLevel: "high", verificationStatus: "verified", recommendedPermission: "draft_only", toolNames: ["create_draft"]
+      isExternalSend: false, riskLevel: "high", verificationStatus: "verified", recommendedPermission: "draft_only", toolNames: ["create_draft"]
     },
     {
       id: "33333333-3333-4333-8333-333333333333", key: "external:do_thing",
       serverName: "Some External MCP", displayName: "Some External MCP", description: "Third-party tool.",
-      riskLevel: "medium", verificationStatus: "unverified", recommendedPermission: "approval_required", toolNames: []
+      isExternalSend: false, riskLevel: "medium", verificationStatus: "unverified", recommendedPermission: "approval_required", toolNames: []
     },
     {
       id: "44444444-4444-4444-8444-444444444444", key: "stripe:create_payment",
       serverName: "Stripe MCP later", displayName: "Stripe MCP later", description: "Payments.",
-      riskLevel: "restricted", verificationStatus: "unverified", recommendedPermission: "blocked", toolNames: []
+      isExternalSend: true, riskLevel: "restricted", verificationStatus: "unverified", recommendedPermission: "blocked", toolNames: []
     },
     {
       id: "55555555-5555-4555-8555-555555555555", key: null,
       serverName: "Metadata Only MCP", displayName: "Metadata Only MCP", description: "Catalog entry not yet connected.",
-      riskLevel: "medium", verificationStatus: "unverified", recommendedPermission: "approval_required", toolNames: []
+      isExternalSend: false, riskLevel: "medium", verificationStatus: "unverified", recommendedPermission: "approval_required", toolNames: []
     }
   ],
   memory: [{ id: MEMORY_ID, partitionName: "Job Search Memory", domain: "workflow", sensitivity: "medium" }],
@@ -185,7 +185,7 @@ describe("resolvePlan", () => {
 
 function resolvedTool(partial: Partial<ResolvedTool> & Pick<ResolvedTool, "requestedPermission">): ResolvedTool {
   return {
-    key: "t:do_thing", serverName: "T", displayName: "T", mcpServerId: "00000000-0000-4000-8000-000000000000",
+    key: "t:do_thing", serverName: "T", displayName: "T", mcpServerId: "00000000-0000-4000-8000-000000000000", isExternalSend: false,
     recommendedPermission: "read_only", riskLevel: "low", verificationStatus: "verified", rationale: "because",
     ...partial
   };

@@ -172,7 +172,7 @@ describe("POST /api/flows/plan", () => {
       { text: VALID_PLAN_JSON, costCents: 2 } // corrected after failure feedback
     ];
 
-    const res = await planFlow(planRequest("Find AI roles and draft outreach for approval."));
+    const res = await planFlow(planRequest("Plan outreach steps for the roles I already have."));
     expect(res.status).toBe(200);
     expect(llmState.calls).toBe(2); // exactly one re-plan
     const data = await res.json();
@@ -194,13 +194,73 @@ describe("POST /api/flows/plan", () => {
       { text: badRef, costCents: 2 } // the model repeats its mistake
     ];
 
-    const res = await planFlow(planRequest("Find AI roles and draft outreach for approval."));
+    const res = await planFlow(planRequest("Plan outreach steps for the roles I already have."));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.report.failed).toHaveLength(1);
     expect(data.report.failed[0]).toMatchObject({ kind: "tool", asked: "nonexistent:tool" });
     // Mirrored into warnings for older clients — visible either way.
     expect(data.warnings.some((w: string) => w.includes("nonexistent:tool"))).toBe(true);
+  });
+
+  it("research→send goal: a plan missing the send tool is re-planned to include it (capability validated server-side)", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    // Send- and search-capable tools exist in the catalog.
+    await prisma.mcpServer.create({
+      data: {
+        name: "gmail-send-email", displayName: "Gmail Send", description: "Sends email for outreach and roles.",
+        registrySource: "first-party", registryId: "agentdock:gmail:send_email",
+        riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "approval_required",
+        mcpServerKey: "gmail", mcpToolName: "send_email", isExternalSend: true
+      }
+    });
+    await prisma.mcpServer.create({
+      data: {
+        name: "search-mcp", displayName: "Web Search", description: "Public web search for research.",
+        registrySource: "first-party", registryId: "agentdock:search:web_search",
+        riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only",
+        mcpServerKey: "search", mcpToolName: "web_search", isExternalSend: false
+      }
+    });
+    // First plan forgets the send tool; the corrected plan includes it.
+    const noSend = VALID_PLAN_JSON; // has only the external read tool
+    const withSend = JSON.stringify({
+      ...JSON.parse(VALID_PLAN_JSON),
+      tools: [
+        { key: "ext:do_thing", requestedPermission: "read_only", rationale: "Look things up." },
+        { key: "gmail:send_email", requestedPermission: "approval_required", rationale: "Send the summary." }
+      ]
+    });
+    llmState.queue = [
+      { text: noSend, costCents: 2 },
+      { text: withSend, costCents: 2 }
+    ];
+
+    const res = await planFlow(planRequest("Research AI roles and outreach angles, then send me the summary by email."));
+    expect(res.status).toBe(200);
+    expect(llmState.calls).toBe(2); // capability gap triggered the one re-plan
+    const data = await res.json();
+    expect(data.report.failed).toEqual([]);
+    expect(data.plan.tools.some((t: { key: string }) => t.key === "gmail:send_email")).toBe(true);
+    // Rule 6 validated: a send plan always carries an approval gate.
+    expect(data.plan.approvalGates.length).toBeGreaterThan(0);
+  });
+
+  it("a send goal with NO send-capable tool available yields the actionable connect-one error, not a broken flow", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id); // catalog has no send tool
+    llmState.queue = [{ text: VALID_PLAN_JSON, costCents: 2 }];
+
+    const res = await planFlow(planRequest("Research AI roles and outreach angles, then send me the summary by email."));
+    expect(res.status).toBe(200);
+    expect(llmState.calls).toBe(1); // nothing to re-plan toward — no wasted call
+    const data = await res.json();
+    const capFailure = data.report.failed.find((f: { asked: string }) => f.asked === "capability: send");
+    expect(capFailure).toBeTruthy();
+    expect(capFailure.reason).toContain("connect one");
   });
 
   it("retries once on invalid-then-valid output and marks retried", async () => {

@@ -19,6 +19,7 @@ export type ResolvedTool = {
   recommendedPermission: McpDefaultPermission;
   riskLevel: McpRiskLevel;
   verificationStatus: McpVerificationStatus;
+  isExternalSend: boolean; // Chunk-16 classification — drives capability tags
   rationale: string;
 };
 
@@ -213,6 +214,7 @@ export function resolvePlan(
       recommendedPermission: match.recommendedPermission,
       riskLevel: match.riskLevel,
       verificationStatus: match.verificationStatus,
+      isExternalSend: match.isExternalSend,
       rationale: tool.rationale
     });
   }

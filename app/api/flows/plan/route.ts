@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../lib/auth-user";
 import { getRunProvider } from "../../../../lib/execution/provider";
 import { getProvider } from "../../../../lib/llm";
+import { ensureSendGate, missingCapabilities, requiredCapabilities, RESEARCH_GOAL, toolCapabilities } from "../../../../lib/orchestrator/capabilities";
 import { clampPermissions } from "../../../../lib/orchestrator/clamp";
 import { planToSaveInput } from "../../../../lib/orchestrator/convert";
 import { buildPrompt } from "../../../../lib/orchestrator/prompt";
@@ -37,22 +38,11 @@ function stripFences(text: string): string {
   return trimmed;
 }
 
-// Goals that imply the flow needs to look things up. Kept broad on purpose:
-// adding a read-only search tool is harmless, omitting it silently breaks research.
-const RESEARCH_GOAL = /research|look ?up|find|search|summar|investigat|gather|news|compan|brief|report|discover|monitor|analy|compare/i;
-
-// A snapshot tool is "web search" if it is a verified, read-only tool whose
-// CANONICAL identity mentions search (key first — display name as fallback).
-// Driven by catalog data, never a hardcoded id.
-function isSearchTool(t: { key?: string | null; serverName: string; displayName: string; recommendedPermission: string; verificationStatus: string }): boolean {
-  return t.verificationStatus === "verified"
-    && t.recommendedPermission === "read_only"
-    && /search/i.test(`${t.key ?? ""} ${t.serverName} ${t.displayName}`);
-}
-
-// Ensure a research flow has a read-only search tool attached. No-op if the goal
-// is not research-y, if search is already attached, or if no ATTACHABLE (canonical
-// key present) search tool exists in the catalog snapshot.
+// Ensure a research flow has a read-only search-capable tool attached — the
+// safe auto-repair (read-only only ADDS least privilege). Capability tags are
+// derived from canonical identity/risk (capabilities.ts), never hardcoded names.
+// No-op if the goal isn't research-y, search is already attached, or the catalog
+// has no attachable verified read-only search tool.
 function ensureSearchAttached(
   plan: ResolvedFlow,
   snapshot: CatalogSnapshot,
@@ -60,8 +50,10 @@ function ensureSearchAttached(
   warnings: string[]
 ): void {
   if (!RESEARCH_GOAL.test(goal)) return;
-  if (plan.tools.some((t) => isSearchTool(t))) return;
-  const search = snapshot.tools.find((t) => t.key && isSearchTool(t));
+  if (plan.tools.some((t) => toolCapabilities(t).includes("search"))) return;
+  const search = snapshot.tools.find(
+    (t) => t.key && t.verificationStatus === "verified" && t.recommendedPermission === "read_only" && toolCapabilities(t).includes("search")
+  );
   if (!search?.key) return;
   plan.tools.push({
     key: search.key,
@@ -72,6 +64,7 @@ function ensureSearchAttached(
     recommendedPermission: search.recommendedPermission,
     riskLevel: search.riskLevel,
     verificationStatus: search.verificationStatus,
+    isExternalSend: search.isExternalSend,
     rationale: "Auto-attached read-only web search so this research flow can look up public information."
   });
   warnings.push(`${search.displayName}: auto-attached (read_only) so this research flow can search.`);
@@ -260,17 +253,36 @@ export async function POST(request: Request) {
     );
   }
 
-  // --- Resolve by canonical identity. Misses are NEVER silent drops: one
-  // automatic feedback re-plan, then any remainder is surfaced loudly. ---
-  let resolved = resolvePlan(attempt.data, snapshot);
+  // --- Resolve by canonical identity + validate goal capabilities. Misses and
+  // missing required capabilities are NEVER silent: one automatic feedback
+  // re-plan, then any remainder is surfaced loudly. ---
+  const required = requiredCapabilities(goal);
+  const evaluate = (data: FlowPlan) => {
+    const r = resolvePlan(data, snapshot);
+    // Auto-repairs first (read-only search attach, send approval gate) so the
+    // capability check reflects the plan the user would actually get.
+    ensureSearchAttached(r.plan, snapshot, goal, r.warnings);
+    ensureSendGate(r.plan, r.warnings);
+    const gaps = missingCapabilities(r.plan, snapshot, required);
+    return { ...r, gaps };
+  };
+
+  let resolved = evaluate(attempt.data);
   let replanned = false;
 
-  if (resolved.failures.length > 0 && totalCostCents <= maxCostPerCall * 2) {
+  // Re-plan when references failed, or a required capability is missing but the
+  // catalog COULD satisfy it (an unavailable capability re-plans nothing — it
+  // becomes an actionable "connect one" error instead).
+  const replanWorthy = () =>
+    resolved.failures.length > 0 || resolved.gaps.some((g) => g.availableInCatalog);
+
+  if (replanWorthy() && totalCostCents <= maxCostPerCall * 2) {
     replanned = true;
-    const failureLines = resolved.failures
-      .map((f) => `- ${f.kind} "${f.asked}": ${f.reason}${f.closestMatches.length ? ` (did you mean: ${f.closestMatches.join(", ")}?)` : ""}`)
-      .join("\n");
-    const replanPrompt = `${userPrompt}\n\nYOUR PREVIOUS PLAN HAD UNRESOLVABLE REFERENCES:\n${failureLines}\nCorrect the plan using ONLY the exact ids/keys from the catalog above. If a capability is genuinely unavailable in the catalog, plan without it. Respond with ONLY corrected JSON.`;
+    const failureLines = [
+      ...resolved.failures.map((f) => `- ${f.kind} "${f.asked}": ${f.reason}${f.closestMatches.length ? ` (did you mean: ${f.closestMatches.join(", ")}?)` : ""}`),
+      ...resolved.gaps.filter((g) => g.availableInCatalog).map((g) => `- missing capability "${g.capability}": ${g.reason} (available: ${g.candidates.join(", ")})`)
+    ].join("\n");
+    const replanPrompt = `${userPrompt}\n\nYOUR PREVIOUS PLAN HAD PROBLEMS:\n${failureLines}\nCorrect the plan using ONLY the exact ids/keys from the catalog above, and include every capability the goal requires. Respond with ONLY corrected JSON.`;
     try {
       const replanCall = await callProvider(replanPrompt);
       totalCostCents += replanCall.costCents;
@@ -278,9 +290,10 @@ export async function POST(request: Request) {
       outputTokens += replanCall.usage.outputTokens;
       const replanAttempt = checkAndParse(replanCall.text);
       if (replanAttempt.ok) {
-        const reResolved = resolvePlan(replanAttempt.data, snapshot);
-        // Adopt the re-plan only if it is strictly better (fewer failures).
-        if (reResolved.failures.length < resolved.failures.length) {
+        const reResolved = evaluate(replanAttempt.data);
+        // Adopt the re-plan only if it is strictly better (fewer problems).
+        const score = (r: typeof resolved) => r.failures.length + r.gaps.length;
+        if (score(reResolved) < score(resolved)) {
           resolved = reResolved;
         }
       }
@@ -290,15 +303,11 @@ export async function POST(request: Request) {
     }
   }
 
-  // Auto-attach web search (read_only) for research goals so a flow can never
-  // silently lack the ability to research (issue: some flows could research,
-  // some refused). Read-only is safe; this only ADDS a least-privilege tool.
-  ensureSearchAttached(resolved.plan, snapshot, goal, warnings);
-
   const clamped = clampPermissions(resolved.plan);
   warnings.push(...resolved.warnings, ...clamped.warnings);
-  // Failures also mirror into warnings so older clients still see them.
+  // Failures + capability gaps mirror into warnings so older clients still see them.
   warnings.push(...resolved.failures.map((f) => `FAILED ${f.kind} "${f.asked}": ${f.reason}`));
+  warnings.push(...resolved.gaps.map((g) => `MISSING capability "${g.capability}": ${g.reason}`));
 
   // Convert availability check: confirm the plan maps onto the real save payload.
   if (!createFlowSchema.safeParse(planToSaveInput(clamped.plan)).success) {
@@ -321,7 +330,17 @@ export async function POST(request: Request) {
         ...clamped.plan.memoryAttachments.map((m) => ({ kind: "memory" as const, id: m.partitionId ?? "", name: m.partitionName ?? "" }))
       ],
       clamped: clamped.warnings,
-      failed: resolved.failures,
+      failed: [
+        ...resolved.failures,
+        // A still-missing required capability is a failure the user must see —
+        // actionable ("connect one") when the catalog cannot satisfy it.
+        ...resolved.gaps.map((g) => ({
+          kind: "tool" as const,
+          asked: `capability: ${g.capability}`,
+          reason: g.reason,
+          closestMatches: g.candidates
+        }))
+      ],
       replanned
     },
     planMeta: {

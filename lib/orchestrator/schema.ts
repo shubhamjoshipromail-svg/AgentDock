@@ -113,6 +113,7 @@ export type CatalogSnapshotTool = {
   riskLevel: McpRiskLevel;
   verificationStatus: McpVerificationStatus;
   recommendedPermission: McpDefaultPermission;
+  isExternalSend: boolean; // Chunk-16 classification — drives the `send` capability tag
   toolNames: string[]; // curated tool names; empty for external servers
 };
 

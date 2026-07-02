@@ -61,6 +61,7 @@ export async function buildCatalogSnapshot(userId: string, goal: string): Promis
   const verifiedTools: CatalogSnapshotTool[] = verifiedServers.map((server) => ({
     id: server.id,
     key: canonicalKey(server),
+    isExternalSend: server.isExternalSend,
     serverName: server.displayName,
     displayName: server.displayName,
     description: server.description,
@@ -80,6 +81,7 @@ export async function buildCatalogSnapshot(userId: string, goal: string): Promis
     .map(({ server }) => ({
       id: server.id,
       key: canonicalKey(server),
+      isExternalSend: server.isExternalSend,
       serverName: server.displayName,
       displayName: server.displayName,
       description: server.description,
