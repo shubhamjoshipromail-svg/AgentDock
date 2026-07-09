@@ -120,6 +120,28 @@ export function respondToIntent(
   );
 }
 
+// One pending intent waiting on the human, with enough context to render the
+// banner, the attention queue, AND the focused window (no second fetch).
+export type PendingIntentSummary = {
+  id: string;
+  intentType: string | null;
+  payload: unknown;
+  title: string;
+  description: string;
+  requestedAt: string;
+  runId: string;
+  runStatus: string;
+  flowId: string | null;
+  flowName: string;
+  agentName: string | null;
+};
+
+// Every intent currently waiting on the user, across all runs — the single
+// pending-intents source the attention surface (banner/queue/window) reads.
+export function listPendingIntents(fallbackMessage = "Unable to load pending requests.") {
+  return request<{ intents: PendingIntentSummary[] }>("/api/approvals", fallbackMessage);
+}
+
 export function listActivity(fallbackMessage = "Unable to load Timeline.") {
   return request<{ activityLogs: PersistedActivityLog[] }>("/api/activity", fallbackMessage);
 }

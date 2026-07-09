@@ -10,6 +10,7 @@ import { Profile } from "../components/profile/Profile";
 import { Store } from "../components/store/Store";
 import { CommandPalette, type Command } from "../components/layout/CommandPalette";
 import { ToastProvider } from "../components/layout/Toast";
+import { AttentionProvider, AttentionBanner } from "../components/attention/AttentionCenter";
 import type { Section, StoreTab } from "../lib/types";
 import { useEffect } from "react";
 
@@ -48,6 +49,10 @@ function AppInner() {
 
   return (
     <>
+      {/* Global attention surface: finds you on ANY screen when a run is
+          waiting on you. Reads the same pending-intents state as the queue
+          and the focused window — never a separate store. */}
+      <AttentionBanner />
       <Shell activeSection={activeSection} onSelectSection={setActiveSection} onOpenCommand={() => setCmdkOpen(true)}>
         <BootstrapGate>
           {activeSection === "Workspace" && (
@@ -79,7 +84,9 @@ export default function Home() {
   return (
     <SessionProvider>
       <ToastProvider>
-        <AppInner />
+        <AttentionProvider>
+          <AppInner />
+        </AttentionProvider>
       </ToastProvider>
     </SessionProvider>
   );

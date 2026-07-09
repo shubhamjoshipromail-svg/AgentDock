@@ -26,6 +26,7 @@ import { Builder } from "../build/Builder";
 import { ControlPlane } from "../control/ControlPlane";
 import { ConnectPanel } from "../connect/ConnectPanel";
 import { IntentSurface } from "./IntentSurface";
+import { useAttention } from "../attention/AttentionCenter";
 import { recommendedBuilderNodes } from "../mock-data";
 import type { BuilderNode } from "../../lib/types";
 import "./workspace.css";
@@ -72,6 +73,9 @@ export function FlowWorkspace({
 }) {
   const { data: session } = useSession();
   const toast = useToast();
+  // Keep the global attention surface honest: any intent-lifecycle change seen
+  // by this run's stream re-reads the ONE pending-intents state (debounced).
+  const { refresh: refreshAttention } = useAttention();
 
   const [openDrawer, setOpenDrawer] = useState<WorkspaceDrawer | null>(null);
   const toggleDrawer = (d: WorkspaceDrawer) => setOpenDrawer((cur) => (cur === d ? null : d));
@@ -228,6 +232,7 @@ export function FlowWorkspace({
           stepCount: Number(data.stepCount ?? prev.stepCount),
           spentCents: Number(data.totalCostCents ?? prev.spentCents)
         });
+        refreshAttention();
         return;
       }
 
@@ -261,7 +266,7 @@ export function FlowWorkspace({
     };
 
     return () => { es.close(); };
-  }, [run.runId, toast]);
+  }, [run.runId, toast, refreshAttention]);
 
   const handleRun = async () => {
     if (!flowId) return toast("Select a flow first.", "warn");
@@ -300,6 +305,7 @@ export function FlowWorkspace({
       // Optimistically clear the card; the same live stream reports the resumed
       // run — no new subscription, no stacked pollers.
       setRun((prev) => ({ ...prev, approvals: prev.approvals.filter((a) => a.id !== approvalId) }));
+      refreshAttention();
       toast(approved ? "Approved — resuming…" : "Denied — run halted.", approved ? "ok" : "warn");
     } catch (error) {
       toast(error instanceof Error ? error.message : "Approval failed.", "danger");
@@ -310,6 +316,7 @@ export function FlowWorkspace({
     try {
       await respondToIntent(intentId, response);
       setRun((prev) => ({ ...prev, approvals: prev.approvals.filter((a) => a.id !== intentId) }));
+      refreshAttention();
       toast("Response sent — resuming…", "ok");
     } catch (error) {
       toast(error instanceof Error ? error.message : "Could not submit your response.", "danger");
