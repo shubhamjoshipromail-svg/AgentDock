@@ -3,8 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 
-import { listPendingIntents, type PendingIntentSummary } from "../../lib/api/client";
+import {
+  listPendingIntents, resolveApproval, respondToIntent, type PendingIntentSummary
+} from "../../lib/api/client";
 import { bannerState, sortNewestFirst } from "../../lib/attention/pending";
+import { IntentSurface } from "../workspace/IntentSurface";
+import { useToast } from "../layout/Toast";
 import "./attention.css";
 
 // THE ATTENTION SURFACE. One source of truth: the pending-intents state fetched
@@ -89,12 +93,23 @@ export function AttentionProvider({ children }: { children: React.ReactNode }) {
   }, [signedIn, fetchNow]);
 
   // If the focused intent got resolved elsewhere (inline card, another tab),
-  // the window must not linger on a dead ask.
+  // the window must not linger on a dead ask. But an intent opened from a live
+  // run stream may be newer than our last fetch — only auto-close once a fetch
+  // that STARTED AFTER the open has confirmed the intent is gone.
+  const openedAtRef = useRef(0);
   useEffect(() => {
-    if (focusedId && !intents.some((i) => i.id === focusedId)) setFocusedId(null);
+    if (!focusedId) return;
+    if (intents.some((i) => i.id === focusedId)) return;
+    if (lastFetchRef.current > openedAtRef.current) setFocusedId(null);
   }, [intents, focusedId]);
 
-  const open = useCallback((intentId: string) => setFocusedId(intentId), []);
+  const open = useCallback((intentId: string) => {
+    openedAtRef.current = Date.now();
+    setFocusedId(intentId);
+    // The workspace stream can learn about an ask before our poll does —
+    // re-read immediately so the window has the intent to render.
+    void fetchNow();
+  }, [fetchNow]);
   const close = useCallback(() => setFocusedId(null), []);
 
   return (
@@ -124,6 +139,104 @@ export function AttentionBanner() {
       <button className="attnBannerAction" onClick={() => open(state.newest.id)}>
         {state.count === 1 ? "Respond" : `Review ${state.count}`}
       </button>
+    </div>
+  );
+}
+
+// The focused interaction window: one intent, rendered LARGE, with room to
+// breathe. Same schema-validated renderer as the inline cards (one renderer
+// registry, two container sizes) — never a parallel renderer. Responding goes
+// through the same resolve route with the same policy re-check; closing
+// without responding leaves the run paused.
+export function AttentionWindow() {
+  const { intents, focusedId, close, refresh } = useAttention();
+  const toast = useToast();
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const intent = focusedId ? intents.find((i) => i.id === focusedId) ?? null : null;
+
+  // Focus management: trap Tab inside the window, Esc closes (run stays
+  // paused), focus returns to where the user was.
+  useEffect(() => {
+    if (!intent) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    panel?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+      if (e.key !== "Tab" || !panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      previous?.focus();
+    };
+  }, [intent, close]);
+
+  if (!intent) return null;
+
+  const handleRespond = async (intentId: string, response: Record<string, unknown>) => {
+    try {
+      await respondToIntent(intentId, response);
+      toast("Response sent — resuming…", "ok");
+      close();
+      refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not submit your response.", "danger");
+    }
+  };
+
+  const handleResolveApproval = async (intentId: string, approved: boolean) => {
+    try {
+      await resolveApproval(intentId, approved ? "approved" : "denied");
+      toast(approved ? "Approved — resuming…" : "Denied — run halted.", approved ? "ok" : "warn");
+      close();
+      refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Approval failed.", "danger");
+    }
+  };
+
+  return (
+    <div className="attnOverlay" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <div
+        className="attnWindow"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${intent.agentName ?? "An agent"} in ${intent.flowName} is asking for your input`}
+        ref={panelRef}
+        tabIndex={-1}
+      >
+        <div className="attnWindowHead">
+          <span className="attnWindowContext">
+            <strong>{intent.agentName ?? "Agent"}</strong> in <strong>{intent.flowName}</strong> is asking:
+          </span>
+          <button className="attnWindowClose" aria-label="Close without responding" onClick={close}>×</button>
+        </div>
+        <div className="attnWindowBody">
+          <IntentSurface
+            intent={{
+              id: intent.id,
+              title: intent.title,
+              description: intent.description,
+              status: "pending",
+              intentType: intent.intentType,
+              payload: intent.payload
+            }}
+            onRespond={(id, response) => void handleRespond(id, response)}
+            onResolveApproval={(id, approved) => void handleResolveApproval(id, approved)}
+          />
+        </div>
+        <div className="attnWindowFoot">Closing without responding keeps the run paused.</div>
+      </div>
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { Profile } from "../components/profile/Profile";
 import { Store } from "../components/store/Store";
 import { CommandPalette, type Command } from "../components/layout/CommandPalette";
 import { ToastProvider } from "../components/layout/Toast";
-import { AttentionProvider, AttentionBanner } from "../components/attention/AttentionCenter";
+import { AttentionProvider, AttentionBanner, AttentionWindow } from "../components/attention/AttentionCenter";
 import type { Section, StoreTab } from "../lib/types";
 import { useEffect } from "react";
 
@@ -53,6 +53,7 @@ function AppInner() {
           waiting on you. Reads the same pending-intents state as the queue
           and the focused window — never a separate store. */}
       <AttentionBanner />
+      <AttentionWindow />
       <Shell activeSection={activeSection} onSelectSection={setActiveSection} onOpenCommand={() => setCmdkOpen(true)}>
         <BootstrapGate>
           {activeSection === "Workspace" && (

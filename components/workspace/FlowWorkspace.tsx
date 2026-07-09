@@ -27,6 +27,7 @@ import { ControlPlane } from "../control/ControlPlane";
 import { ConnectPanel } from "../connect/ConnectPanel";
 import { IntentSurface } from "./IntentSurface";
 import { useAttention } from "../attention/AttentionCenter";
+import { isRichIntent } from "../../lib/attention/pending";
 import { recommendedBuilderNodes } from "../mock-data";
 import type { BuilderNode } from "../../lib/types";
 import "./workspace.css";
@@ -75,7 +76,7 @@ export function FlowWorkspace({
   const toast = useToast();
   // Keep the global attention surface honest: any intent-lifecycle change seen
   // by this run's stream re-reads the ONE pending-intents state (debounced).
-  const { refresh: refreshAttention } = useAttention();
+  const { refresh: refreshAttention, open: openIntentWindow } = useAttention();
 
   const [openDrawer, setOpenDrawer] = useState<WorkspaceDrawer | null>(null);
   const toggleDrawer = (d: WorkspaceDrawer) => setOpenDrawer((cur) => (cur === d ? null : d));
@@ -658,14 +659,27 @@ export function FlowWorkspace({
                  confirmation) or requesting approval. One constrained renderer. --- */}
             {run.approvals.length > 0 && (
               <div className="intentStack">
-                {run.approvals.map((a) => (
-                  <IntentSurface
-                    key={a.id}
-                    intent={a}
-                    onRespond={handleRespond}
-                    onResolveApproval={handleApprove}
-                  />
-                ))}
+                {run.approvals.map((a) =>
+                  isRichIntent(a.intentType) ? (
+                    // Rich surfaces (choice grids, forms) are cramped in this
+                    // column — the timeline keeps a glanceable chip; answering
+                    // happens in the focused window, with room to breathe.
+                    <div className="intentChip" key={a.id}>
+                      <span className="intentChipKind">⏸ waiting on you</span>
+                      <span className="intentChipLabel">{a.title}</span>
+                      <button className="intentChipOpen" onClick={() => openIntentWindow(a.id)}>Open</button>
+                    </div>
+                  ) : (
+                    // Simple approvals stay one-click inline — quick-action and
+                    // the focused window are complements, not duplicates.
+                    <IntentSurface
+                      key={a.id}
+                      intent={a}
+                      onRespond={handleRespond}
+                      onResolveApproval={handleApprove}
+                    />
+                  )
+                )}
               </div>
             )}
 
