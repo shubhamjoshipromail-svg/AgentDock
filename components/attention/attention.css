@@ -13,12 +13,19 @@
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-4);
-  background: var(--warn-bg);
+  /* warn tint composited over the base surface — opaque (content never bleeds
+     through) yet token-pure: no raw hex outside tokens.css. */
+  background: linear-gradient(var(--warn-bg), var(--warn-bg)) var(--bg-base);
   border-bottom: 1px solid var(--warn);
-  backdrop-filter: none;
-  background-color: #241D10; /* warn tint over bg-base, opaque so content never bleeds through */
+  box-shadow: var(--hl-1);
   color: var(--text-primary);
   font-size: var(--fs-13);
+  animation: attnBannerIn var(--dur) var(--ease);
+}
+
+@keyframes attnBannerIn {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
 }
 
 .attnBannerIcon { color: var(--warn); }
@@ -63,8 +70,9 @@
   background: var(--bg-popover);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-card);
-  box-shadow: var(--shadow-overlay);
+  box-shadow: var(--hl-2), var(--shadow-overlay);
   padding: var(--sp-2);
+  animation: attnWindowIn var(--dur) var(--ease);
 }
 
 .attnQueueHead {
@@ -112,7 +120,11 @@
   white-space: nowrap;
 }
 
-.attnQueueMeta { font-size: var(--fs-12); color: var(--text-secondary); }
+.attnQueueMeta {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; /* machine-true: timestamps hold width */
+}
 
 .attnQueueGo { color: var(--text-faint); }
 
@@ -134,11 +146,18 @@
   background: var(--bg-overlay);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-card);
-  box-shadow: var(--shadow-overlay);
+  /* lit from the top: inner highlight + the single allowed overlay shadow */
+  box-shadow: var(--hl-3), var(--shadow-overlay);
   outline: none;
   display: flex;
   flex-direction: column;
   max-height: 82vh;
+  animation: attnWindowIn var(--dur) var(--ease);
+}
+
+@keyframes attnWindowIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .attnWindowHead {
@@ -190,8 +209,15 @@
   padding: 0;
 }
 
-.attnWindowBody .intentAsking { font-size: var(--fs-12); }
-.attnWindowBody .intentTitle { font-size: var(--fs-20); line-height: 1.3; margin-bottom: var(--sp-3); }
+.attnWindowBody .intentAsking { font-size: var(--fs-12); letter-spacing: 0.05em; }
+.attnWindowBody .intentTitle {
+  font-family: var(--font-display);
+  font-size: var(--fs-20);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  margin-bottom: var(--sp-3);
+}
 .attnWindowBody .intentDesc { font-size: var(--fs-14); }
 
 .attnWindowBody .intentOptions {
