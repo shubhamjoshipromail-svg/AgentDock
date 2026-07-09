@@ -51,6 +51,71 @@
   color: var(--bg-base);
 }
 
+/* --- The queue: minimal cross-run pending list (seed of the ops view) --- */
+.attnQueue {
+  position: fixed;
+  top: 40px;
+  right: var(--sp-4);
+  z-index: 85;
+  width: min(420px, calc(100vw - 2 * var(--sp-4)));
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--bg-popover);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-overlay);
+  padding: var(--sp-2);
+}
+
+.attnQueueHead {
+  font-size: var(--fs-12);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  padding: var(--sp-1) var(--sp-2) var(--sp-2);
+}
+
+.attnQueueRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-control);
+  padding: var(--sp-2);
+  color: var(--text-primary);
+}
+.attnQueueRow:hover { background: var(--accent-bg); }
+
+.attnQueueKind {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--warn);
+  font-size: var(--fs-13);
+}
+
+.attnQueueBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.attnQueueTitle {
+  font-size: var(--fs-13);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attnQueueMeta { font-size: var(--fs-12); color: var(--text-secondary); }
+
+.attnQueueGo { color: var(--text-faint); }
+
 /* --- Focused interaction window: one intent, rendered large --- */
 .attnOverlay {
   position: fixed;

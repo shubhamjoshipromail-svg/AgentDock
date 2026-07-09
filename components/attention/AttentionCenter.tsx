@@ -121,26 +121,95 @@ export function AttentionProvider({ children }: { children: React.ReactNode }) {
 
 // The slim global banner: unmissable, on every screen, persistent until every
 // pending intent is handled. One pending → names the flow and opens it directly;
-// several → shows the count.
+// several → shows the count and opens the queue.
 export function AttentionBanner() {
   const { intents, open } = useAttention();
+  const [queueOpen, setQueueOpen] = useState(false);
   const state = bannerState(intents);
+
+  // The queue lives off the SAME list — when the last pending intent resolves,
+  // banner and queue leave together.
+  useEffect(() => {
+    if (intents.length === 0) setQueueOpen(false);
+  }, [intents.length]);
+
   if (!state.visible) return null;
 
   return (
-    <div className="attnBanner" role="status" aria-live="polite">
-      <span className="attnBannerIcon" aria-hidden>⚠</span>
-      <span className="attnBannerText">
-        {state.label}
-        {state.count === 1 && state.newest.agentName ? (
-          <span className="attnBannerDetail"> — {state.newest.agentName} is asking</span>
-        ) : null}
-      </span>
-      <button className="attnBannerAction" onClick={() => open(state.newest.id)}>
-        {state.count === 1 ? "Respond" : `Review ${state.count}`}
-      </button>
+    <>
+      <div className="attnBanner" role="status" aria-live="polite">
+        <span className="attnBannerIcon" aria-hidden>⚠</span>
+        <span className="attnBannerText">
+          {state.label}
+          {state.count === 1 && state.newest.agentName ? (
+            <span className="attnBannerDetail"> — {state.newest.agentName} is asking</span>
+          ) : null}
+        </span>
+        <button
+          className="attnBannerAction"
+          onClick={() => {
+            if (state.count === 1) { open(state.newest.id); setQueueOpen(false); }
+            else setQueueOpen((v) => !v);
+          }}
+          aria-expanded={state.count > 1 ? queueOpen : undefined}
+        >
+          {state.count === 1 ? "Respond" : `Review ${state.count}`}
+        </button>
+      </div>
+      {queueOpen && state.count > 1 && (
+        <AttentionQueue onPick={(id) => { setQueueOpen(false); open(id); }} onClose={() => setQueueOpen(false)} />
+      )}
+    </>
+  );
+}
+
+// The minimal "Needs attention" list: every pending intent across runs, newest
+// first — deliberately a simple list; this is the seed of the multi-run
+// operations view, not the view itself.
+function AttentionQueue({ onPick, onClose }: { onPick: (intentId: string) => void; onClose: () => void }) {
+  const { intents } = useAttention();
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="attnQueue" ref={ref} role="menu" aria-label="Runs waiting on you">
+      <div className="attnQueueHead">Needs attention</div>
+      {intents.map((i) => (
+        <button className="attnQueueRow" key={i.id} role="menuitem" onClick={() => onPick(i.id)}>
+          <span className="attnQueueKind" data-kind={i.intentType ?? "approval"}>
+            {i.intentType === "choice" ? "☰" : i.intentType === "form" ? "✎" : i.intentType === "confirmation" ? "?" : "⚠"}
+          </span>
+          <span className="attnQueueBody">
+            <span className="attnQueueTitle">{i.title}</span>
+            <span className="attnQueueMeta">
+              {i.agentName ? `${i.agentName} · ` : ""}{i.flowName} · {relativeTime(i.requestedAt)}
+            </span>
+          </span>
+          <span className="attnQueueGo" aria-hidden>→</span>
+        </button>
+      ))}
     </div>
   );
+}
+
+function relativeTime(iso: string): string {
+  const s = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000));
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 // The focused interaction window: one intent, rendered LARGE, with room to
