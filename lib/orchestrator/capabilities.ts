@@ -36,13 +36,21 @@ export function toolCapabilities(tool: CapabilitySource): Capability[] {
 
 // What the goal requires. The planner already reasons about this in prose
 // (Rules 5/6); this is the server-side check that makes it a guarantee.
+//
+// Two tiers on purpose:
+// - RESEARCH_GOAL (broad) drives the harmless read-only search AUTO-ATTACH —
+//   adding least-privilege search to a summarize/brief goal costs nothing.
+// - HARD_RESEARCH_GOAL (narrow: explicit research/lookup verbs) drives the HARD
+//   requirement — a memory-only "summarize my notes" goal must stay plannable
+//   with no tools at all when no search tool is connected.
 export const RESEARCH_GOAL = /research|look ?up|find|search|summar|investigat|gather|news|compan|brief|report|discover|monitor|analy|compare/i;
+const HARD_RESEARCH_GOAL = /\bresearch\b|\blook ?up\b|\bsearch\b|\binvestigat|\bdiscover\b|\bfind (?:out|the latest|new|current)\b/i;
 const SEND_GOAL = /\bsend\b|\bemail\s+(?:me|it|them|us|him|her)\b|\bmail\s+(?:me|it)\b|\bdispatch\b|\bdeliver\b/i;
 const DRAFT_GOAL = /\bdraft\b|\bcompose\b/i;
 
 export function requiredCapabilities(goal: string): Capability[] {
   const required: Capability[] = [];
-  if (RESEARCH_GOAL.test(goal)) required.push("search");
+  if (HARD_RESEARCH_GOAL.test(goal)) required.push("search");
   if (SEND_GOAL.test(goal)) required.push("send");
   else if (DRAFT_GOAL.test(goal)) required.push("draft");
   return required;

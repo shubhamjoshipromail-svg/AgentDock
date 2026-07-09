@@ -263,6 +263,104 @@ describe("POST /api/flows/plan", () => {
     expect(capFailure.reason).toContain("connect one");
   });
 
+  it("research→draft-only goal: draft attached, send NEVER attached", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    await prisma.mcpServer.create({
+      data: {
+        name: "gmail-create-draft", displayName: "Gmail Draft", description: "Drafts outreach emails about roles.",
+        registrySource: "first-party", registryId: "agentdock:gmail:create_draft",
+        riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "draft_only",
+        mcpServerKey: "gmail", mcpToolName: "create_draft", isExternalSend: false
+      }
+    });
+    await prisma.mcpServer.create({
+      data: {
+        name: "gmail-send-email", displayName: "Gmail Send", description: "Sends outreach emails about roles.",
+        registrySource: "first-party", registryId: "agentdock:gmail:send_email",
+        riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "approval_required",
+        mcpServerKey: "gmail", mcpToolName: "send_email", isExternalSend: true
+      }
+    });
+    const draftPlan = JSON.stringify({
+      ...JSON.parse(VALID_PLAN_JSON),
+      tools: [{ key: "gmail:create_draft", requestedPermission: "draft_only", rationale: "Draft the outreach." }]
+    });
+    llmState.queue = [{ text: draftPlan, costCents: 2 }];
+
+    const res = await planFlow(planRequest("Draft an outreach note about the roles I like."));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.report.failed).toEqual([]);
+    expect(data.plan.tools.some((t: { key: string }) => t.key === "gmail:create_draft")).toBe(true);
+    // "Draft" never silently escalates to send.
+    expect(data.plan.tools.some((t: { key: string }) => t.key === "gmail:send_email")).toBe(false);
+  });
+
+  it("summarize-memory-only goal: plannable with zero tools (no hard search requirement)", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    const memoryOnly = JSON.stringify({
+      ...JSON.parse(VALID_PLAN_JSON),
+      tools: []
+    });
+    llmState.queue = [{ text: memoryOnly, costCents: 2 }];
+
+    const res = await planFlow(planRequest("Summarize my saved notes into a short brief."));
+    expect(res.status).toBe(200);
+    expect(llmState.calls).toBe(1); // no re-plan needed
+    const data = await res.json();
+    expect(data.report.failed).toEqual([]);
+    expect(data.plan.agents).toHaveLength(1);
+  });
+
+  it("choose-then-act goal: search + send + approval gate all attached, resolving first try", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    await prisma.mcpServer.create({
+      data: {
+        name: "gmail-send-email", displayName: "Gmail Send", description: "Sends email for outreach and roles.",
+        registrySource: "first-party", registryId: "agentdock:gmail:send_email",
+        riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "approval_required",
+        mcpServerKey: "gmail", mcpToolName: "send_email", isExternalSend: true
+      }
+    });
+    await prisma.mcpServer.create({
+      data: {
+        name: "search-mcp", displayName: "Web Search", description: "Public web search for research.",
+        registrySource: "first-party", registryId: "agentdock:search:web_search",
+        riskLevel: "low", verificationStatus: "verified", recommendedPermission: "read_only",
+        mcpServerKey: "search", mcpToolName: "web_search", isExternalSend: false
+      }
+    });
+    const chooseThenAct = JSON.stringify({
+      ...JSON.parse(VALID_PLAN_JSON),
+      agents: [
+        { agentName: "Job Discovery Agent", role: "Research options and ask the user to choose one", order: 1, rationale: "Surfaces candidates and pauses for the user's pick." },
+        { agentName: "Job Discovery Agent", role: "Send the chosen option by email", order: 2, rationale: "Acts only on the user's choice." }
+      ],
+      tools: [
+        { key: "search:web_search", requestedPermission: "read_only", rationale: "Research the candidates." },
+        { key: "gmail:send_email", requestedPermission: "approval_required", rationale: "Send the user's pick." }
+      ],
+      approvalGates: [{ afterAgentOrder: 2, trigger: "Before the chosen email is sent", actionType: "external_send" }]
+    });
+    llmState.queue = [{ text: chooseThenAct, costCents: 2 }];
+
+    const res = await planFlow(planRequest("Research three outreach targets, ask me to choose one, then send my pick by email."));
+    expect(res.status).toBe(200);
+    expect(llmState.calls).toBe(1); // resolves by construction — no re-plan needed
+    const data = await res.json();
+    expect(data.report.failed).toEqual([]);
+    expect(data.plan.tools.some((t: { key: string }) => t.key === "search:web_search")).toBe(true);
+    expect(data.plan.tools.some((t: { key: string }) => t.key === "gmail:send_email")).toBe(true);
+    // The choice never authorizes the consequential action — the send gate stands.
+    expect(data.plan.approvalGates.length).toBeGreaterThan(0);
+  });
+
   it("retries once on invalid-then-valid output and marks retried", async () => {
     const user = await createTestUser();
     setCurrentUser(user);

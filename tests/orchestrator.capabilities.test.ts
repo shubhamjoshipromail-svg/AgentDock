@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   missingCapabilities, requiredCapabilities, toolCapabilities, ensureSendGate
 } from "../lib/orchestrator/capabilities";
+import { serializeSnapshot } from "../lib/orchestrator/prompt";
+import { resolvePlan } from "../lib/orchestrator/resolve";
 import type { ResolvedFlow, ResolvedTool } from "../lib/orchestrator/resolve";
-import type { CatalogSnapshot, CatalogSnapshotTool } from "../lib/orchestrator/schema";
+import type { CatalogSnapshot, CatalogSnapshotTool, FlowPlan } from "../lib/orchestrator/schema";
 
 // A generic mock catalog of 24 tools built from data alone — ZERO per-tool code.
 // Capability tags must derive purely from canonical identity + Chunk-16 flags.
@@ -102,7 +104,9 @@ describe("requiredCapabilities — derived from the goal", () => {
   it("research goals require search; send goals require send; draft-only goals require draft (never send)", () => {
     expect(requiredCapabilities("Research Vietnamese caterpillars and email me a summary")).toEqual(["search", "send"]);
     expect(requiredCapabilities("Draft an outreach email about our launch")).toEqual(["draft"]);
-    expect(requiredCapabilities("Summarize my meeting notes")).toEqual(["search"]);
+    // Memory-only summarize goals stay plannable with NO tools — summarize is
+    // auto-attach territory (broad regex), never a hard search requirement.
+    expect(requiredCapabilities("Summarize my meeting notes")).toEqual([]);
     expect(requiredCapabilities("Send the weekly update to the team")).toEqual(["send"]);
     expect(requiredCapabilities("Tell me a joke")).toEqual([]);
   });
@@ -155,5 +159,41 @@ describe("ensureSendGate — Rule 6 validated, not just suggested", () => {
     ensureSendGate(gated, w2);
     expect(gated.approvalGates).toHaveLength(1);
     expect(w2).toEqual([]);
+  });
+});
+
+describe("scale rehearsal — 34-tool catalog, id-based selection survives growth", () => {
+  // Pad the catalog past 30 tools with generic entries — still zero per-tool code.
+  const PADDED: CatalogSnapshot = {
+    ...BIG_CATALOG,
+    tools: [
+      ...BIG_CATALOG.tools,
+      ...Array.from({ length: 10 }, (_, i) =>
+        mockTool(100 + i, `srv${i}`, i % 2 === 0 ? `search_records_${i}` : `draft_note_${i}`, i % 2 === 1 ? { recommendedPermission: "draft_only" } : {}))
+    ]
+  };
+
+  it("the prompt enumerates every canonical key; a plan referencing 5 keys resolves 100%", () => {
+    expect(PADDED.tools.length).toBeGreaterThanOrEqual(34);
+    const serialized = serializeSnapshot(PADDED);
+    for (const t of PADDED.tools) expect(serialized).toContain(`key=${t.key}`);
+
+    const plan: FlowPlan = {
+      name: "Scale flow", goal: "A goal exercising a large catalog.",
+      agents: [{ agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", role: "does many things", order: 1, rationale: "scale check" }],
+      tools: [
+        { key: "search:web_search", requestedPermission: "read_only", rationale: "search" },
+        { key: "gmail:send_email", requestedPermission: "approval_required", rationale: "send" },
+        { key: "srv0:search_records_0", requestedPermission: "read_only", rationale: "records" },
+        { key: "srv3:draft_note_3", requestedPermission: "draft_only", rationale: "note" },
+        { key: "notion:search_notes", requestedPermission: "read_only", rationale: "notes" }
+      ],
+      memoryAttachments: [], approvalGates: [], estimatedBudgetCents: 100, risks: []
+    };
+    const { plan: resolved, failures } = resolvePlan(plan, PADDED);
+    expect(failures).toEqual([]);
+    expect(resolved.tools).toHaveLength(5);
+    // Capability validation still exact over the padded catalog.
+    expect(missingCapabilities(resolved, PADDED, ["search", "send", "draft"])).toEqual([]);
   });
 });
