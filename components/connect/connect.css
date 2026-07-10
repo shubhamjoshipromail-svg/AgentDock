@@ -136,19 +136,19 @@
 
 .statusBadge[data-status="connected"],
 .statusBadge[data-status="discovered"] {
-  background: var(--ok-bg, #064e3b20);
-  color: var(--ok, #10b981);
+  background: var(--ok-bg);
+  color: var(--ok);
 }
 
 .statusBadge[data-status="connecting"] {
-  background: var(--warn-bg, #78350f20);
-  color: var(--warn, #f59e0b);
+  background: var(--warn-bg);
+  color: var(--warn);
 }
 
 .statusBadge[data-status="error"],
 .statusBadge[data-status="disconnected"] {
-  background: var(--danger-bg, #7f1d1d20);
-  color: var(--danger, #ef4444);
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .statusBadge[data-status="registered"] {
@@ -211,12 +211,12 @@
 
 .connectStep[data-active="true"] .connectStepNum {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
 }
 
 .connectStep[data-done="true"] .connectStepNum {
   background: var(--ok);
-  color: #fff;
+  color: var(--accent-fg);
 }
 
 @media (max-width: 768px) {

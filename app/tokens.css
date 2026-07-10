@@ -1,53 +1,90 @@
 /*
- * AgentDock design tokens — "the control tower".
- * The ONE place raw color/size values live. Every component consumes tokens.
- * Dark theme only (no toggle). Legacy variable names from the old light theme are
- * bridged onto these tokens at the bottom so existing class-based CSS re-skins at once.
+ * AgentDock design tokens — "the calm control tower".
+ * THE one place raw color/size/motion values live. Every component consumes
+ * tokens; raw hex/px outside this file is drift (the disease). Dark-first.
+ *
+ * Palette is authored in OKLCH: one near-black canvas (never #000), three
+ * surface elevations separated by luminance, hairline borders at low alpha,
+ * ONE signature accent (electric cyan-teal — the brand), and four sacred
+ * governance colors (allowed=green, approval=amber, blocked=red, info=blue)
+ * identical everywhere.
  */
 :root {
-  /* Surfaces */
-  --bg-base: #0E1116;
-  --bg-raised: #161B22;
-  --bg-overlay: #1D242E;
-  --line: #2A323D;
-  --line-strong: #3A4452;
+  /* ---- Surfaces (the elevation ladder: canvas → raised → overlay → popover) ---- */
+  --bg-base: oklch(17% 0.014 250);
+  --bg-raised: oklch(20.5% 0.016 250);
+  --bg-overlay: oklch(24.5% 0.018 250);
+  --bg-popover: oklch(28% 0.02 250);
 
-  /* Text */
-  --text-primary: #E8EDF2;
-  --text-secondary: #9AA7B4;
-  --text-faint: #5C6875;
+  /* Hairlines: white at low alpha — they read as edges, not walls */
+  --line: oklch(100% 0 0 / 0.09);
+  --line-strong: oklch(100% 0 0 / 0.17);
 
-  /* Brand accent (the one) */
-  --accent: #5B8DEF;
-  --accent-muted: #2C4470;
+  /* ---- Text ---- */
+  --text-primary: oklch(93% 0.008 250);
+  --text-secondary: oklch(71% 0.018 250);
+  --text-faint: oklch(52% 0.02 250);
 
-  /* Semantic decision / status */
-  --ok: #3FB68B;
-  --warn: #D9A03F;
-  --danger: #E5604C;
-  --restricted: #8B5CF6;
+  /* ---- Brand accent (THE one): electric cyan-teal ---- */
+  --accent: oklch(78% 0.125 205);
+  --accent-muted: oklch(42% 0.07 205);
+  --accent-fg: oklch(16% 0.02 250); /* readable text ON the accent */
+  --accent-bg: oklch(78% 0.125 205 / 0.12);
+  --accent-grad: linear-gradient(180deg, oklch(83% 0.12 200) 0%, var(--accent) 100%);
+  --accent-glow: 0 2px 14px oklch(78% 0.125 205 / 0.35);
+
+  /* ---- Governance semantics (SACRED — identical everywhere) ----
+     allowed=green · approval=amber · blocked/destructive=red · info=blue */
+  --ok: oklch(72% 0.135 160);
+  --warn: oklch(76% 0.115 80);
+  --danger: oklch(64% 0.185 25);
+  --info: oklch(70% 0.115 245);
+  --restricted: oklch(65% 0.17 295);
 
   /* Tinted fills for semantic surfaces (12% over dark base) */
-  --ok-bg: rgba(63, 182, 139, 0.12);
-  --warn-bg: rgba(217, 160, 63, 0.12);
-  --danger-bg: rgba(229, 96, 76, 0.12);
-  --restricted-bg: rgba(139, 92, 246, 0.12);
-  --accent-bg: rgba(91, 141, 239, 0.12);
+  --ok-bg: oklch(72% 0.135 160 / 0.12);
+  --warn-bg: oklch(76% 0.115 80 / 0.12);
+  --danger-bg: oklch(64% 0.185 25 / 0.12);
+  --info-bg: oklch(70% 0.115 245 / 0.12);
+  --restricted-bg: oklch(65% 0.17 295 / 0.12);
 
-  /* Type */
-  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* Neutral washes (hover fills, subtle panels) — three strengths only */
+  --wash-weak: oklch(100% 0 0 / 0.03);
+  --wash: oklch(100% 0 0 / 0.05);
+  --wash-strong: oklch(100% 0 0 / 0.08);
+  --muted-bg: var(--wash);
 
+  /* Hover states of the accent + strong semantic fills */
+  --accent-hover: oklch(83% 0.12 200);
+  --danger-bg-strong: oklch(64% 0.185 25 / 0.2);
+
+  /* Atmospheric sheen on the canvas (elevation.css) */
+  --canvas-sheen: radial-gradient(130% 90% at 50% -20%, oklch(100% 0 0 / 0.022), transparent 62%);
+
+  /* Overlay scrim (the only translucent black) */
+  --scrim: oklch(8% 0.01 250 / 0.62);
+
+  /* ---- Type: one modern grotesk (Geist), mono for identities/machine truth ---- */
+  --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* The real scale: 12 / 13 / 14 / 16 / 20 / 24 (28/36 for rare display) */
   --fs-12: 0.75rem;
   --fs-13: 0.8125rem;
   --fs-14: 0.875rem;
   --fs-16: 1rem;
   --fs-20: 1.25rem;
+  --fs-24: 1.5rem;
   --fs-28: 1.75rem;
   --fs-36: 2.25rem;
 
-  /* Space scale (4px base) */
+  /* Weights: 400 body · 500 emphasis · 600 headings. Nothing heavier. */
+  --fw-body: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* ---- Space (4px grid) ---- */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -56,38 +93,35 @@
   --sp-8: 32px;
   --sp-12: 48px;
 
-  /* Radius */
+  /* ---- Shape (radius scale: 6 / 10 / 14) ---- */
+  --r-xs: 4px;
   --r-control: 6px;
   --r-card: 10px;
+  --r-lg: 14px;
   --r-pill: 999px;
-
-  /* Popover surface (one step above overlay) */
-  --bg-popover: #232C38;
 
   /* ---- Elevation & light model ----
      Light comes from the top: a 1px inner top-edge highlight makes a surface
-     feel lit from above; an ambient shadow below sets it off the base. Tiers
-     get progressively stronger highlight + shadow. Borders become secondary. */
-  --hl-1: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  --hl-2: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --hl-3: inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.22);
-  --shadow-3: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.32);
+     feel lit from above; a soft ambient shadow sets it off the base. Never
+     heavy drop shadows. */
+  --hl-1: inset 0 1px 0 oklch(100% 0 0 / 0.03);
+  --hl-2: inset 0 1px 0 oklch(100% 0 0 / 0.05);
+  --hl-3: inset 0 1px 0 oklch(100% 0 0 / 0.07);
+  --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.4);
+  --shadow-2: 0 1px 2px oklch(0% 0 0 / 0.4), 0 4px 14px oklch(0% 0 0 / 0.22);
+  --shadow-3: 0 1px 2px oklch(0% 0 0 / 0.4), 0 10px 30px oklch(0% 0 0 / 0.32);
   --elev-1: var(--hl-1), var(--shadow-1);
   --elev-2: var(--hl-2), var(--shadow-2);
   --elev-3: var(--hl-3), var(--shadow-3);
 
-  /* Accent presence: faint vertical gradient + hover glow for primary actions. */
-  --accent-grad: linear-gradient(180deg, #6f9bf2 0%, var(--accent) 100%);
-  --accent-glow: 0 2px 14px rgba(91, 141, 239, 0.35);
+  /* The single allowed deep elevation (modal / focused window only) */
+  --shadow-overlay: 0 24px 60px oklch(0% 0 0 / 0.45);
 
-  /* The single allowed elevation (modal / inspector only) */
-  --shadow-overlay: 0 24px 60px rgba(0, 0, 0, 0.45);
-
-  /* Motion */
-  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* ---- Motion (defined once: three durations, one easing) ---- */
+  --dur-fast: 120ms;
   --dur: 200ms;
+  --dur-slow: 300ms;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
   /* ---- THE Z SCALE (defined once; no component invents its own) ----
      In-page stacking stays below 50. The attention banner needs NO z-index —
@@ -96,9 +130,25 @@
   --z-drawer: 85;  /* drawers, popovers, the attention queue */
   --z-modal: 90;   /* modals, command palette, the focused interaction window */
   --z-toast: 95;   /* toasts beat everything */
+
+  /* ---- Legacy bridge ----
+     Older class-based CSS still consumes these names; they resolve to the
+     tokens above so the whole app re-skins from one place. New CSS must use
+     the canonical names — this block only exists so nothing is undefined. */
+  --surface: var(--bg-raised);
+  --surface-elevated: var(--bg-overlay);
+  --border: var(--line);
+  --foreground: var(--text-primary);
+  --muted: var(--text-secondary);
+  --text-tertiary: var(--text-faint);
+  --radius: var(--r-control);
+  --radius-sm: var(--r-xs);
+  --radius-lg: var(--r-card);
+  --shadow-soft: var(--shadow-1);
 }
 
-/* Machine-true values: IDs, costs, tokens, timestamps, event types, model names. */
+/* Machine-true values: IDs, canonical keys (gmail:send_email), costs, tokens,
+   timestamps, event types, model names. Identities should LOOK like identities. */
 .data,
 .mono {
   font-family: var(--font-mono);

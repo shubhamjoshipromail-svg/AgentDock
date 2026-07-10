@@ -136,7 +136,7 @@
   align-items: flex-start;
   justify-content: center;
   padding: 9vh var(--sp-4) var(--sp-6);
-  background: rgba(9, 11, 14, 0.62);
+  background: var(--scrim);
   overflow-y: auto;
 }
 

@@ -8,7 +8,7 @@
 /* ---- Base workspace gets a barely-perceptible top-center light (≤3% lum) ---- */
 .appFrame {
   background:
-    radial-gradient(130% 90% at 50% -20%, rgba(255, 255, 255, 0.022), transparent 62%),
+    var(--canvas-sheen),
     var(--bg-base);
 }
 
@@ -100,7 +100,7 @@
 .buildInspector,
 .buildCanvas,
 .commandBar {
-  border-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--line);
 }
 
 /* Type crispness on the display font at large sizes. */

@@ -62,9 +62,9 @@
 }
 
 .memoryRow.selected {
-  background: #fff;
-  border-color: #111;
-  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.05);
+  background: var(--bg-raised);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 .memoryRow strong {
@@ -148,7 +148,7 @@
 }
 
 .permissionList p {
-  color: #34383d;
+  color: var(--text-secondary);
   line-height: 1.35;
   margin: 0;
   padding: 11px;

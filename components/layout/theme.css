@@ -160,7 +160,7 @@ p {
 @media (prefers-reduced-motion: no-preference) {
   .skeleton::after {
     animation: skeletonSweep 1.3s var(--ease) infinite;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+    background: linear-gradient(90deg, transparent, var(--wash-weak), transparent);
     content: "";
     inset: 0;
     position: absolute;
@@ -198,7 +198,7 @@ p {
 }
 
 .primaryButton:hover {
-  background: #6f9bf2;
+  background: var(--accent-hover);
   transform: none;
 }
 

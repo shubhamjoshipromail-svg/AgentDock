@@ -364,8 +364,8 @@
 }
 
 .builderPromptBar textarea:focus {
-  border-color: #111;
-  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.06);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 .builderToast {
@@ -475,10 +475,10 @@
 }
 
 .builderNode {
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 18px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  box-shadow: var(--shadow-1);
   color: var(--text-primary);
   display: grid;
   gap: 8px;
@@ -491,8 +491,8 @@
 
 .builderNode:hover,
 .builderNode.selected {
-  border-color: #111;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
   transform: translateY(-1px);
 }
 
@@ -509,7 +509,7 @@
 
 .nodeType {
   border-radius: 999px;
-  color: #34383d;
+  color: var(--text-secondary);
   font-size: 0.72rem;
   font-weight: 760;
   padding: 6px 8px;
@@ -589,7 +589,7 @@
   background: var(--bg-overlay);
   border: 1px solid var(--line);
   border-radius: 999px;
-  color: #34383d;
+  color: var(--text-secondary);
   font-size: 0.82rem;
   font-weight: 680;
   line-height: 1.25;
@@ -677,10 +677,10 @@
 }
 
 .plannerNode {
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 18px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  box-shadow: var(--shadow-1);
   color: var(--text-primary);
   display: grid;
   gap: 8px;
@@ -693,8 +693,8 @@
 
 .plannerNode:hover,
 .plannerNode.selected {
-  border-color: #111;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
   transform: translateY(-1px);
 }
 
@@ -742,7 +742,7 @@
 }
 
 .policyDiffList p {
-  color: #34383d;
+  color: var(--text-secondary);
   font-weight: 680;
   line-height: 1.35;
   margin: 0;
@@ -786,12 +786,12 @@
 .memoryZone.allowed,
 .memoryZone.selectedAccess {
   background: var(--ok-bg);
-  border-color: #cfecd8;
+  border-color: var(--ok);
 }
 
 .memoryZone.blocked {
   background: var(--danger-bg);
-  border-color: #ffd9d6;
+  border-color: var(--danger);
 }
 
 .memoryZone.approval-required,
@@ -905,7 +905,7 @@
 }
 
 .builderHeroPrompt textarea {
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line-strong);
   border-radius: 18px;
   color: var(--text-primary);
@@ -919,8 +919,8 @@
 }
 
 .builderHeroPrompt textarea:focus {
-  border-color: #111;
-  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.06);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 .templateChipRow {
@@ -998,7 +998,7 @@
 
 .workflowStepCard {
   align-items: stretch;
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 18px;
   color: var(--text-primary);
@@ -1013,8 +1013,8 @@
 
 .workflowStepCard:hover,
 .workflowStepCard.selected {
-  border-color: #111;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
   transform: translateY(-1px);
 }
 

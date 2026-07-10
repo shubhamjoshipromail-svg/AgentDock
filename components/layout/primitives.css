@@ -19,7 +19,7 @@
 .btn-sm { font-size: var(--fs-12); min-height: 28px; padding: 0 var(--sp-2); }
 
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--bg-base); }
-.btn-primary:hover:not(:disabled) { background: #6f9bf2; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 
 .btn-secondary { background: var(--bg-overlay); border-color: var(--line); color: var(--text-primary); }
 .btn-secondary:hover:not(:disabled) { border-color: var(--line-strong); }
@@ -28,7 +28,7 @@
 .btn-ghost:hover:not(:disabled) { background: var(--bg-overlay); color: var(--text-primary); }
 
 .btn-danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
-.btn-danger:hover:not(:disabled) { background: rgba(229, 96, 76, 0.2); }
+.btn-danger:hover:not(:disabled) { background: var(--danger-bg-strong); }
 
 .btn:disabled { cursor: not-allowed; opacity: 0.5; }
 

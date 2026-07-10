@@ -6,7 +6,7 @@
 .topbar {
   align-items: center;
   backdrop-filter: blur(18px);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 18px;
   display: flex;
@@ -39,7 +39,7 @@
   align-items: center;
   background: var(--text-primary);
   border-radius: 10px;
-  color: #fff;
+  color: var(--accent-fg);
   display: inline-flex;
   height: 34px;
   justify-content: center;
@@ -60,7 +60,7 @@
 
 .authTrigger {
   align-items: center;
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   color: var(--text-primary);
@@ -87,7 +87,7 @@
 .authAvatar {
   align-items: center;
   background: var(--text-primary);
-  color: #fff;
+  color: var(--accent-fg);
   display: inline-flex;
   font-size: 0.72rem;
   font-weight: 760;
@@ -100,7 +100,7 @@
 }
 
 .authPopover {
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow: none;
@@ -154,7 +154,7 @@
 
 .googleSignInButton {
   align-items: center;
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line-strong);
   border-radius: 14px;
   color: var(--text-primary);
@@ -170,7 +170,7 @@
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 50%;
-  color: #4285f4;
+  color: var(--info);
   display: inline-flex;
   font-weight: 820;
   height: 26px;
@@ -183,7 +183,7 @@
   background: var(--bg-overlay);
   border: 1px solid var(--line);
   border-radius: 16px;
-  color: #34383d;
+  color: var(--text-secondary);
   font-weight: 680;
   line-height: 1.45;
   margin-bottom: 16px;
@@ -264,13 +264,13 @@ h3 {
 
 .primaryButton {
   background: var(--text-primary);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
-  color: #fff;
+  box-shadow: var(--shadow-2);
+  color: var(--accent-fg);
   padding: 13px 17px;
 }
 
 .secondaryButton {
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line-strong);
   color: var(--text-primary);
   padding: 12px 16px;
@@ -293,22 +293,22 @@ h3 {
 }
 
 .capabilityBadge.db {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #166534;
+  background: var(--ok-bg);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .capabilityBadge.local,
 .capabilityBadge.mock {
-  background: #f8fafc;
-  border-color: #dbe3ec;
-  color: #475569;
+  background: var(--wash-weak);
+  border-color: var(--line);
+  color: var(--text-secondary);
 }
 
 .capabilityBadge.soon {
-  background: #f4f4f5;
-  border-color: #d4d4d8;
-  color: #71717a;
+  background: var(--wash-weak);
+  border-color: var(--line);
+  color: var(--text-faint);
 }
 
 .primaryButton:hover, .secondaryButton:hover {
@@ -363,7 +363,7 @@ h3 {
   font-size: 1.45rem;
 }
 .heroPolicy p {
-  color: #34383d;
+  color: var(--text-secondary);
   line-height: 1.48;
   margin: 0;
 }
@@ -393,7 +393,7 @@ h3 {
 }
 
 .compareCard li {
-  color: #3c4248;
+  color: var(--text-secondary);
   line-height: 1.45;
   padding-left: 26px;
   position: relative;
@@ -425,9 +425,9 @@ h3 {
 }
 .progressStep span {
   align-items: center;
-  background: #f0f1f2;
+  background: var(--wash);
   border-radius: 50%;
-  color: #555b61;
+  color: var(--text-secondary);
   display: inline-flex;
   height: 27px;
   justify-content: center;
@@ -435,13 +435,13 @@ h3 {
 }
 
 .progressStep.active {
-  background: #111;
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 .progressStep.active span {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  background: var(--wash-strong);
+  color: var(--accent-fg);
 }
 
 .stage {
@@ -469,12 +469,12 @@ h3 {
   gap: 16px;
 }
 .goalCard.selected {
-  background: #111;
-  border-color: #111;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
 }
 textarea {
-  background: #fff;
+  background: var(--bg-raised);
   border: 1px solid var(--line-strong);
   border-radius: 16px;
   color: var(--text-primary);
@@ -487,8 +487,8 @@ textarea {
 
 textarea:focus,
 input:focus {
-  border-color: #b8bec5;
-  box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.06);
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 .actionRow {
@@ -592,7 +592,7 @@ input:focus {
 
 .policyStat.allowed {
   background: var(--ok-bg);
-  border-color: #d9eedf;
+  border-color: var(--ok);
 }
 
 .policyStat.approval-required {
@@ -602,7 +602,7 @@ input:focus {
 
 .policyStat.blocked {
   background: var(--danger-bg);
-  border-color: #ffd9d6;
+  border-color: var(--danger);
 }
 .capControl span,
 .capControl strong {
@@ -616,7 +616,7 @@ input:focus {
 }
 
 input[type="range"] {
-  accent-color: #111;
+  accent-color: var(--accent);
   width: 100%;
 }
 
@@ -641,13 +641,13 @@ td {
 }
 
 th {
-  background: #fafafa;
+  background: var(--wash-weak);
   color: var(--text-secondary);
   font-size: 0.76rem;
 }
 
 td {
-  color: #34383d;
+  color: var(--text-secondary);
   line-height: 1.45;
 }
 
@@ -663,7 +663,7 @@ td span {
   max-width: 720px;
 }
 .credentialChecklist span {
-  background: #fff;
+  background: var(--bg-raised);
   border-radius: 14px;
   padding: 12px 13px;
   text-align: left;
@@ -690,7 +690,7 @@ td span {
 }
 
 .meter {
-  background: #eceff2;
+  background: var(--wash);
   border-radius: 999px;
   height: 8px;
   margin-top: 16px;
@@ -698,7 +698,7 @@ td span {
 }
 
 .meter span {
-  background: #111;
+  background: var(--accent);
   display: block;
   height: 100%;
   margin: 0;
@@ -714,9 +714,9 @@ td span {
 
 .flowNode span {
   align-items: center;
-  background: #111;
+  background: var(--accent);
   border-radius: 50%;
-  color: #fff;
+  color: var(--accent-fg);
   display: inline-flex;
   font-weight: 760;
   height: 28px;
@@ -756,7 +756,7 @@ td span {
 }
 
 .approvalList input {
-  accent-color: #111;
+  accent-color: var(--accent);
   height: 18px;
   width: 18px;
 }
@@ -767,7 +767,7 @@ td span {
 
 .timelineEvent p,
 .permissionSummary p {
-  color: #3a3f45;
+  color: var(--text-secondary);
   line-height: 1.5;
   margin: 0;
 }

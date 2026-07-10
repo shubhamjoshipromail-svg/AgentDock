@@ -236,7 +236,7 @@ body {
 /* ---- Command palette ---- */
 .cmdkOverlay {
   align-items: flex-start;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   display: flex;
   inset: 0;
   justify-content: center;
