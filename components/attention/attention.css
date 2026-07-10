@@ -158,7 +158,7 @@
   width: min(680px, calc(100vw - 2 * var(--sp-4)));
   background: var(--bg-overlay);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-card);
+  border-radius: var(--r-lg);
   /* lit from the top: inner highlight + the single allowed overlay shadow */
   box-shadow: var(--hl-3), var(--shadow-overlay);
   outline: none;
@@ -166,6 +166,16 @@
   flex-direction: column;
   max-height: 82vh;
   animation: attnWindowIn var(--dur) var(--ease);
+  overflow: hidden;
+}
+
+/* THE SIGNATURE MOMENT: a hairline of the brand accent across the window top —
+   the one place the accent gradient appears at full strength. */
+.attnWindow::before {
+  content: "";
+  flex-shrink: 0;
+  height: 2px;
+  background: var(--accent-grad);
 }
 
 /* NOTE: the window carries translateX(-50%) for centering — the keyframes must
@@ -180,7 +190,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-4) var(--sp-6);
   border-bottom: 1px solid var(--line);
 }
 
@@ -203,12 +213,12 @@
 .attnWindowClose:hover { color: var(--text-primary); border-color: var(--line-strong); }
 
 .attnWindowBody {
-  padding: var(--sp-4);
+  padding: var(--sp-6);
   overflow-y: auto;
 }
 
 .attnWindowFoot {
-  padding: var(--sp-2) var(--sp-4);
+  padding: var(--sp-2) var(--sp-6);
   border-top: 1px solid var(--line);
   font-size: var(--fs-12);
   color: var(--text-faint);
@@ -241,10 +251,15 @@
   gap: var(--sp-2);
 }
 
+/* Options as REAL selectable cards in the window. */
 .attnWindowBody .intentOption {
-  padding: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
   border-radius: var(--r-card);
+  background: var(--bg-raised);
+  box-shadow: var(--hl-1);
 }
+.attnWindowBody .intentOption:hover { box-shadow: var(--elev-1); }
+.attnWindowBody .intentOption[data-selected="true"] { box-shadow: 0 0 0 1px var(--accent), var(--hl-2); }
 
 .attnWindowBody .intentOptionTitle { font-size: var(--fs-14); }
 .attnWindowBody .intentOptionDesc { font-size: var(--fs-13); }

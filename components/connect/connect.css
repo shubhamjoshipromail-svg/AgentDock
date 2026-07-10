@@ -224,3 +224,23 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Beauty pass: one-glance hierarchy ---- */
+.connectionCard,
+.toolCard {
+  border-radius: var(--r-card);
+  box-shadow: var(--hl-1);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.connectionCard:hover,
+.toolCard:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--elev-1);
+}
+
+/* Tool identities look like identities. */
+.toolCardTop strong {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}

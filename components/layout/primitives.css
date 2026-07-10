@@ -263,3 +263,22 @@
   color: var(--text-primary);
   font-weight: 500;
 }
+
+/* ---- Teaching empty states: illustrated glyph, one line, one action ---- */
+.emptyState {
+  gap: var(--sp-3);
+}
+
+.emptyStateIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+}
+
+.emptyState p { color: var(--text-secondary); line-height: 1.55; }

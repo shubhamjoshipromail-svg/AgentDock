@@ -565,3 +565,16 @@ select:focus {
   .storeToolbar { flex-direction: column; align-items: stretch; }
   .storeToolbar .searchInput { min-width: 0; }
 }
+
+/* ---- Beauty pass: cards lifted from the top, hover raise everywhere ---- */
+.agentCard,
+.mcpCard,
+.card {
+  box-shadow: var(--hl-1);
+}
+
+.agentCard:hover,
+.mcpCard:hover,
+.paletteCard:hover {
+  box-shadow: var(--elev-1);
+}
