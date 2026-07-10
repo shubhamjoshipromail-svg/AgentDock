@@ -2,8 +2,16 @@
  * Split of the former monolithic globals.css into colocated per-area files.
  * Import order matters: it reproduces the exact original rule order, including
  * the trailing theme refinement pass that overrides earlier rules.
- * This is a file split only — selectors and declarations are unchanged.
+ *
+ * Tailwind v4 (utilities only — NO preflight: base.css owns the reset, so the
+ * existing hand-rolled skin is untouched). The Tailwind theme is OUR tokens,
+ * mapped inline below — utility classes like bg-accent/text-ok resolve to the
+ * same variables every hand-written rule uses. One source of truth stays true.
  */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "./tw-theme.css";
+
 @import "./base.css";
 @import "../components/layout/primitives.css";
 @import "../components/layout/layout.css";

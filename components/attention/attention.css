@@ -57,11 +57,9 @@
   color: var(--bg-base);
 }
 
-/* --- The queue: minimal cross-run pending list (seed of the ops view) --- */
+/* --- The queue: minimal cross-run pending list (seed of the ops view).
+   Positioned by Radix DropdownMenu (popper) — we only skin it. --- */
 .attnQueue {
-  position: fixed;
-  top: 40px;
-  right: var(--sp-4);
   z-index: var(--z-drawer);
   width: min(420px, calc(100vw - 2 * var(--sp-4)));
   max-height: 60vh;
@@ -71,8 +69,16 @@
   border-radius: var(--r-card);
   box-shadow: var(--hl-2), var(--shadow-overlay);
   padding: var(--sp-2);
-  animation: attnWindowIn var(--dur) var(--ease);
+  animation: attnQueueIn var(--dur) var(--ease);
 }
+
+@keyframes attnQueueIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.attnQueueRow { cursor: pointer; outline: none; }
+.attnQueueRow[data-highlighted] { background: var(--accent-bg); }
 
 .attnQueueHead {
   font-size: var(--fs-12);
@@ -127,21 +133,29 @@
 
 .attnQueueGo { color: var(--text-faint); }
 
-/* --- Focused interaction window: one intent, rendered large --- */
+/* --- Focused interaction window: one intent, rendered large.
+   Radix Dialog renders Overlay and Content as portal siblings — the window
+   positions itself; the overlay is only the scrim. --- */
 .attnOverlay {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 9vh var(--sp-4) var(--sp-6);
   background: var(--scrim);
-  overflow-y: auto;
+  animation: attnFadeIn var(--dur) var(--ease);
+}
+
+@keyframes attnFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .attnWindow {
-  width: min(680px, 100%);
+  position: fixed;
+  top: 9vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-modal);
+  width: min(680px, calc(100vw - 2 * var(--sp-4)));
   background: var(--bg-overlay);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-card);
@@ -154,9 +168,11 @@
   animation: attnWindowIn var(--dur) var(--ease);
 }
 
+/* NOTE: the window carries translateX(-50%) for centering — the keyframes must
+   preserve it. The queue (popper-positioned) tolerates the same keyframes. */
 @keyframes attnWindowIn {
-  from { opacity: 0; transform: translateY(8px) scale(0.99); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 .attnWindowHead {

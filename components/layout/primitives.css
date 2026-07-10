@@ -222,3 +222,44 @@
 .metric { display: inline-flex; flex-direction: column; gap: 2px; }
 .metric > span { color: var(--text-faint); font-size: var(--fs-12); }
 .metric > strong { color: var(--text-primary); font-weight: 500; }
+
+/* ---- Radix-backed primitives (tokens only) ---- */
+.tooltip {
+  background: var(--bg-popover);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-2);
+  color: var(--text-primary);
+  font-size: var(--fs-12);
+  line-height: 1.4;
+  max-width: 280px;
+  padding: var(--sp-1) var(--sp-2);
+  z-index: var(--z-drawer);
+}
+
+.tooltipArrow { fill: var(--bg-popover); }
+
+.tabsList {
+  display: inline-flex;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.tabsTrigger {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--fs-13);
+  padding: var(--sp-2) var(--sp-3);
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.tabsTrigger:hover { color: var(--text-primary); }
+
+.tabsTrigger[data-state="active"] {
+  border-bottom-color: var(--accent);
+  color: var(--text-primary);
+  font-weight: 500;
+}

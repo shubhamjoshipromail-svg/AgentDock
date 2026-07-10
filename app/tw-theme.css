@@ -1,0 +1,37 @@
+/* Tailwind v4 theme = OUR tokens (app/tokens.css). Utilities like bg-accent,
+ * text-ok, border-line resolve to the same variables every hand-written rule
+ * uses — one source of truth, zero default-zinc anywhere. */
+@theme inline {
+  /* Kill the default palette: our tokens are the only colors. */
+  --color-*: initial;
+  --color-canvas: var(--bg-base);
+  --color-raised: var(--bg-raised);
+  --color-overlay: var(--bg-overlay);
+  --color-popover: var(--bg-popover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--text-primary);
+  --color-fg-secondary: var(--text-secondary);
+  --color-fg-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-muted: var(--accent-muted);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-bg: var(--accent-bg);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-restricted: var(--restricted);
+  --color-wash: var(--wash);
+
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  --radius-control: var(--r-control);
+  --radius-card: var(--r-card);
+  --radius-lg: var(--r-lg);
+}

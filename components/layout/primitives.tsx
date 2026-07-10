@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import * as TabsPrimitive from "@radix-ui/react-tabs";
 
+import { cn } from "../../lib/ui/cn";
 import type { CapabilityKind, McpRiskLevel, McpVerificationStatus, Decision } from "../../lib/types";
 
 // Logo-led object identity: a rounded square. The glyph renders first and stays
@@ -33,8 +37,26 @@ export function Avatar({ name }: { name: string }) {
 // via class names defined in primitives.css — no caller ever picks a color.
 // ---------------------------------------------------------------------------
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
-type ButtonSize = "sm" | "md";
+// Variant machinery via cva (shadcn convention) over the token-driven classes
+// from primitives.css — same rendered output as before, structured variants now.
+export const buttonVariants = cva("btn", {
+  variants: {
+    variant: {
+      primary: "btn-primary",
+      secondary: "btn-secondary",
+      ghost: "btn-ghost",
+      danger: "btn-danger"
+    },
+    size: {
+      sm: "btn-sm",
+      md: "btn-md"
+    }
+  },
+  defaultVariants: { variant: "secondary", size: "md" }
+});
+
+type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>;
+type ButtonSize = NonNullable<VariantProps<typeof buttonVariants>["size"]>;
 
 export function Button({
   children,
@@ -46,14 +68,13 @@ export function Button({
   ...rest
 }: {
   children: React.ReactNode;
-  variant?: ButtonVariant;
-  size?: ButtonSize;
   loading?: boolean;
-} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+} & VariantProps<typeof buttonVariants> &
+  React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type={type}
-      className={`btn btn-${variant} btn-${size}${loading ? " btn-loading" : ""} ${className}`.trim()}
+      className={cn(buttonVariants({ variant, size }), loading && "btn-loading", className)}
       disabled={loading || rest.disabled}
       {...rest}
     >
@@ -226,6 +247,64 @@ export function CapabilityBadge({ kind, label }: { kind: CapabilityKind; label?:
 
   return <span className={`capabilityBadge ${kind}`}>{label ?? labels[kind]}</span>;
 }
+
+// ---------------------------------------------------------------------------
+// Radix-backed primitives (accessibility + keyboard behavior for free),
+// themed entirely from tokens — never the default look.
+// ---------------------------------------------------------------------------
+
+export function Tooltip({
+  content,
+  side = "top",
+  children
+}: {
+  content: React.ReactNode;
+  side?: "top" | "bottom" | "left" | "right";
+  children: React.ReactNode;
+}) {
+  return (
+    <TooltipPrimitive.Provider delayDuration={300}>
+      <TooltipPrimitive.Root>
+        <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+        <TooltipPrimitive.Portal>
+          <TooltipPrimitive.Content className="tooltip" side={side} sideOffset={6}>
+            {content}
+            <TooltipPrimitive.Arrow className="tooltipArrow" />
+          </TooltipPrimitive.Content>
+        </TooltipPrimitive.Portal>
+      </TooltipPrimitive.Root>
+    </TooltipPrimitive.Provider>
+  );
+}
+
+export function Tabs({
+  value,
+  onValueChange,
+  items,
+  children,
+  className = ""
+}: {
+  value: string;
+  onValueChange: (v: string) => void;
+  items: { value: string; label: React.ReactNode }[];
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <TabsPrimitive.Root value={value} onValueChange={onValueChange} className={cn("tabs", className)}>
+      <TabsPrimitive.List className="tabsList" aria-label="Tabs">
+        {items.map((item) => (
+          <TabsPrimitive.Trigger key={item.value} value={item.value} className="tabsTrigger">
+            {item.label}
+          </TabsPrimitive.Trigger>
+        ))}
+      </TabsPrimitive.List>
+      {children}
+    </TabsPrimitive.Root>
+  );
+}
+
+export const TabsContent = TabsPrimitive.Content;
 
 // Disabled action with an explanatory tooltip. No bespoke class — it is just a
 // disabled Button, so its state reads the same as every other disabled control.

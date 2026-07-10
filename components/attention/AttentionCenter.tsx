@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
+import * as Dialog from "@radix-ui/react-dialog";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
 import {
   listPendingIntents, resolveApproval, respondToIntent, type PendingIntentSummary
@@ -124,82 +126,52 @@ export function AttentionProvider({ children }: { children: React.ReactNode }) {
 // several → shows the count and opens the queue.
 export function AttentionBanner() {
   const { intents, open } = useAttention();
-  const [queueOpen, setQueueOpen] = useState(false);
   const state = bannerState(intents);
-
-  // The queue lives off the SAME list — when the last pending intent resolves,
-  // banner and queue leave together.
-  useEffect(() => {
-    if (intents.length === 0) setQueueOpen(false);
-  }, [intents.length]);
 
   if (!state.visible) return null;
 
   return (
-    <>
-      <div className="attnBanner" role="status" aria-live="polite">
-        <span className="attnBannerIcon" aria-hidden>⚠</span>
-        <span className="attnBannerText">
-          {state.label}
-          {state.count === 1 && state.newest.agentName ? (
-            <span className="attnBannerDetail"> — {state.newest.agentName} is asking</span>
-          ) : null}
-        </span>
-        <button
-          className="attnBannerAction"
-          onClick={() => {
-            if (state.count === 1) { open(state.newest.id); setQueueOpen(false); }
-            else setQueueOpen((v) => !v);
-          }}
-          aria-expanded={state.count > 1 ? queueOpen : undefined}
-        >
-          {state.count === 1 ? "Respond" : `Review ${state.count}`}
+    <div className="attnBanner" role="status" aria-live="polite">
+      <span className="attnBannerIcon" aria-hidden>⚠</span>
+      <span className="attnBannerText">
+        {state.label}
+        {state.count === 1 && state.newest.agentName ? (
+          <span className="attnBannerDetail"> — {state.newest.agentName} is asking</span>
+        ) : null}
+      </span>
+      {state.count === 1 ? (
+        <button className="attnBannerAction" onClick={() => open(state.newest.id)}>
+          Respond
         </button>
-      </div>
-      {queueOpen && state.count > 1 && (
-        <AttentionQueue onPick={(id) => { setQueueOpen(false); open(id); }} onClose={() => setQueueOpen(false)} />
+      ) : (
+        // THE QUEUE: a Radix dropdown off the banner — keyboard nav, outside
+        // click, Esc, and focus return for free. It reads the SAME list as the
+        // banner, so when the last intent resolves they leave together.
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button className="attnBannerAction">Review {state.count}</button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content className="attnQueue" align="end" sideOffset={8} aria-label="Runs waiting on you">
+              <DropdownMenu.Label className="attnQueueHead">Needs attention</DropdownMenu.Label>
+              {intents.map((i) => (
+                <DropdownMenu.Item key={i.id} className="attnQueueRow" onSelect={() => open(i.id)}>
+                  <span className="attnQueueKind" data-kind={i.intentType ?? "approval"}>
+                    {i.intentType === "choice" ? "☰" : i.intentType === "form" ? "✎" : i.intentType === "confirmation" ? "?" : "⚠"}
+                  </span>
+                  <span className="attnQueueBody">
+                    <span className="attnQueueTitle">{i.title}</span>
+                    <span className="attnQueueMeta">
+                      {i.agentName ? `${i.agentName} · ` : ""}{i.flowName} · {relativeTime(i.requestedAt)}
+                    </span>
+                  </span>
+                  <span className="attnQueueGo" aria-hidden>→</span>
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       )}
-    </>
-  );
-}
-
-// The minimal "Needs attention" list: every pending intent across runs, newest
-// first — deliberately a simple list; this is the seed of the multi-run
-// operations view, not the view itself.
-function AttentionQueue({ onPick, onClose }: { onPick: (intentId: string) => void; onClose: () => void }) {
-  const { intents } = useAttention();
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onDown);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDown);
-    };
-  }, [onClose]);
-
-  return (
-    <div className="attnQueue" ref={ref} role="menu" aria-label="Runs waiting on you">
-      <div className="attnQueueHead">Needs attention</div>
-      {intents.map((i) => (
-        <button className="attnQueueRow" key={i.id} role="menuitem" onClick={() => onPick(i.id)}>
-          <span className="attnQueueKind" data-kind={i.intentType ?? "approval"}>
-            {i.intentType === "choice" ? "☰" : i.intentType === "form" ? "✎" : i.intentType === "confirmation" ? "?" : "⚠"}
-          </span>
-          <span className="attnQueueBody">
-            <span className="attnQueueTitle">{i.title}</span>
-            <span className="attnQueueMeta">
-              {i.agentName ? `${i.agentName} · ` : ""}{i.flowName} · {relativeTime(i.requestedAt)}
-            </span>
-          </span>
-          <span className="attnQueueGo" aria-hidden>→</span>
-        </button>
-      ))}
     </div>
   );
 }
@@ -220,35 +192,7 @@ function relativeTime(iso: string): string {
 export function AttentionWindow() {
   const { intents, focusedId, close, refresh } = useAttention();
   const toast = useToast();
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const intent = focusedId ? intents.find((i) => i.id === focusedId) ?? null : null;
-
-  // Focus management: trap Tab inside the window, Esc closes (run stays
-  // paused), focus returns to where the user was.
-  useEffect(() => {
-    if (!intent) return;
-    const previous = document.activeElement as HTMLElement | null;
-    const panel = panelRef.current;
-    panel?.focus();
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.stopPropagation(); close(); return; }
-      if (e.key !== "Tab" || !panel) return;
-      const focusables = panel.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown, true);
-      previous?.focus();
-    };
-  }, [intent, close]);
 
   if (!intent) return null;
 
@@ -274,38 +218,44 @@ export function AttentionWindow() {
     }
   };
 
+  // Radix Dialog: focus trap, Esc, outside-click, focus return, aria — for
+  // free. Closing (any path) never responds: the run stays paused.
   return (
-    <div className="attnOverlay" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div
-        className="attnWindow"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${intent.agentName ?? "An agent"} in ${intent.flowName} is asking for your input`}
-        ref={panelRef}
-        tabIndex={-1}
-      >
-        <div className="attnWindowHead">
-          <span className="attnWindowContext">
-            <strong>{intent.agentName ?? "Agent"}</strong> in <strong>{intent.flowName}</strong> is asking:
-          </span>
-          <button className="attnWindowClose" aria-label="Close without responding" onClick={close}>×</button>
-        </div>
-        <div className="attnWindowBody">
-          <IntentSurface
-            intent={{
-              id: intent.id,
-              title: intent.title,
-              description: intent.description,
-              status: "pending",
-              intentType: intent.intentType,
-              payload: intent.payload
-            }}
-            onRespond={(id, response) => void handleRespond(id, response)}
-            onResolveApproval={(id, approved) => void handleResolveApproval(id, approved)}
-          />
-        </div>
-        <div className="attnWindowFoot">Closing without responding keeps the run paused.</div>
-      </div>
-    </div>
+    <Dialog.Root open onOpenChange={(o) => { if (!o) close(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="attnOverlay" />
+        <Dialog.Content
+          className="attnWindow"
+          aria-describedby={undefined}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <div className="attnWindowHead">
+            <Dialog.Title asChild>
+              <span className="attnWindowContext">
+                <strong>{intent.agentName ?? "Agent"}</strong> in <strong>{intent.flowName}</strong> is asking:
+              </span>
+            </Dialog.Title>
+            <Dialog.Close asChild>
+              <button className="attnWindowClose" aria-label="Close without responding">×</button>
+            </Dialog.Close>
+          </div>
+          <div className="attnWindowBody">
+            <IntentSurface
+              intent={{
+                id: intent.id,
+                title: intent.title,
+                description: intent.description,
+                status: "pending",
+                intentType: intent.intentType,
+                payload: intent.payload
+              }}
+              onRespond={(id, response) => void handleRespond(id, response)}
+              onResolveApproval={(id, approved) => void handleResolveApproval(id, approved)}
+            />
+          </div>
+          <div className="attnWindowFoot">Closing without responding keeps the run paused.</div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
