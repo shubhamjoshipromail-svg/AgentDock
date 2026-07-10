@@ -1,5 +1,6 @@
 /* Workstation shell: fixed full-height app frame. The page never scrolls;
-   only .workContent scrolls. Rail + top bar + content area. */
+   only .workContent scrolls. Top-chrome stack (attention banner) + rail +
+   top bar + content area. */
 
 html,
 body {
@@ -7,10 +8,20 @@ body {
   overflow: hidden;
 }
 
+/* THE TOP-CHROME STACK: banner (when present) and the app frame share one
+   flex column filling the viewport. The banner participates in normal flow —
+   the frame shrinks below it; nothing overlaps, nothing needs measuring. */
+.appViewport {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
 .appFrame {
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr);
-  height: 100dvh;
+  flex: 1;
+  min-height: 0;
   background: var(--bg-base);
 }
 
@@ -136,7 +147,8 @@ body {
 .workMain {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: 100dvh;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
 }
 
@@ -230,7 +242,7 @@ body {
   justify-content: center;
   padding-top: 12vh;
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-modal);
 }
 
 .cmdkPanel {
@@ -304,7 +316,7 @@ body {
   gap: var(--sp-2);
   position: fixed;
   right: var(--sp-6);
-  z-index: 90;
+  z-index: var(--z-toast);
 }
 
 .toast {

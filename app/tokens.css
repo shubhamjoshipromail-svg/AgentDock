@@ -88,6 +88,14 @@
   /* Motion */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --dur: 200ms;
+
+  /* ---- THE Z SCALE (defined once; no component invents its own) ----
+     In-page stacking stays below 50. The attention banner needs NO z-index —
+     it sits in normal flow above the app frame (see .appViewport). */
+  --z-chrome: 80;  /* app chrome (sticky headers, rails) */
+  --z-drawer: 85;  /* drawers, popovers, the attention queue */
+  --z-modal: 90;   /* modals, command palette, the focused interaction window */
+  --z-toast: 95;   /* toasts beat everything */
 }
 
 /* Machine-true values: IDs, costs, tokens, timestamps, event types, model names. */

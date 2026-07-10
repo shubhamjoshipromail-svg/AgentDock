@@ -2,13 +2,11 @@
    Three views over ONE pending-intents state. Control-tower skin: tokens only,
    borders over decoration, light from the top. */
 
-/* --- Banner: slim, fixed, unmissable from any screen --- */
+/* --- Banner: slim, unmissable from any screen. Lives in NORMAL FLOW at the
+   top of the app viewport (page.tsx renders it above the shell), so it pushes
+   the header down instead of plating over it. No z-index needed. --- */
 .attnBanner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 80;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
@@ -21,11 +19,12 @@
   color: var(--text-primary);
   font-size: var(--fs-13);
   animation: attnBannerIn var(--dur) var(--ease);
+  overflow: hidden;
 }
 
 @keyframes attnBannerIn {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(0); }
+  from { max-height: 0; opacity: 0; }
+  to { max-height: 48px; opacity: 1; }
 }
 
 .attnBannerIcon { color: var(--warn); }
@@ -63,7 +62,7 @@
   position: fixed;
   top: 40px;
   right: var(--sp-4);
-  z-index: 85;
+  z-index: var(--z-drawer);
   width: min(420px, calc(100vw - 2 * var(--sp-4)));
   max-height: 60vh;
   overflow-y: auto;
@@ -132,7 +131,7 @@
 .attnOverlay {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: var(--z-modal);
   display: flex;
   align-items: flex-start;
   justify-content: center;

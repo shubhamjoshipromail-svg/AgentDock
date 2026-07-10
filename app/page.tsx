@@ -48,10 +48,11 @@ function AppInner() {
   }, []);
 
   return (
-    <>
-      {/* Global attention surface: finds you on ANY screen when a run is
-          waiting on you. Reads the same pending-intents state as the queue
-          and the focused window — never a separate store. */}
+    <div className="appViewport">
+      {/* TOP CHROME STACK: the attention banner lives in normal flow ABOVE the
+          app frame — it pushes the shell down instead of plating over the top
+          bar. Visible on ANY screen; reads the same pending-intents state as
+          the queue and the focused window — never a separate store. */}
       <AttentionBanner />
       <AttentionWindow />
       <Shell activeSection={activeSection} onSelectSection={setActiveSection} onOpenCommand={() => setCmdkOpen(true)}>
@@ -77,7 +78,7 @@ function AppInner() {
         </BootstrapGate>
       </Shell>
       <CommandPalette open={cmdkOpen} onOpenChange={setCmdkOpen} commands={commands} />
-    </>
+    </div>
   );
 }
 
