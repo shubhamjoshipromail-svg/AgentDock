@@ -434,16 +434,39 @@ export function FlowWorkspace({
         <div className="wsHeaderControls">
           {flow && (
             <>
+              {/* STATUS BAR: state chip + slim spend meter + the one primary and
+                  one destructive action. Semantic colors are the loud element. */}
+              {run.status && (
+                <span
+                  className="wsStateChip"
+                  data-state={
+                    run.status === "completed" ? "ok"
+                      : run.status.includes("halted") || run.status === "killed" ? "danger"
+                        : run.status === "paused_for_approval" ? "warn"
+                          : "active"
+                  }
+                >
+                  <span className="wsStateDot" aria-hidden />
+                  {run.status.replaceAll("_", " ")}
+                </span>
+              )}
+              <span className="wsSpend" title={`Spend this run${cap ? ` (cap $${cap.toFixed(2)})` : ""}`}>
+                <span className="wsSpendBar" aria-hidden>
+                  <span
+                    className="wsSpendFill"
+                    data-hot={cap > 0 && spend / cap > 0.8}
+                    style={{ width: cap > 0 ? `${Math.min(100, (spend / cap) * 100)}%` : "0%" }}
+                  />
+                </span>
+                <span className="data">${spend.toFixed(2)}{cap ? ` / $${cap.toFixed(2)}` : ""}</span>
+              </span>
+              <span className="wsHeaderMeta">
+                {participants.length} participant{participants.length !== 1 ? "s" : ""}
+              </span>
               <Button variant="primary" size="sm" loading={running} onClick={handleRun} disabled={running}>
                 {running ? "Running…" : "▶ Run"}
               </Button>
               {running && <Button variant="danger" size="sm" onClick={handleKill}>■ Kill</Button>}
-              <span className="wsHeaderMeta">
-                spend ${spend.toFixed(2)}{cap ? ` / $${cap.toFixed(2)}` : ""} · {participants.length} participant{participants.length !== 1 ? "s" : ""}
-                {run.status && (
-                  <> · <span style={{ color: run.status === "completed" ? "var(--ok)" : run.status.includes("halted") ? "var(--danger)" : "var(--muted)" }}>{run.status}</span></>
-                )}
-              </span>
             </>
           )}
         </div>
@@ -467,7 +490,7 @@ export function FlowWorkspace({
 
         <div className="participantsHead">
           <h2>Participants</h2>
-          <span style={{ fontSize: "0.7rem", color: "var(--muted)" }}>{participants.length} agent{participants.length !== 1 ? "s" : ""}</span>
+          <span className="participantsCount">{participants.length} agent{participants.length !== 1 ? "s" : ""}</span>
         </div>
 
         {/* REPAIR STATE: a zero-agent flow (saved by the old buggy plan path)
@@ -494,12 +517,12 @@ export function FlowWorkspace({
               onClick={() => setSelectedP(p.agentId)}
             >
               <div className="participantCardTop">
-                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <div className="participantName">
                   <span className="participantOrder">{p.order}</span>
                   <strong>{p.agentName}</strong>
                 </div>
               </div>
-              <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: "0.2rem" }}>{p.role}</div>
+              <div className="participantRole">{p.role}</div>
 
               {/* Grants live on the participant — permission state inline */}
               <div className="pGrants">
@@ -620,37 +643,27 @@ export function FlowWorkspace({
             <div className="runColHead">
               <h2>This run</h2>
               {run.status && (
-                <span style={{ fontSize: "0.7rem", color: "var(--muted)" }}>
+                <span className="runColMeta data">
                   {run.toolCallCount} tools · {run.stepCount} model steps
                 </span>
               )}
             </div>
 
-            {/* --- TOOL SETUP GUIDE — shown when no tools are connected or granted --- */}
+            {/* --- TOOL SETUP GUIDE — an empty state that teaches the next action --- */}
             {availableTools.length === 0 && participants.every((p) => p.tools.filter((t) => !t.revoked).length === 0) && (
-              <div style={{
-                background: "var(--surface-elevated)",
-                border: "1px dashed var(--border)",
-                borderRadius: "var(--radius-lg, 8px)",
-                padding: "1rem 1.25rem",
-                marginBottom: "0.75rem"
-              }}>
-                <strong style={{ fontSize: "0.85rem" }}>🔌 Set up tools for this flow</strong>
-                <p style={{ fontSize: "0.75rem", color: "var(--muted)", margin: "0.4rem 0", lineHeight: 1.5 }}>
-                  Your agents need tools to act. Without tools, they can only produce text — no search, no email, no actions.
-                </p>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <div className="wsSetupGuide">
+                <strong>🔌 Set up tools for this flow</strong>
+                <p>Your agents need tools to act. Without tools, they can only produce text — no search, no email, no actions.</p>
+                <div className="wsSetupSteps">
                   <Button variant="secondary" size="sm" onClick={() => setOpenDrawer("connect")}>
                     1. Connect a server
                   </Button>
-                  <span style={{ fontSize: "0.7rem", color: "var(--muted)", alignSelf: "center" }}>→</span>
+                  <span aria-hidden>→</span>
                   <Button variant="secondary" size="sm" onClick={() => setOpenDrawer("connect")}>
                     2. Discover tools
                   </Button>
-                  <span style={{ fontSize: "0.7rem", color: "var(--muted)", alignSelf: "center" }}>→</span>
-                  <span style={{ fontSize: "0.75rem", color: "var(--muted)", alignSelf: "center" }}>
-                    3. Grant tools to agents →
-                  </span>
+                  <span aria-hidden>→</span>
+                  <span>3. Grant tools to agents</span>
                 </div>
               </div>
             )}
@@ -693,28 +706,30 @@ export function FlowWorkspace({
               </div>
             ) : run.steps.length > 0 ? (
               <div className="runOutput">
-                <div className="runSteps">
+                {/* THE TIMELINE: a connected step rail — semantic markers on a
+                    vertical line, cost ticks in mono, entries animate in as
+                    they stream. */}
+                <div className="runSteps" data-rail>
                   {run.steps.map((s, i) => (
-                    <div className="runStep" key={i}>
-                      <span className="runStepIcon">
-                        {s.decision === "blocked" ? "🚫" : s.decision === "approval_required" ? "⏸" : s.decision === "allowed" ? "✅" : "·"}
+                    <div
+                      className="runStep"
+                      key={i}
+                      data-decision={s.decision ?? "none"}
+                    >
+                      <span className="runStepMarker" aria-hidden>
+                        {s.decision === "blocked" ? "✕" : s.decision === "approval_required" ? "⏸" : s.decision === "allowed" ? "✓" : "·"}
                       </span>
                       <div className="runStepBody">
-                        <div>{s.title}</div>
+                        <div className="runStepTitleRow">
+                          <span className="runStepTitle">{s.title}</span>
+                          {s.costCents > 0 && <span className="runStepCost data">${(s.costCents / 100).toFixed(2)}</span>}
+                        </div>
                         <div className="runStepMeta">{s.description.slice(0, 140)}</div>
                         {s.decision === "blocked" && flowId && !s.title.startsWith("Already executed:") && (
-                          <div style={{ marginTop: "0.25rem" }}>
-                            <span style={{ fontSize: "0.65rem", color: "var(--muted)" }}>
-                              Grant this tool to unblock — use the Grants panel on the right →
-                            </span>
-                          </div>
+                          <div className="runStepHint">Grant this tool to unblock — use the Grants panel on the left ←</div>
                         )}
                         {s.decision === "approval_required" && (
-                          <div style={{ marginTop: "0.25rem" }}>
-                            <span style={{ fontSize: "0.65rem", color: "var(--warn)" }}>
-                              ↳ Resolve this in the approval box above
-                            </span>
-                          </div>
+                          <div className="runStepHint" data-tone="warn">↳ Resolve this in the approval box above</div>
                         )}
                       </div>
                     </div>
@@ -731,9 +746,18 @@ export function FlowWorkspace({
           </>
         ) : (
           <EmptyState
-            icon={<span style={{ fontSize: 28 }}>◎</span>}
+            icon={<span className="emptyGlyph">◎</span>}
             title="Select or describe a flow"
-            body="Pick a saved flow from the dropdown, or describe one above and press Plan."
+            body="Pick a saved flow from the dropdown, or describe one and let the orchestrator compose it."
+            action={
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => (document.querySelector(".describeInput") as HTMLInputElement | null)?.focus()}
+              >
+                Describe a flow
+              </Button>
+            }
           />
         )}
       </div>
