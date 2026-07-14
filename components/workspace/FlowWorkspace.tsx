@@ -36,6 +36,13 @@ import "./workspace.css";
 // full-screen view swap. null = all collapsed.
 type WorkspaceDrawer = "build" | "connect" | "activity";
 
+// The guided first-run starter goal. Deliberately research-then-DRAFT (never
+// send): it works under the draft-only default a new user starts with, and it
+// exercises the real spine end-to-end — plan → run → approval-gated draft →
+// deliverable → audit — with no simulated steps.
+const STARTER_GOAL =
+  "Research three current trends in AI agent infrastructure and draft an email to me summarizing them.";
+
 type Participant = {
   agentId: string;
   agentName: string;
@@ -352,15 +359,20 @@ export function FlowWorkspace({
   };
 
   // --- Describe-to-build ---
-  const handleDescribe = async () => {
-    if (!describeText.trim()) return toast("Describe what you want done first.", "warn");
+  // Accepts an optional explicit goal (used by the guided first-run starter) so a
+  // one-click starter drives the SAME real plan→save path as typing a goal — no
+  // separate/simulated onboarding flow.
+  const handleDescribe = async (goalText?: string) => {
+    const goal = (goalText ?? describeText).trim();
+    if (!goal) return toast("Describe what you want done first.", "warn");
+    if (goalText !== undefined) setDescribeText(goalText);
     setPlanning(true);
     setPlanReport(null);
     try {
       const { planFlow } = await import("../../lib/api/client");
       const { planToSaveInput } = await import("../../lib/orchestrator/convert");
       const { saveFlow } = await import("../../lib/api/client");
-      const data = await planFlow(describeText);
+      const data = await planFlow(goal);
       const report = data.report ?? { attached: [], clamped: [], failed: [], replanned: false };
       setPlanReport(report);
 
@@ -483,7 +495,7 @@ export function FlowWorkspace({
             onChange={(e) => setDescribeText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleDescribe()}
           />
-          <Button variant="primary" size="sm" loading={planning} onClick={handleDescribe}>
+          <Button variant="primary" size="sm" loading={planning} onClick={() => handleDescribe()}>
             Plan
           </Button>
         </div>
@@ -724,6 +736,39 @@ export function FlowWorkspace({
               </div>
             )}
           </>
+        ) : flows.length === 0 ? (
+          /* GUIDED FIRST RUN — a brand-new user (no saved flows). Three real
+             steps to first value, driving the actual engine (no simulation). */
+          <div className="firstRunGuide">
+            <h2 className="firstRunTitle">Your first governed run</h2>
+            <p className="firstRunLede">
+              An agent researches and drafts for you; you approve the exact action; it runs for real; every
+              step is recorded. Three steps to see it end to end.
+            </p>
+            <ol className="firstRunSteps">
+              <li>
+                <strong>Set your model key.</strong> Open <em>Profile → Provider keys</em> and paste one API
+                key. Planning uses AgentDock&rsquo;s model; <em>your runs</em> use this key of yours.
+              </li>
+              <li>
+                <strong>Try a starter goal.</strong> We&rsquo;ll plan a research-and-draft flow for you — it
+                drafts an email to you (nothing is sent).
+                <div className="firstRunAction">
+                  <Button variant="primary" size="sm" loading={planning} onClick={() => handleDescribe(STARTER_GOAL)}>
+                    ▶ Plan my starter flow
+                  </Button>
+                </div>
+              </li>
+              <li>
+                <strong>Approve the draft.</strong> When it&rsquo;s ready to create the email it pauses for your
+                one-click approval — nothing leaves your account until you approve. Then you see the deliverable
+                and the full audit trail.
+              </li>
+            </ol>
+            <p className="firstRunNote">
+              Prefer your own goal? Type it in the box on the left and press <em>Plan</em>.
+            </p>
+          </div>
         ) : (
           <EmptyState
             icon={<span className="emptyGlyph">◎</span>}

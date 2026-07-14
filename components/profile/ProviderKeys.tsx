@@ -87,7 +87,8 @@ export function ProviderKeys() {
   return (
     <Card title="Provider keys" meta="BYO key">
       <p className="inspectorNote">
-        Your key is encrypted at rest and used only to run your agents. AgentDock never displays or logs it.
+        Planning your flows uses AgentDock&rsquo;s model; <strong>your runs</strong> use this key of yours.
+        It is encrypted at rest and used only to run your agents — AgentDock never displays or logs it.
       </p>
       {!session?.user && <p className="inspectorNote">Sign in to add a provider key.</p>}
       {session?.user && (
