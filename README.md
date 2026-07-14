@@ -628,11 +628,27 @@ Create the database if needed:
 createdb agentdock_test
 ```
 
+The suite's global setup runs `prisma migrate deploy` automatically before the
+tests. If it reports `P3009` (a prior failed migration in the target database),
+recreate the test database from scratch, then re-run — migrations apply cleanly
+on an empty database:
+
+```bash
+dropdb agentdock_test && createdb agentdock_test
+```
+
 Run:
 
 ```bash
 npm test
 ```
+
+> Point `.env.test` at a **local** Postgres database, not a remote one. The
+> integration suite `TRUNCATE`s tables between tests and its cold, per-test
+> dynamic `import()`s pay a TypeScript-transform cost — against a remote database
+> the per-transaction round-trip pushes both past their timeouts and the suite
+> goes red for purely environmental reasons. Locally the full suite is green in
+> minutes.
 
 The suite covers:
 

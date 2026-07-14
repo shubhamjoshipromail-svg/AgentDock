@@ -136,6 +136,14 @@ export async function claimNextRunJob(options: {
   const perUserConcurrency = options.perUserConcurrency ?? DEFAULT_PER_USER_CONCURRENCY;
 
   return prisma.$transaction(async (tx) => {
+    // lease_expires_at (and all our DateTime columns) are `timestamp without
+    // time zone`, and Prisma stores JS Dates as UTC wall-clock in them. `NOW()`
+    // is a timestamptz; comparing it directly to a bare timestamp makes Postgres
+    // convert NOW() to the SESSION timezone and drop the offset — so on any
+    // deployment whose session TZ is not UTC the comparison is skewed by the
+    // offset (hours), and expired-lease reclaim silently breaks. Compare against
+    // `NOW() AT TIME ZONE 'UTC'`, the UTC wall-clock as a bare timestamp, which
+    // is exactly the convention Prisma wrote — correct in every session TZ.
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT j.id
       FROM run_jobs j
@@ -144,7 +152,7 @@ export async function claimNextRunJob(options: {
         OR (
           j.status = 'running'::"RunJobStatus"
           AND j.lease_expires_at IS NOT NULL
-          AND j.lease_expires_at < NOW()
+          AND j.lease_expires_at < (NOW() AT TIME ZONE 'UTC')
         )
       )
       AND (
@@ -153,7 +161,7 @@ export async function claimNextRunJob(options: {
         WHERE active.user_id = j.user_id
           AND active.status = 'running'::"RunJobStatus"
           AND active.lease_expires_at IS NOT NULL
-          AND active.lease_expires_at > NOW()
+          AND active.lease_expires_at > (NOW() AT TIME ZONE 'UTC')
       ) < ${perUserConcurrency}
       ORDER BY j.created_at ASC
       FOR UPDATE SKIP LOCKED
