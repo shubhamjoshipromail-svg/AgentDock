@@ -802,3 +802,15 @@ model ScopedCredential {
   @@index([agentId])
   @@map("scoped_credentials")
 }
+
+// Operational liveness only (NOT a product feature): each worker process upserts
+// its row on every poll loop so an operator can see, via /api/health, when the
+// run executor was last alive. Carries no user data.
+model WorkerHeartbeat {
+  workerId  String   @id @map("worker_id")
+  pid       Int?
+  startedAt DateTime @default(now()) @map("started_at")
+  lastSeenAt DateTime @updatedAt @map("last_seen_at")
+
+  @@map("worker_heartbeats")
+}

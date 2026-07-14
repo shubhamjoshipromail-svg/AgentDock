@@ -1,3 +1,18 @@
+# Full local stack: Postgres + one-shot migrate + web + supervised worker.
+#
+#   cp .env.example .env      # fill AUTH_SECRET, GOOGLE_*, ANTHROPIC_API_KEY,
+#                             # CREDENTIAL_ENCRYPTION_KEY, NEXTAUTH_URL
+#   docker compose up --build
+#
+# This proves the containerised app + worker run against a DATABASE_URL supplied
+# by the environment (not embedded .pgdata). For real hosting with a MANAGED
+# Postgres, see docs/DEPLOY.md — deploy `web` and `worker` as two services and set
+# DATABASE_URL to the managed connection string instead of the bundled `postgres`.
+#
+# The app reads secrets (auth, Google OAuth, provider key, encryption key) from
+# .env via env_file; DATABASE_URL is set explicitly below to reach the `postgres`
+# service over the compose network (a value in .env would be ignored here).
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -15,6 +30,49 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # One-shot: apply migrations, then exit. web + worker wait for it to succeed.
+  migrate:
+    build: .
+    image: agentdock:latest
+    command: npx prisma migrate deploy
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://agentdock:agentdock@postgres:5432/agentdock?schema=public"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: agentdock:latest
+    command: npm run start
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://agentdock:agentdock@postgres:5432/agentdock?schema=public"
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # The run executor. Without it, flows queue forever. Supervised: auto-restarts
+  # on crash so a mid-run worker death is recovered (leases are reclaimed).
+  worker:
+    image: agentdock:latest
+    command: npm run worker
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://agentdock:agentdock@postgres:5432/agentdock?schema=public"
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   agentdock-postgres-data:

@@ -309,6 +309,27 @@ export async function runWorkerOnce(options: {
   }
 }
 
+// Operational liveness: upsert this worker's heartbeat. Called on every poll
+// loop (throttled by the caller) so /api/health can report when the executor was
+// last alive. Best-effort — a heartbeat write must never crash or stall the loop.
+export async function recordWorkerHeartbeat(workerId: string, pid?: number): Promise<void> {
+  try {
+    await prisma.workerHeartbeat.upsert({
+      where: { workerId },
+      create: { workerId, pid: pid ?? null, lastSeenAt: new Date() },
+      update: { lastSeenAt: new Date() }
+    });
+  } catch {
+    // Never let heartbeat bookkeeping take down the worker.
+  }
+}
+
+// How stale a worker heartbeat may be before /api/health treats the executor as
+// down. Generous relative to the poll interval so a busy worker (mid-job, between
+// heartbeats) is never falsely reported down.
+export const WORKER_HEARTBEAT_STALE_MS = 90_000;
+const HEARTBEAT_INTERVAL_MS = 10_000;
+
 export async function runWorkerLoop(options: {
   workerId: string;
   pollMs?: number;
@@ -318,8 +339,16 @@ export async function runWorkerLoop(options: {
 }): Promise<void> {
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
 
+  // Emit an immediate heartbeat on startup, then at most every HEARTBEAT_INTERVAL_MS.
+  await recordWorkerHeartbeat(options.workerId, process.pid);
+  let lastBeat = Date.now();
+
   while (!options.shouldStop?.()) {
     const result = await runWorkerOnce(options);
+    if (Date.now() - lastBeat >= HEARTBEAT_INTERVAL_MS) {
+      await recordWorkerHeartbeat(options.workerId, process.pid);
+      lastBeat = Date.now();
+    }
     if (!result) {
       await new Promise((resolve) => setTimeout(resolve, pollMs));
     }

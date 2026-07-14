@@ -1,0 +1,21 @@
+node_modules
+.next
+npm-debug.log
+.git
+.gitignore
+
+# Local secrets / env — provided at runtime via env_file/environment, never baked in.
+.env
+.env.*
+!.env.example
+
+# Dev-only portable Postgres and its data (never ship into an image).
+.pgbin
+.pgdata
+
+# Local dev artifacts.
+local-next-fs-shim.js
+tsconfig.tsbuildinfo
+.DS_Store
+coverage
+*.log
