@@ -209,6 +209,7 @@ model User {
   mcpAccessGrants   McpAccessGrant[]
   runJobs           RunJob[]
   serverConnections ServerConnection[]
+  productEvents     ProductEvent[]
 
   @@map("users")
 }
@@ -801,6 +802,30 @@ model ScopedCredential {
   @@index([workflowId])
   @@index([agentId])
   @@map("scoped_credentials")
+}
+
+// Activation funnel: append-only product analytics. One row per funnel stage a
+// user reaches. Deliberately carries NO user content — only ids (user/run/
+// workflow), the stage name, an optional non-PII decision flag, and a timestamp —
+// so it is safe to aggregate for adoption evidence without exposing private data.
+model ProductEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  event      String
+  runId      String?  @map("run_id") @db.Uuid
+  workflowId String?  @map("workflow_id") @db.Uuid
+  // Ids + a small non-PII decision flag only (e.g. { approved: true }). Never a
+  // goal, email address, body, tool arguments, or any user content.
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([event])
+  @@index([runId])
+  @@index([createdAt])
+  @@map("product_events")
 }
 
 // Operational liveness only (NOT a product feature): each worker process upserts

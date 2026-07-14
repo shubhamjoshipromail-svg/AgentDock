@@ -9,6 +9,7 @@ import { AGENT_INTENT_TYPES, validateIntentPayload, summarizeIntent, frameIntent
 import { brokerCredentialForAction, type BrokerScopeContext } from "./credential-broker";
 import { getRunProvider } from "./provider";
 import { buildStepContext } from "./memory";
+import { recordProductEvent } from "../analytics/product-events";
 import type { RunEventMeta } from "../types";
 
 // ============================================================================
@@ -634,6 +635,7 @@ async function runStep(
         metadata: { stepIndex: agent.index, approvalId: intent.id, intentType: envelope.intentType }
       });
       await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "paused_for_approval" } });
+      await recordProductEvent(ctx.userId, "approval_shown", { runId: ctx.runId });
       return { kind: "paused", approvalId: intent.id };
     }
 
@@ -798,6 +800,7 @@ async function runStep(
         metadata: { stepIndex: agent.index, approvalId: approval.id, currentCostCents: t2.totalCostCents }
       });
       await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "paused_for_approval" } });
+      await recordProductEvent(ctx.userId, "approval_shown", { runId: ctx.runId });
       return { kind: "paused", approvalId: approval.id };
     }
 
@@ -967,6 +970,12 @@ async function executeAllowedTool(
       idempotencyKey: willBeReal && isExternal ? idempotencyKey : undefined
     }
   });
+  // Funnel: a real tool actually executed and succeeded — the consequential
+  // action in the activation chain (approve → execute → complete). Ids only.
+  if (real && !toolErrored) {
+    await recordProductEvent(ctx.userId, "action_executed_real", { runId: ctx.runId });
+  }
+
   // Result re-enters context tagged untrusted. The signal MUST match reality: a
   // failed/unavailable tool is never reported as success, or the agent will claim
   // it did something it did not (e.g. "email sent" after the send errored).
@@ -1208,6 +1217,7 @@ async function drive(
     where: { id: ctx.runId },
     data: { status: "completed", completedAt: new Date(), endedAt: new Date(), resultText: deliverable }
   });
+  await recordProductEvent(ctx.userId, "run_completed", { runId: ctx.runId });
   return { runId: ctx.runId, status: "completed" };
 }
 

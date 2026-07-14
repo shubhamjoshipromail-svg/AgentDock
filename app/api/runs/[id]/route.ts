@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../../lib/auth-user";
 import { prisma } from "../../../../lib/prisma";
+import { recordProductEvent } from "../../../../lib/analytics/product-events";
 
 // Run status + its immutable event timeline + pending approvals. Never selects
 // secret columns.
@@ -21,6 +22,15 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   });
   if (!run) {
     return NextResponse.json({ message: "Run not found." }, { status: 404 });
+  }
+
+  // Funnel: the user is viewing a completed run's deliverable. This GET is polled,
+  // so record it at most once per run (only when there is a real deliverable).
+  if (run.status === "completed" && run.resultText) {
+    const already = await prisma.productEvent.count({ where: { userId: user.id, runId: run.id, event: "deliverable_viewed" } });
+    if (already === 0) {
+      await recordProductEvent(user.id, "deliverable_viewed", { runId: run.id, workflowId: run.workflowId });
+    }
   }
 
   // Resolve each event's agentId → agent name so the UI stops rendering a

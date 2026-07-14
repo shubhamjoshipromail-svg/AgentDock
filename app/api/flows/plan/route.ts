@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../../lib/auth-user";
+import { recordProductEvent } from "../../../../lib/analytics/product-events";
 import { getRunProvider } from "../../../../lib/execution/provider";
 import { getProvider } from "../../../../lib/llm";
 import { ensureSendGate, missingCapabilities, requiredCapabilities, RESEARCH_GOAL, toolCapabilities } from "../../../../lib/orchestrator/capabilities";
@@ -327,6 +328,7 @@ export async function POST(request: Request) {
     `Planned ${clamped.plan.agents.length} agents and ${clamped.plan.tools.length} tools.`,
     { resolutionFailures: resolved.failures.length, replanned }
   );
+  await recordProductEvent(user.id, "flow_planned");
 
   const response: PlannedFlowResponse = {
     plan: clamped.plan,

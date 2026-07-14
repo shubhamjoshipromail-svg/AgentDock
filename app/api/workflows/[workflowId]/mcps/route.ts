@@ -5,6 +5,7 @@ import { getCurrentUser } from "../../../../../lib/auth-user";
 import { defaultPermissionForRisk, grantTemplateForPermission } from "../../../../../lib/mcp-catalog";
 import { prisma } from "../../../../../lib/prisma";
 import { executableToolIdentity } from "../../../../../lib/execution/tool-identity";
+import { recordProductEvent } from "../../../../../lib/analytics/product-events";
 import { parseJsonBody } from "../../../../../lib/validation/parse";
 import { toolAttachSchema } from "../../../../../lib/validation/schemas";
 
@@ -232,6 +233,7 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
       return { workflowMcp, accessGrant };
     });
 
+    await recordProductEvent(user.id, "grant_created", { workflowId: workflow.id });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("MCP workflow attach failed", error);

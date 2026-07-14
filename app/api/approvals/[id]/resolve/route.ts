@@ -7,6 +7,7 @@ import { parseJsonBody } from "../../../../../lib/validation/parse";
 import { approvalResolveSchema } from "../../../../../lib/validation/schemas";
 import { enqueueRunJob, markRunJobFailed } from "../../../../../lib/execution/run-queue";
 import { validateIntentResponse } from "../../../../../lib/execution/interaction-intent";
+import { recordProductEvent } from "../../../../../lib/analytics/product-events";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -118,6 +119,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       });
 
       return updated;
+    });
+
+    // Funnel: an approval was resolved. `approved` is the activation-critical
+    // outcome (a genuine consent to a consequential action). Ids + flag only.
+    await recordProductEvent(user.id, "approval_resolved", {
+      runId: approval.workflowRunId,
+      workflowId: approval.workflowRun.workflowId,
+      approved: effectiveStatus === "approved"
     });
 
     // Chunk 6: only an explicit approval can resume a live run. "edited" is a

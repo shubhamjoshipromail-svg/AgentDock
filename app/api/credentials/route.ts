@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "../../../lib/auth-user";
 import { listCredentialMetadata, storeProviderKey } from "../../../lib/execution/credentials";
+import { recordProductEvent } from "../../../lib/analytics/product-events";
 import { parseJsonBody } from "../../../lib/validation/parse";
 import { createCredentialSchema } from "../../../lib/validation/schemas";
 
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
 
   try {
     const metadata = await storeProviderKey(user.id, parsed.data.provider, parsed.data.key);
+    await recordProductEvent(user.id, "key_added");
     return NextResponse.json({ credential: metadata }, { status: 201 });
   } catch (error) {
     // Never echo the key or the error detail (which could include input).

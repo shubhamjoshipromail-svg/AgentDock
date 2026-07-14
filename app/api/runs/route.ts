@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../lib/auth-user";
 import { prisma } from "../../../lib/prisma";
 import { createQueuedRun } from "../../../lib/execution/run-queue";
+import { recordRunStarted } from "../../../lib/analytics/product-events";
 import { parseJsonBody } from "../../../lib/validation/parse";
 import { startRunSchema } from "../../../lib/validation/schemas";
 
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
   if (!outcome.ok) {
     return NextResponse.json({ message: outcome.message }, { status: outcome.status });
   }
+  await recordRunStarted(user.id, outcome.result.runId, parsed.data.workflowId);
   return NextResponse.json({ run: outcome.result }, { status: 201 });
 }
 

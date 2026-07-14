@@ -4,6 +4,7 @@ import GoogleProvider from "next-auth/providers/google";
 
 import { prisma } from "./lib/prisma";
 import { storeGoogleOAuthToken } from "./lib/execution/credentials";
+import { recordProductEvent } from "./lib/analytics/product-events";
 
 // Gmail scopes for the first-party Gmail MCP server: compose (drafts) + send.
 const GMAIL_SCOPES = [
@@ -57,6 +58,10 @@ export const authOptions: NextAuthOptions = {
     }
   },
   events: {
+    // Funnel: a brand-new user row was created (fires once, on first sign-in).
+    async createUser({ user }) {
+      if (user.id) await recordProductEvent(user.id, "signup");
+    },
     // Capture the Google OAuth token on sign-in and store it ENCRYPTED, keyed to
     // the user. The token is never returned to the client or the agent; only the
     // run engine reads it (decrypted) to hand to the Gmail MCP server's env.
