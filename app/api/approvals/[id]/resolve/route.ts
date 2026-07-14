@@ -65,24 +65,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ message: "An approval decision (status) is required." }, { status: 400 });
     }
 
-    const updatedApproval = await prisma.$transaction(async (tx) => {
-      // If the user edited tool arguments (e.g. filled in the email recipient),
-      // merge them into the approval metadata so the run engine uses them.
-      if (body.editedArgs && Object.keys(body.editedArgs).length > 0) {
-        const existingMeta = (approval.metadata ?? {}) as Record<string, unknown>;
-        const existingArgs = (existingMeta.arguments ?? {}) as Record<string, unknown>;
-        await tx.approvalRequest.update({
-          where: { id: approval.id },
-          data: {
-            metadata: { ...existingMeta, arguments: { ...existingArgs, ...body.editedArgs } } as Prisma.InputJsonObject
-          }
-        });
-      }
+    // SECURITY INVARIANT — "what you approved is exactly what runs."
+    // If the client submits editedArgs, the action that would execute no longer
+    // matches the action the approval card displayed and the user consented to.
+    // We therefore NEVER execute an edited action directly: any edit routes to
+    // the "edited" path (halt + require re-run), regardless of the status the
+    // client sent. The edited args are deliberately NOT merged into the pending
+    // action's metadata — they must not become executable — but the attempted
+    // edit IS recorded on the audit event for transparency. To apply an edit the
+    // user re-runs the flow, which re-plans, re-gates, and raises a fresh
+    // approval showing the real action, which must itself be approved.
+    const editing = Boolean(body.editedArgs && Object.keys(body.editedArgs).length > 0);
+    const effectiveStatus: "approved" | "denied" | "edited" = editing ? "edited" : body.status;
+    const editedKeys = editing ? Object.keys(body.editedArgs as Record<string, string>) : [];
 
+    const updatedApproval = await prisma.$transaction(async (tx) => {
       const updated = await tx.approvalRequest.update({
         where: { id: approval.id },
         data: {
-          status: body.status,
+          status: effectiveStatus,
           resolvedAt: new Date()
         },
         include: {
@@ -98,14 +99,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           workflowRunId: approval.workflowRunId,
           agentId: approval.agentId,
           eventType: "approval_requested",
-          title: `${approval.title} ${body.status}`,
-          description: `User marked "${approval.title}" as ${body.status}.`,
-          decision: body.status === "edited" ? "info" : body.status,
+          title: `${approval.title} ${effectiveStatus}`,
+          description: editing
+            ? `User edited the proposed action for "${approval.title}"; the run is halted and must be re-run — edited arguments were not executed.`
+            : `User marked "${approval.title}" as ${effectiveStatus}.`,
+          decision: effectiveStatus === "edited" ? "info" : effectiveStatus,
           costCents: 0,
           metadata: {
             source: "approval_resolution",
             approvalRequestId: approval.id,
-            actionType: approval.actionType
+            actionType: approval.actionType,
+            // Record WHICH fields were edited (keys only, never values — values
+            // may be sensitive, e.g. a recipient), so the audit shows an edit
+            // happened without persisting the un-approved payload.
+            ...(editing ? { editedArgKeys: editedKeys, edited: true } : {})
           }
         }
       });
@@ -121,7 +128,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     // updated policy/grants.
     let run: { runId: string; status: string } | null = null;
     if (approval.workflowRun.status === "paused_for_approval") {
-      if (body.status === "edited") {
+      if (effectiveStatus === "edited") {
         await prisma.$transaction(async (tx) => {
           await tx.workflowRunEvent.create({
             data: {
@@ -129,8 +136,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
               userId: user.id,
               agentId: approval.agentId,
               eventType: "action_blocked",
-              title: "Run halted — policy edited",
-              description: "Policy edited; pending action not executed; run halted. Re-run to apply the updated policy.",
+              title: editing ? "Run halted — action edited" : "Run halted — policy edited",
+              description: editing
+                ? "The proposed action was edited; the edited arguments were NOT executed and the run is halted. Re-run to raise a fresh approval showing the real action."
+                : "Policy edited; pending action not executed; run halted. Re-run to apply the updated policy.",
               decision: "blocked",
               actorType: "human",
               actorId: user.id,
@@ -140,7 +149,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                 source: "approval_resolution",
                 approvalRequestId: approval.id,
                 status: "edited",
-                executed: false
+                executed: false,
+                // Keys only, never values — the un-approved payload is not persisted.
+                ...(editing ? { editedArgKeys: editedKeys } : {})
               }
             }
           });
@@ -149,9 +160,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             data: { status: "halted_error", endedAt: new Date() }
           });
         });
-        await markRunJobFailed(user.id, approval.workflowRunId, "Policy edited; pending action not executed.");
+        await markRunJobFailed(user.id, approval.workflowRunId, editing ? "Action edited; edited arguments not executed." : "Policy edited; pending action not executed.");
         run = { runId: approval.workflowRunId, status: "halted_error" };
-      } else if (body.status === "denied") {
+      } else if (effectiveStatus === "denied") {
         await prisma.$transaction(async (tx) => {
           await tx.workflowRunEvent.create({
             data: {

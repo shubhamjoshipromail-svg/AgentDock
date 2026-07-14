@@ -106,6 +106,12 @@ describe("GET /api/mcp/servers — search, filter, paginate", () => {
     expect(data.nextCursor).toBeNull();
   });
 
+  it("requires authentication — an anonymous caller is rejected", async () => {
+    setCurrentUser(null);
+    const response = await getServers(new Request("http://localhost/api/mcp/servers"));
+    expect(response.status).toBe(401);
+  });
+
   it("search by name fragment returns matching entries", async () => {
     const response = await getServers(new Request("http://localhost/api/mcp/servers?q=github"));
     const data = await response.json();

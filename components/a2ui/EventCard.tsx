@@ -115,39 +115,30 @@ export function ApprovalCard({
         </div>
         {approval.description && <p className="ecRationale">{approval.description.slice(0, 200)}</p>}
         {hasArgs && (
+          // Read-only: the exact action that will run if approved. Approval
+          // consent binds to precisely what is shown here — the server refuses to
+          // execute any edited arguments (that would break "what you approved is
+          // what runs"). To change the action, use "Edit policy", which halts and
+          // requires a re-run that raises a fresh approval for the real action.
           <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", margin: "0.5rem 0" }}>
             {Object.entries(toolArgs).map(([key, value]) => (
-              <div key={key} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <div key={key} style={{ display: "flex", alignItems: "baseline", gap: "0.4rem" }}>
                 <label style={{ fontSize: "0.72rem", color: "var(--muted)", minWidth: 50, textAlign: "right" }}>{key}:</label>
-                <input
-                  id={`approval-arg-${approval.id}-${key}`}
-                  defaultValue={String(value ?? "")}
-                  placeholder={key === "to" ? "email@example.com" : key}
-                  style={{
-                    flex: 1, background: "var(--surface)", color: "var(--foreground)",
-                    border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 4px)",
-                    padding: "0.3rem 0.4rem", fontSize: "0.75rem"
-                  }}
-                />
+                <span style={{
+                  flex: 1, background: "var(--surface)", color: "var(--foreground)",
+                  border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 4px)",
+                  padding: "0.3rem 0.4rem", fontSize: "0.75rem", wordBreak: "break-word"
+                }}>{String(value ?? "") || <span style={{ color: "var(--muted)" }}>(empty)</span>}</span>
               </div>
             ))}
           </div>
         )}
         <div className="ecActions">
-          <Button variant="primary" size="sm" loading={resolving} onClick={() => {
-            if (!hasArgs) { onResolve?.(approval.id, "approved"); return; }
-            // Collect edited arguments from the DOM inputs
-            const edited: Record<string, string> = {};
-            for (const key of Object.keys(toolArgs)) {
-              const el = document.getElementById(`approval-arg-${approval.id}-${key}`) as HTMLInputElement | null;
-              edited[key] = el?.value ?? String(toolArgs[key] ?? "");
-            }
-            onResolve?.(approval.id, "approved", edited);
-          }}>Approve</Button>
+          <Button variant="primary" size="sm" loading={resolving} onClick={() => onResolve?.(approval.id, "approved")}>Approve</Button>
           <Button variant="danger" size="sm" disabled={resolving} onClick={() => onResolve?.(approval.id, "denied")}>Deny</Button>
           <Button variant="ghost" size="sm" disabled={resolving} onClick={() => onResolve?.(approval.id, "edited")}>Edit policy</Button>
         </div>
-        <p className="ecRationale">Fill in any missing fields above, then Approve. The tool runs with your edits.</p>
+        <p className="ecRationale">Approve runs exactly the action shown above. To change it, choose Edit policy — the run halts and you re-run to apply the change.</p>
       </div>
       <div className="ecAside">
         <Badge tone="warn">approval required</Badge>

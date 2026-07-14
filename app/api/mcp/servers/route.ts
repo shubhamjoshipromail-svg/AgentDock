@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 
+import { getCurrentUser } from "../../../../lib/auth-user";
 import { prisma } from "../../../../lib/prisma";
 import { parseQuery } from "../../../../lib/validation/parse";
 import { toolServersQuerySchema } from "../../../../lib/validation/schemas";
 
 export async function GET(request: Request) {
+  // Auth-gate for consistency with every other API route. This returns only the
+  // global, non-secret MCP catalog, but there is no reason for it to be readable
+  // by anonymous callers when its sibling routes (e.g. /api/mcp/registrations)
+  // require a session.
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ message: "Unauthorized. Sign in to browse the tool catalog." }, { status: 401 });
+  }
+
   const parsed = parseQuery(request.url, toolServersQuerySchema);
 
   if (!parsed.ok) {
