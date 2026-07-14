@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { loadMemory, patchMemoryGrant, revokeMemoryGrant } from "../../lib/api/client";
 import { memoryPartitions } from "../mock-data";
 import type { PersistedMemoryGrant, PersistedMemoryPartition, PersistedMemoryPayload } from "../../lib/types";
-import { Button, ComingSoonButton, DetailBlock } from "../layout/primitives";
+import { Button, DetailBlock } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 
 export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemory: string; onSelectMemory: (name: string) => void }) {
@@ -186,10 +186,6 @@ toast(error instanceof Error ? error.message : "Unable to revoke memory grant.",
               <div className="permissionList">
                 <span>Access</span>
                 {activeMockPartition.permissions.map((permission) => <p key={permission}>{permission}</p>)}
-              </div>
-              <div className="actionRow detailActions">
-                <ComingSoonButton>Edit Access</ComingSoonButton>
-                <ComingSoonButton>Revoke Access</ComingSoonButton>
               </div>
             </>
           )}

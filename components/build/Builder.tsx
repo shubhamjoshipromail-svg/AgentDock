@@ -8,8 +8,7 @@ import {
   listFlows,
   listToolServers,
   planFlow,
-  saveFlow,
-  simulateRun
+  saveFlow
 } from "../../lib/api/client";
 import { planToSaveInput } from "../../lib/orchestrator/convert";
 import { PERMISSION_VALUES, permissionRank, type PlannedFlow, type PlannedFlowResponse } from "../../lib/orchestrator/schema";
@@ -28,10 +27,8 @@ import type {
   McpDefaultPermission,
   McpRiskLevel,
   McpVerificationStatus,
-  PersistedApprovalRequest,
   PersistedMcpServer,
-  PersistedWorkflow,
-  PersistedWorkflowRun
+  PersistedWorkflow
 } from "../../lib/types";
 import { Badge, Button, DetailBlock, EmptyState } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
@@ -83,7 +80,6 @@ export function Builder({
   const [savedWorkflowId, setSavedWorkflowId] = useState("");
   const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
   const [mcpServers, setMcpServers] = useState<PersistedMcpServer[]>([]);
-  const [runningSimulation, setRunningSimulation] = useState(false);
   const [attachingMcpId, setAttachingMcpId] = useState("");
 
   // Orchestrator (real model planning) state.
@@ -255,26 +251,6 @@ export function Builder({
       toast(error instanceof Error ? error.message : "Flow save failed.", "danger");
     } finally {
       setSavingWorkflow(false);
-    }
-  };
-
-  const runPreview = async () => {
-    const workflowId = savedWorkflowId || currentWorkflow?.id || "";
-    if (!session?.user || !workflowId) return toast("Save this flow first to run a preview.", "warn");
-
-    setRunningSimulation(true);
-    try {
-      const data = await simulateRun(workflowId, "Run preview failed.");
-      const run = data.workflowRun as PersistedWorkflowRun;
-      const pending = run.approvalRequests.filter((a: PersistedApprovalRequest) => a.status === "pending").length;
-      toast(
-        pending ? `Run paused — ${pending} approval${pending === 1 ? "" : "s"} waiting in Control.` : "Run complete. Timeline updated in Control.",
-        pending ? "warn" : "ok"
-      );
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Run preview failed.", "danger");
-    } finally {
-      setRunningSimulation(false);
     }
   };
 
@@ -568,7 +544,6 @@ export function Builder({
 
                 <div className="inspectorActions">
                   <Button variant="primary" onClick={savePlannedFlow} loading={savingPlan}>Save flow</Button>
-                  {builderMode === "saved" && <Button variant="secondary" onClick={runPreview} loading={runningSimulation}>Run preview</Button>}
                 </div>
               </>
             ) : hasDraftWorkflow ? (
@@ -577,7 +552,6 @@ export function Builder({
                 <p className="inspectorNote">A template draft is on the canvas. Save it to Flows to run, or describe an outcome and plan a new one.</p>
                 <div className="inspectorActions">
                   <Button variant="primary" onClick={saveDraftFlow} loading={savingWorkflow}>Save flow</Button>
-                  {builderMode === "saved" && <Button variant="secondary" onClick={runPreview} loading={runningSimulation}>Run preview</Button>}
                   {builderMode === "saved" && <Button variant="ghost" onClick={reloadFromSaved}>Reopen from saved</Button>}
                 </div>
               </div>

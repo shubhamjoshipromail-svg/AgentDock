@@ -576,26 +576,6 @@ export function FlowWorkspace({
                 </div>
               )}
 
-              {/* Blast-radius mini stays on the participant (expands when selected) */}
-              {selectedP === p.agentId && (
-                <div className="pBlast" onClick={(e) => e.stopPropagation()}>
-                  <div className="pBlastHead">blast radius</div>
-                  <div className="radarContainer">
-                    {["Read/Search", "Drafts", "External Send", "Memory Access"].map((cap) => {
-                      const level = cap === "External Send" ? 1 : cap === "Drafts" ? 2 : cap === "Read/Search" ? 3 : 2;
-                      return (
-                        <div className="radarAxis" key={cap}>
-                          <span className="radarAxisLabel">{cap}</span>
-                          <div className="radarAxisTrack">
-                            <div className="radarAxisFill" data-level={String(level)} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="pBlastNote">External-write always requires approval at run time.</p>
-                </div>
-              )}
             </div>
           );
         })}

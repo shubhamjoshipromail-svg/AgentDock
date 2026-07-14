@@ -8,12 +8,10 @@ import { ProviderKeys } from "./ProviderKeys";
 
 export function Profile({
   selectedMemory,
-  onSelectMemory,
-  defaultAgent
+  onSelectMemory
 }: {
   selectedMemory: string;
   onSelectMemory: (name: string) => void;
-  defaultAgent: string;
 }) {
   const { data: session } = useSession();
   const profileName = session?.user?.name ?? "Shubham Joshi";

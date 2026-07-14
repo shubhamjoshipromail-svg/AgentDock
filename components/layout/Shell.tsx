@@ -46,13 +46,11 @@ const SECTION_TITLES: Record<Section, string> = {
 export function Shell({
   activeSection,
   onSelectSection,
-  onOpenCommand,
   actions,
   children
 }: {
   activeSection: Section;
   onSelectSection: (section: Section) => void;
-  onOpenCommand: () => void;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -85,10 +83,6 @@ export function Shell({
           <h1 className="topBarTitle">{SECTION_TITLES[activeSection]}</h1>
           <div className="topBarActions">
             {actions}
-            <button className="cmdkHint" onClick={onOpenCommand} title="Command palette">
-              <span>Search</span>
-              <kbd>⌘K</kbd>
-            </button>
           </div>
         </header>
         <div className="workContent">{children}</div>

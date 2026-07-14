@@ -5,25 +5,16 @@ import { useSession } from "next-auth/react";
 
 import { attachToolToFlow, listFlows, listToolServers, syncToolCatalog } from "../../lib/api/client";
 import type { SyncSummary } from "../../lib/api/client";
-import { agents, mcpTools, workflowTemplates } from "../mock-data";
-import type { McpRiskLevel, McpVerificationStatus, PersistedMcpServer, PersistedWorkflow, StoreTab } from "../../lib/types";
-import { Avatar, Badge, Button, ComingSoonButton, Data, Logo, Metric, PageHeader, SearchInput, Select, SkeletonGrid } from "../layout/primitives";
+import type { McpVerificationStatus, PersistedMcpServer, PersistedWorkflow } from "../../lib/types";
+import { Badge, Button, Data, Logo, Metric, PageHeader, SearchInput, Select, SkeletonGrid } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 import { deriveLogoSrc } from "./logo";
 import { CatalogCard } from "./CatalogCard";
-import { WorkflowTemplateCard } from "./WorkflowTemplateCard";
 
-export function Store({
-  tab,
-  setTab,
-  defaultAgent,
-  setDefaultAgent
-}: {
-  tab: StoreTab;
-  setTab: (tab: StoreTab) => void;
-  defaultAgent: string;
-  setDefaultAgent: (agent: string) => void;
-}) {
+// Alpha Store = the real, DB-backed Tool catalog only. The former Agents and
+// Templates tabs rendered static mock catalogs with non-functional Install
+// buttons and were removed.
+export function Store() {
   const { data: session } = useSession();
   const toast = useToast();
   const [mcpServers, setMcpServers] = useState<PersistedMcpServer[]>([]);
@@ -89,11 +80,9 @@ toast(error instanceof Error ? error.message : "Unable to load tool catalog.", "
   };
 
   useEffect(() => {
-    if (tab === "Tools") {
-      loadMcpServers({ q: searchQuery, verification: filterVerification, riskLevel: filterRisk });
-      loadSavedWorkflows();
-    }
-  }, [tab, session?.user?.email]);
+    loadMcpServers({ q: searchQuery, verification: filterVerification, riskLevel: filterRisk });
+    loadSavedWorkflows();
+  }, [session?.user?.email]);
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
@@ -181,31 +170,8 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
 
   return (
     <section className="platformPage">
-      <PageHeader eyebrow="Store" title="Store" copy="Install agents and tools like apps. Govern them like infrastructure." />
-      <div className="tabRow">
-        {(["Agents", "Tools", "Templates"] as StoreTab[]).map((item) => (
-          <button className={tab === item ? "tabButton active" : "tabButton"} key={item} onClick={() => setTab(item)}>{item}</button>
-        ))}
-      </div>
-      {tab === "Agents" && (
-        <div className="catalogGrid">
-          {agents.map((agent) => (
-            <CatalogCard
-              key={agent.name}
-              media={<Avatar name={agent.name} />}
-              name={agent.name}
-              category={`${agent.provider} · ${agent.category}`}
-              description={agent.description}
-              signals={agent.verified ? <Badge verification="verified" /> : <Badge tone="neutral">Community</Badge>}
-              footer={<>
-                <ComingSoonButton>Install</ComingSoonButton>
-                <ComingSoonButton>{defaultAgent === agent.name ? "Default" : "Set default"}</ComingSoonButton>
-              </>}
-            />
-          ))}
-        </div>
-      )}
-      {tab === "Tools" && (
+      <PageHeader eyebrow="Store" title="Tool catalog" copy="Connect tools, then govern them like infrastructure — scoped grants, approvals, and audit." />
+      {(
         <>
           <div className="mcpStoreIntro">
             <div className="buttonPair">
@@ -262,9 +228,9 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
               )}
             </div>
           )}
-          {session?.user && loadingServers && !mcpServers.length ? <SkeletonGrid count={6} /> : (
+          {session?.user && loadingServers && !mcpServers.length ? <SkeletonGrid count={6} /> : dbMcpAvailable ? (
           <div className="catalogGrid">
-            {dbMcpAvailable ? mcpServers.map((server) => {
+            {mcpServers.map((server) => {
               const isUnverified = server.verificationStatus === "unverified";
               return (
                 <CatalogCard
@@ -291,21 +257,14 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
                   </>}
                 />
               );
-            }) : mcpTools.map((tool) => (
-              <CatalogCard
-                key={tool.name}
-                media={<Logo label={tool.name} />}
-                name={tool.name}
-                category={tool.workflows}
-                description={tool.scopes}
-                signals={<Badge risk={tool.risk.toLowerCase() as McpRiskLevel} />}
-                footer={<>
-                  <ComingSoonButton>Add to flow</ComingSoonButton>
-                  <Button variant="ghost" size="sm" onClick={() => toast(`${tool.name}: mock metadata preview. Sign in to sync DB-backed details.`, "info")}>Details</Button>
-                </>}
-              />
-            ))}
+            })}
           </div>
+          ) : (
+            <div className="storeEmpty" style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}>
+              {session?.user
+                ? <p>No tools in your catalog yet. Click <strong>Sync catalog</strong> to pull in the available tool servers.</p>
+                : <p>Sign in to browse and sync the tool catalog.</p>}
+            </div>
           )}
           {dbMcpAvailable && nextCursor && (
             <div className="storeLoadMore">
@@ -313,13 +272,6 @@ toast(error instanceof Error ? error.message : "Unable to add tool to Flow.", "d
             </div>
           )}
         </>
-      )}
-      {tab === "Templates" && (
-        <div className="templateGrid">
-          {workflowTemplates.map((workflow) => (
-            <WorkflowTemplateCard workflow={workflow} key={workflow.name} />
-          ))}
-        </div>
       )}
 
       {detailServer && (
