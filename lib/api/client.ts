@@ -330,3 +330,11 @@ export function listDiscoveredTools(connectionId: string, fallbackMessage = "Una
 export function removeToolGrant(workflowId: string, mcpId: string, fallbackMessage = "Unable to remove tool grant.") {
   return request<{ ok: boolean }>(`/api/workflows/${workflowId}/mcps/${mcpId}`, fallbackMessage, { method: "DELETE" });
 }
+
+export function getSendingSetting(fallbackMessage = "Unable to load sending setting.") {
+  return request<{ sendingEnabled: boolean }>(`/api/profile/sending`, fallbackMessage);
+}
+
+export function setSendingSetting(enabled: boolean, fallbackMessage = "Unable to update sending setting.") {
+  return request<{ sendingEnabled: boolean }>(`/api/profile/sending`, fallbackMessage, jsonInit("PATCH", { enabled }));
+}

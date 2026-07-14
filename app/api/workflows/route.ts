@@ -115,14 +115,18 @@ async function resolveWorkflowAgents(userId: string, agentInputs: WorkflowAgentI
 
 // Resolve tool attachments to workflowMcp rows + per-tool access grants. Unknown
 // mcpServerIds are skipped (reported back) rather than failing the whole save.
-async function resolveWorkflowTools(workflowId: string, userId: string, tools: CreateWorkflowInput["tools"], tx: Prisma.TransactionClient) {
+async function resolveWorkflowTools(workflowId: string, userId: string, tools: CreateWorkflowInput["tools"], tx: Prisma.TransactionClient, sendingEnabled: boolean) {
   const skippedTools: string[] = [];
+  // External-send tools skipped because the user has not enabled real sending.
+  // Surfaced distinctly so the UI can point the user at the enable action rather
+  // than showing a generic "unresolved reference".
+  const sendingBlockedTools: string[] = [];
 
   // Only reconcile when the payload explicitly carries a tool set. Canvas saves
   // omit `tools` entirely — tools attach through the dedicated
   // /api/workflows/[workflowId]/mcps endpoint — so an omitted payload must NOT
   // wipe separately-attached tools. An explicit [] DOES reconcile to "no tools".
-  if (tools === undefined) return { skippedTools };
+  if (tools === undefined) return { skippedTools, sendingBlockedTools };
 
   // The set of servers actually authored on the canvas (resolved to a real
   // server). Anything not in here is stale and must be removed so the executed
@@ -134,6 +138,16 @@ async function resolveWorkflowTools(workflowId: string, userId: string, tools: C
 
     if (!mcpServer) {
       skippedTools.push(tool.mcpServerId);
+      continue;
+    }
+
+    // Draft-only default: never create a grant for an external-send tool when the
+    // user has not enabled real sending. Skipping the grant is the authoritative
+    // enforcement (deny-by-default at the runtime gate). Drafting tools are
+    // unaffected. Note: a draft-only user has no pre-existing send grant to
+    // disturb — existing senders are grandfathered to sendingEnabled=true.
+    if (mcpServer.isExternalSend && !sendingEnabled) {
+      sendingBlockedTools.push(mcpServer.displayName ?? mcpServer.name);
       continue;
     }
 
@@ -173,7 +187,7 @@ async function resolveWorkflowTools(workflowId: string, userId: string, tools: C
   await tx.workflowMcp.deleteMany({ where: { workflowId, ...staleServerFilter } });
   await tx.mcpAccessGrant.deleteMany({ where: { userId, workflowId, ...staleServerFilter } });
 
-  return { skippedTools };
+  return { skippedTools, sendingBlockedTools };
 }
 
 // Memory attachments scope an existing user partition to this flow by name.
@@ -219,7 +233,7 @@ async function attachWorkflowMemory(workflowId: string, userId: string, memory: 
   return { skippedMemory };
 }
 
-async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
+async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput, sendingEnabled: boolean) {
   const { workflowAgents, skippedAgents } = await resolveWorkflowAgents(userId, body.agents ?? []);
   const existingWorkflow = await prisma.workflow.findFirst({
     where: {
@@ -261,7 +275,7 @@ async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
           }
         });
 
-    const { skippedTools } = await resolveWorkflowTools(saved.id, userId, body.tools, tx);
+    const { skippedTools, sendingBlockedTools } = await resolveWorkflowTools(saved.id, userId, body.tools, tx, sendingEnabled);
     const { skippedMemory } = await attachWorkflowMemory(saved.id, userId, body.memory, tx);
 
     const workflow = await tx.workflow.findUniqueOrThrow({
@@ -269,10 +283,10 @@ async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput) {
       include: workflowInclude
     });
 
-    return { workflow, skippedTools, skippedMemory };
+    return { workflow, skippedTools, skippedMemory, sendingBlockedTools };
   });
 
-  return { workflow: result.workflow, skippedAgents, skippedTools: result.skippedTools, skippedMemory: result.skippedMemory };
+  return { workflow: result.workflow, skippedAgents, skippedTools: result.skippedTools, skippedMemory: result.skippedMemory, sendingBlockedTools: result.sendingBlockedTools };
 }
 
 async function findWorkflowsForUser(userId: string) {
@@ -325,16 +339,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const { workflow, skippedAgents, skippedTools, skippedMemory } = await saveWorkflowForUser(user.id, body);
+  const { workflow, skippedAgents, skippedTools, skippedMemory, sendingBlockedTools } = await saveWorkflowForUser(user.id, body, user.sendingEnabled);
 
   // Silently-partial saves are errors the UI must show, not footnotes.
   const skippedTotal = skippedAgents.length + skippedTools.length + skippedMemory.length;
+  const sendingMessage = sendingBlockedTools.length > 0
+    ? `Real sending is off, so ${sendingBlockedTools.length} send tool${sendingBlockedTools.length > 1 ? "s were" : " was"} not granted (${sendingBlockedTools.join(", ")}). Drafting still works and stays approval-gated; enable real sending in Profile to grant sends.`
+    : undefined;
   const partialMessage = skippedTotal > 0
     ? `Saved with ${skippedTotal} unresolved reference${skippedTotal > 1 ? "s" : ""} skipped — review before running.`
     : undefined;
+  const message = [partialMessage, sendingMessage].filter(Boolean).join(" ") || undefined;
 
   return NextResponse.json(
-    { workflow, skippedAgents, skippedTools, skippedMemory, ...(partialMessage ? { message: partialMessage } : {}) },
+    { workflow, skippedAgents, skippedTools, skippedMemory, sendingBlockedTools, ...(message ? { message } : {}) },
     { status: 201 }
   );
 }

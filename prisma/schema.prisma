@@ -188,6 +188,10 @@ model User {
   image             String?
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
+  // Draft-only by default: a new user may create Gmail drafts (still approval-
+  // gated) but cannot grant a real external send until they deliberately enable
+  // it. Existing send grants are unaffected; this gates NEW send-grant creation.
+  sendingEnabled    Boolean             @default(false) @map("sending_enabled")
   accounts          Account[]
   sessions          Session[]
   agents            Agent[]

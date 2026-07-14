@@ -205,7 +205,10 @@ describe("POST /api/flows/plan", () => {
 
   it("research→send goal: a plan missing the send tool is re-planned to include it (capability validated server-side)", async () => {
     const user = await createTestUser();
-    setCurrentUser(user);
+    // This scenario presupposes the user has enabled real sending; a draft-only
+    // user would (correctly) never be offered a send tool.
+    await prisma.user.update({ where: { id: user.id }, data: { sendingEnabled: true } });
+    setCurrentUser({ ...user, sendingEnabled: true });
     await seedCatalog(user.id);
     // Send- and search-capable tools exist in the catalog.
     await prisma.mcpServer.create({
@@ -318,7 +321,10 @@ describe("POST /api/flows/plan", () => {
 
   it("choose-then-act goal: search + send + approval gate all attached, resolving first try", async () => {
     const user = await createTestUser();
-    setCurrentUser(user);
+    // Presupposes real sending is enabled — a send goal for a draft-only user
+    // is (correctly) offered no send tool.
+    await prisma.user.update({ where: { id: user.id }, data: { sendingEnabled: true } });
+    setCurrentUser({ ...user, sendingEnabled: true });
     await seedCatalog(user.id);
     await prisma.mcpServer.create({
       data: {

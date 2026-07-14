@@ -147,7 +147,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const snapshot = await buildCatalogSnapshot(user.id, goal);
+  const snapshot = await buildCatalogSnapshot(user.id, goal, user.sendingEnabled);
   const { system, user: userPrompt } = buildPrompt(goal, snapshot);
 
   let totalCostCents = 0;
@@ -257,6 +257,14 @@ export async function POST(request: Request) {
   // missing required capabilities are NEVER silent: one automatic feedback
   // re-plan, then any remainder is surfaced loudly. ---
   const required = requiredCapabilities(goal);
+  // Draft-only default: if the goal wants to send but the user has not enabled
+  // real sending, say so plainly (the snapshot already withheld send tools, so
+  // the plan drafts instead of proposing an ungrantable send).
+  if (required.includes("send") && !user.sendingEnabled) {
+    warnings.push(
+      "Real sending is off for your account, so this plan will DRAFT the message (drafts still require your approval) rather than send it. Enable real sending in Profile to grant a send step."
+    );
+  }
   const evaluate = (data: FlowPlan) => {
     const r = resolvePlan(data, snapshot);
     // Auto-repairs first (read-only search attach, send approval gate) so the

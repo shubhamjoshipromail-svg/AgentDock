@@ -51,6 +51,10 @@ export const approvalResolveSchema = z.object({
   response: z.record(z.string(), z.unknown()).optional()
 });
 
+export const sendingSettingSchema = z.object({
+  enabled: z.boolean()
+});
+
 export const toolGrantPatchSchema = z.object({
   canRead: z.boolean().optional(),
   canWrite: z.boolean().optional(),

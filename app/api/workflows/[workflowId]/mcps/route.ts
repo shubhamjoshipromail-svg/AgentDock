@@ -121,6 +121,22 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
       );
     }
 
+    // Draft-only default: a user who has not enabled real sending cannot be
+    // granted an external-send tool. Drafting stays available (and approval-
+    // gated); enabling send is a deliberate action in Profile. This is the
+    // authoritative enforcement point — with no send grant, the runtime gate
+    // blocks the send by deny-by-default regardless of what was planned.
+    if (mcpServer.isExternalSend && !user.sendingEnabled) {
+      return NextResponse.json(
+        {
+          message:
+            "Real sending is off for your account. You can attach drafting tools now (drafts still require your approval). To grant a tool that sends externally, enable real sending in Profile first.",
+          code: "sending_disabled"
+        },
+        { status: 403 }
+      );
+    }
+
     const defaultPermission = body.defaultPermission ?? mcpServer.recommendedPermission;
     const grantTemplate = grantTemplateForPermission(defaultPermission, mcpServer.riskLevel);
 

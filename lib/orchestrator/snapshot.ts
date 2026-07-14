@@ -36,7 +36,7 @@ export function relevanceScore(goalTokens: Set<string>, text: string): number {
   return score;
 }
 
-export async function buildCatalogSnapshot(userId: string, goal: string): Promise<CatalogSnapshot> {
+export async function buildCatalogSnapshot(userId: string, goal: string, sendingEnabled = true): Promise<CatalogSnapshot> {
   const goalTokens = tokenize(goal);
 
   const [agents, partitions, verifiedServers, externalServers] = await Promise.all([
@@ -91,6 +91,15 @@ export async function buildCatalogSnapshot(userId: string, goal: string): Promis
       toolNames: []
     }));
 
+  // Draft-only default: a user who has not enabled real sending is not shown
+  // external-send tools, so the planner drafts instead of proposing a send it
+  // could never be granted. Drafting tools remain fully available. (Enforcement
+  // is the grant gate; this keeps the plan honest and avoids a proposed-then-
+  // dropped send.)
+  const offeredTools = [...verifiedTools, ...rankedExternal].filter(
+    (tool) => sendingEnabled || !tool.isExternalSend
+  );
+
   return {
     agents: agents.map((agent) => ({
       id: agent.id,
@@ -98,7 +107,7 @@ export async function buildCatalogSnapshot(userId: string, goal: string): Promis
       category: agent.category,
       description: agent.description
     })),
-    tools: [...verifiedTools, ...rankedExternal],
+    tools: offeredTools,
     memory: partitions.map((partition) => ({
       id: partition.id,
       partitionName: partition.name,
