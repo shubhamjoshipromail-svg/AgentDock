@@ -27,7 +27,7 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
 });
 
 import { callMcpTool } from "../lib/execution/mcp-client";
-import { startRun, resumeAfterApproval, killRun } from "../lib/execution/run-engine";
+import { executeExistingRun, startRun, resumeAfterApproval, killRun } from "../lib/execution/run-engine";
 import { POST as resolveApproval } from "../app/api/approvals/[id]/resolve/route";
 
 const callMcpToolMock = vi.mocked(callMcpTool);
@@ -293,5 +293,44 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     const after = await prisma.approvalRequest.findFirstOrThrow({ where: { id: intent.id } });
     expect(after.status).toBe("expired");
     expect(await prisma.approvalRequest.count({ where: { workflowRunId: run.id, status: "pending" } })).toBe(0);
+  });
+
+  it("LIFECYCLE: completing a run expires any pending interaction intent", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedAgentFlow(user.id);
+    const run = await prisma.workflowRun.create({
+      data: { userId: user.id, workflowId: workflow.id, status: "running", riskLevel: "medium" }
+    });
+    const intent = await prisma.approvalRequest.create({
+      data: {
+        userId: user.id, workflowRunId: run.id, intentType: "choice",
+        title: "Stale choice", description: "Choose one", actionType: "tool_scope_change",
+        riskLevel: "low", status: "pending"
+      }
+    });
+
+    llm.queue = [{ text: FINAL("The requested work is complete.") }];
+    expect((await executeExistingRun(user.id, run.id)).status).toBe("completed");
+    expect((await prisma.approvalRequest.findUniqueOrThrow({ where: { id: intent.id } })).status).toBe("expired");
+  });
+
+  it("LIFECYCLE: an error terminal state expires any pending interaction intent", async () => {
+    const user = await createTestUser();
+    const workflow = await prisma.workflow.create({
+      data: { userId: user.id, name: "Broken flow", goal: "g", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "approval_gated" }
+    });
+    const run = await prisma.workflowRun.create({
+      data: { userId: user.id, workflowId: workflow.id, status: "running", riskLevel: "medium" }
+    });
+    const intent = await prisma.approvalRequest.create({
+      data: {
+        userId: user.id, workflowRunId: run.id, intentType: "confirmation",
+        title: "Stale confirmation", description: "Continue?", actionType: "tool_scope_change",
+        riskLevel: "low", status: "pending"
+      }
+    });
+
+    expect((await executeExistingRun(user.id, run.id)).status).toBe("halted_error");
+    expect((await prisma.approvalRequest.findUniqueOrThrow({ where: { id: intent.id } })).status).toBe("expired");
   });
 });

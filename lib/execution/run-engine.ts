@@ -546,8 +546,7 @@ async function runStep(
     const k = await killedReason(ctx.runId, ctx.agents);
     if (k) {
       await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked", title: "Run killed", description: k, decision: "denied", actorType: "system" });
-      await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "killed", killedAt: new Date(), killReason: k, endedAt: new Date() } });
-      await expirePendingIntents(ctx.runId);
+      await transitionRunToTerminal(ctx.runId, { status: "killed", killedAt: new Date(), killReason: k, endedAt: new Date() });
       return { kind: "killed" };
     }
     const t = await totals(ctx.runId);
@@ -1109,19 +1108,25 @@ async function executeApprovedTool(
   return { kind: "executed", result: executed.text };
 }
 
-// A terminal run has no live surface — expire any pending interaction intents so
-// none are left orphaned (a killed/halted run can never resume to answer them).
-async function expirePendingIntents(runId: string): Promise<void> {
-  await prisma.approvalRequest.updateMany({
-    where: { workflowRunId: runId, status: "pending" },
-    data: { status: "expired", resolvedAt: new Date() }
-  });
+// A terminal run has no live surface. Every terminal transition shares this
+// transaction so no completion/error/kill path can orphan a pending intent.
+async function transitionRunToTerminal(
+  runId: string,
+  data: Prisma.WorkflowRunUpdateArgs["data"]
+): Promise<void> {
+  const resolvedAt = new Date();
+  await prisma.$transaction([
+    prisma.workflowRun.update({ where: { id: runId }, data }),
+    prisma.approvalRequest.updateMany({
+      where: { workflowRunId: runId, status: "pending" },
+      data: { status: "expired", resolvedAt }
+    })
+  ]);
 }
 
 async function haltCost(ctx: Ctx) {
   await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "spend_event", title: "Run halted on cost", description: `Run reached the per-run cost cap (${ctx.c.maxCostCents}c).`, decision: "denied", actorType: "system" });
-  await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "halted_cost", endedAt: new Date() } });
-  await expirePendingIntents(ctx.runId);
+  await transitionRunToTerminal(ctx.runId, { status: "halted_cost", endedAt: new Date() });
 }
 
 async function haltError(ctx: Ctx, reason: string, meta?: Record<string, unknown>) {
@@ -1132,8 +1137,7 @@ async function haltError(ctx: Ctx, reason: string, meta?: Record<string, unknown
     title: "Run halted", description: reason, decision: "denied", actorType: "system",
     metadata: { haltReason: reason, ...(meta ?? {}) } as RunEventMeta
   });
-  await prisma.workflowRun.update({ where: { id: ctx.runId }, data: { status: "halted_error", endedAt: new Date() } });
-  await expirePendingIntents(ctx.runId);
+  await transitionRunToTerminal(ctx.runId, { status: "halted_error", endedAt: new Date() });
 }
 
 // --- Drivers -----------------------------------------------------------------
@@ -1239,17 +1243,11 @@ async function drive(
       decision: "denied", actorType: "system",
       metadata: { rawOutput: capText(lastFinalText ?? bestDeliverable ?? "", TOOL_OUTPUT_META_LIMIT) }
     });
-    await prisma.workflowRun.update({
-      where: { id: ctx.runId },
-      data: { status: "halted_error", endedAt: new Date(), resultText: null }
-    });
+    await transitionRunToTerminal(ctx.runId, { status: "halted_error", endedAt: new Date(), resultText: null });
     return { runId: ctx.runId, status: "halted_error" };
   }
   await appendEvent({ runId: ctx.runId, userId: ctx.userId, eventType: "workflow_completed", title: "Run completed", description: "All agent steps finished.", decision: "info", actorType: "system" });
-  await prisma.workflowRun.update({
-    where: { id: ctx.runId },
-    data: { status: "completed", completedAt: new Date(), endedAt: new Date(), resultText: deliverable }
-  });
+  await transitionRunToTerminal(ctx.runId, { status: "completed", completedAt: new Date(), endedAt: new Date(), resultText: deliverable });
   await recordProductEvent(ctx.userId, "run_completed", { runId: ctx.runId });
   return { runId: ctx.runId, status: "completed" };
 }
@@ -1310,7 +1308,7 @@ export async function executeExistingRun(
 
   const runnable = await loadRunnable(userId, run.workflowId);
   if (!runnable || runnable.agents.length === 0) {
-    await prisma.workflowRun.update({ where: { id: run.id }, data: { status: "halted_error", endedAt: new Date() } });
+    await transitionRunToTerminal(run.id, { status: "halted_error", endedAt: new Date() });
     return { runId, status: "halted_error" };
   }
 
@@ -1333,7 +1331,7 @@ export async function executeExistingRun(
 
   const ctx = await buildCtx(userId, run.id, runnable.workflow.goal, runnable.agents);
   if (!ctx) {
-    await prisma.workflowRun.update({ where: { id: run.id }, data: { status: "halted_error", endedAt: new Date() } });
+    await transitionRunToTerminal(run.id, { status: "halted_error", endedAt: new Date() });
     return { runId, status: "halted_error" };
   }
   // Inject user email so the worker path also has it.
@@ -1375,7 +1373,7 @@ export async function resumeAfterApproval(userId: string, approvalId: string, ap
   if (isApproval && !approved) {
     await prisma.approvalRequest.update({ where: { id: approval.id }, data: { status: "denied", resolvedAt: new Date() } });
     await appendEvent({ runId, userId, eventType: "action_blocked", title: "Approval denied", description: "Human denied the requested action. Run halted.", decision: "denied", actorType: "human" });
-    await prisma.workflowRun.update({ where: { id: runId }, data: { status: "halted_error", endedAt: new Date() } });
+    await transitionRunToTerminal(runId, { status: "halted_error", endedAt: new Date() });
     return { runId, status: "halted_error" };
   }
 
@@ -1389,10 +1387,13 @@ export async function resumeAfterApproval(userId: string, approvalId: string, ap
   }
 
   const runnable = await loadRunnable(userId, approval.workflowRun.workflowId);
-  if (!runnable) return null;
+  if (!runnable) {
+    await transitionRunToTerminal(runId, { status: "halted_error", endedAt: new Date() });
+    return { runId, status: "halted_error" };
+  }
   const ctx = await buildCtx(userId, runId, runnable.workflow.goal, runnable.agents);
   if (!ctx) {
-    await prisma.workflowRun.update({ where: { id: runId }, data: { status: "halted_error", endedAt: new Date() } });
+    await transitionRunToTerminal(runId, { status: "halted_error", endedAt: new Date() });
     return { runId, status: "halted_error" };
   }
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
@@ -1423,8 +1424,7 @@ export async function resumeAfterApproval(userId: string, approvalId: string, ap
 export async function killRun(userId: string, runId: string, reason = "killed by user"): Promise<boolean> {
   const run = await prisma.workflowRun.findFirst({ where: { id: runId, userId } });
   if (!run) return false;
-  await prisma.workflowRun.update({ where: { id: runId }, data: { status: "killed", killedAt: new Date(), killReason: reason, endedAt: new Date() } });
-  await expirePendingIntents(runId);
+  await transitionRunToTerminal(runId, { status: "killed", killedAt: new Date(), killReason: reason, endedAt: new Date() });
   await appendEvent({ runId, userId, eventType: "action_blocked", title: "Kill switch", description: reason, decision: "denied", actorType: "human" });
   return true;
 }
