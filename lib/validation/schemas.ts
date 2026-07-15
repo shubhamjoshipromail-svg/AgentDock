@@ -160,7 +160,8 @@ export const createCredentialSchema = z.object({
 
 // Chunk 4: start a real run for a saved flow.
 export const startRunSchema = z.object({
-  workflowId: z.string().uuid()
+  workflowId: z.string().uuid(),
+  allowConcurrent: z.boolean().optional().default(false)
 });
 
 // Chunk 12: connect to a registered MCP server.

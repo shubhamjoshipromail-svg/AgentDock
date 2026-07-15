@@ -4,6 +4,7 @@ import { getCurrentUser } from "../../../../lib/auth-user";
 import { recordProductEvent } from "../../../../lib/analytics/product-events";
 import { getRunProvider } from "../../../../lib/execution/provider";
 import { getProvider } from "../../../../lib/llm";
+import { runIdempotently } from "../../../../lib/idempotency";
 import { ensureDraftGate, ensureSendGate, missingCapabilities, requiredCapabilities, RESEARCH_GOAL, toolCapabilities } from "../../../../lib/orchestrator/capabilities";
 import { clampPermissions } from "../../../../lib/orchestrator/clamp";
 import { planToSaveInput } from "../../../../lib/orchestrator/convert";
@@ -111,6 +112,13 @@ export async function POST(request: Request) {
     return parsed.response;
   }
   const { goal } = parsed.data;
+
+  return runIdempotently({
+    request,
+    userId: user.id,
+    scope: "flow_plan",
+    input: { goal },
+    work: async () => {
 
   const maxOutputTokens = intEnv("ORCHESTRATOR_MAX_OUTPUT_TOKENS", 4000);
   const maxCostPerCall = intEnv("ORCHESTRATOR_MAX_COST_CENTS_PER_CALL", 10);
@@ -369,4 +377,6 @@ export async function POST(request: Request) {
   };
 
   return NextResponse.json(response);
+    }
+  });
 }

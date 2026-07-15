@@ -151,6 +151,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     llm.queue = [{ text: FINAL("Emailed your picks: Jazz Night and Art Walk.") }];
     const result = await resumeAfterApproval(user.id, intent.id, true);
     expect(result?.status).toBe("completed");
+    expect(await prisma.workflowRun.count({ where: { userId: user.id, workflowId: workflow.id } })).toBe(1);
     const resumePrompt = llm.prompts[llm.prompts.length - 1];
     expect(resumePrompt).toContain("Jazz Night");
     expect(resumePrompt).toContain("Art Walk");

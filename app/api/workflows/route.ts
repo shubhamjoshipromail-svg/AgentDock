@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { getCurrentUser } from "../../../lib/auth-user";
 import { agentDefaultsByName } from "../../../lib/catalog/agent-defaults";
 import { defaultPermissionForRisk, grantTemplateForPermission } from "../../../lib/mcp-catalog";
+import { runIdempotently } from "../../../lib/idempotency";
 import { prisma } from "../../../lib/prisma";
 import { parseJsonBody } from "../../../lib/validation/parse";
 import { createFlowSchema, type CreateFlowAgentInput, type CreateFlowInput } from "../../../lib/validation/schemas";
@@ -325,6 +326,13 @@ export async function POST(request: Request) {
 
   const body = parsed.data;
 
+  return runIdempotently({
+    request,
+    userId: user.id,
+    scope: "flow_save",
+    input: body,
+    work: async () => {
+
   // SAVE INTEGRITY (Chunk 19): a flow with zero resolved agents cannot be saved
   // — it could never run ("Flow has no agents to run" shells). Refused up front
   // with the resolution detail, before anything persists.
@@ -355,4 +363,6 @@ export async function POST(request: Request) {
     { workflow, skippedAgents, skippedTools, skippedMemory, sendingBlockedTools, ...(message ? { message } : {}) },
     { status: 201 }
   );
+    }
+  });
 }

@@ -225,6 +225,66 @@ describe("run engine — bounded, gated, killable", () => {
     }
   });
 
+  it("Chunk 21: the same persisted idempotency key never creates a second run, even after terminal", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+    const create = createQueuedRun as unknown as (
+      userId: string,
+      workflowId: string,
+      options: { idempotencyKey: string; allowConcurrent?: boolean }
+    ) => ReturnType<typeof createQueuedRun>;
+
+    const first = await create(user.id, workflow.id, { idempotencyKey: "run-click-00000001" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("unexpected");
+    await prisma.workflowRun.update({ where: { id: first.result.runId }, data: { status: "completed", endedAt: new Date() } });
+
+    const replay = await create(user.id, workflow.id, { idempotencyKey: "run-click-00000001" });
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) throw new Error("unexpected");
+    expect(replay.result.runId).toBe(first.result.runId);
+    expect(await prisma.workflowRun.count({ where: { userId: user.id, workflowId: workflow.id } })).toBe(1);
+  });
+
+  it("Chunk 21: allowConcurrent is the only way around the short-window workflow guard", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+    const create = createQueuedRun as unknown as (
+      userId: string,
+      workflowId: string,
+      options: { idempotencyKey: string; allowConcurrent?: boolean }
+    ) => ReturnType<typeof createQueuedRun>;
+
+    const first = await create(user.id, workflow.id, { idempotencyKey: "run-click-00000002" });
+    const guarded = await create(user.id, workflow.id, { idempotencyKey: "run-click-00000003" });
+    const explicit = await create(user.id, workflow.id, { idempotencyKey: "run-click-00000004", allowConcurrent: true });
+    expect(first.ok && guarded.ok && explicit.ok).toBe(true);
+    if (!first.ok || !guarded.ok || !explicit.ok) throw new Error("unexpected");
+    expect(guarded.result.runId).toBe(first.result.runId);
+    expect(explicit.result.runId).not.toBe(first.result.runId);
+    expect(await prisma.workflowRun.count({ where: { userId: user.id, workflowId: workflow.id } })).toBe(2);
+  });
+
+  it("Chunk 21: concurrent API retries from one click create one run and one funnel start", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow } = await seedFlow(user.id);
+    const key = "run-click-00000005";
+    const request = () => new Request("http://localhost/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+      body: JSON.stringify({ workflowId: workflow.id })
+    });
+
+    const responses = await Promise.all(Array.from({ length: 6 }, () => startRunRoute(request())));
+    expect(responses.every((response) => [200, 201].includes(response.status))).toBe(true);
+    const runIds = await Promise.all(responses.map(async (response) => (await response.json()).run.runId as string));
+    expect(new Set(runIds).size).toBe(1);
+    expect(await prisma.workflowRun.count({ where: { userId: user.id, workflowId: workflow.id } })).toBe(1);
+    expect(await prisma.runJob.count({ where: { workflowRunId: runIds[0] } })).toBe(1);
+    expect(await prisma.productEvent.count({ where: { userId: user.id, event: "run_started" } })).toBe(1);
+  });
+
   it("pipes the previous agent final output into the next agent as an untrusted handoff", async () => {
     const user = await createTestUser();
     const first = await prisma.agent.create({
@@ -534,7 +594,7 @@ describe("run engine — bounded, gated, killable", () => {
     // Seed prior spend today at/over the cap.
     await prisma.workflowRun.create({ data: { userId: user.id, workflowId: workflow.id, riskLevel: "low", status: "completed", totalCostCents: 50 } });
 
-    const res = await startRunRoute(new Request("http://localhost/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workflowId: workflow.id }) }));
+    const res = await startRunRoute(new Request("http://localhost/api/runs", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ workflowId: workflow.id }) }));
     expect(res.status).toBe(429);
     expect(llm.calls).toBe(0);
   });

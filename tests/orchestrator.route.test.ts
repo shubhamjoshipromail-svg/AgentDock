@@ -13,7 +13,7 @@ const llmState = vi.hoisted(() => ({
     model: string;
     completeJson: (params: unknown) => Promise<{ text: string; usage: { inputTokens: number; outputTokens: number }; costCents: number }>;
   },
-  queue: [] as { text: string; inputTokens?: number; outputTokens?: number; costCents?: number }[],
+  queue: [] as { text: string; inputTokens?: number; outputTokens?: number; costCents?: number; delayMs?: number }[],
   calls: 0
 }));
 
@@ -43,6 +43,7 @@ function makeProvider() {
       llmState.calls += 1;
       const next = llmState.queue.shift();
       if (!next) throw new Error("no queued completion");
+      if (next.delayMs) await new Promise((resolve) => setTimeout(resolve, next.delayMs));
       return {
         text: next.text,
         usage: { inputTokens: next.inputTokens ?? 1000, outputTokens: next.outputTokens ?? 500 },
@@ -52,10 +53,13 @@ function makeProvider() {
   };
 }
 
-function planRequest(goal: string) {
+function planRequest(goal: string, idempotencyKey = crypto.randomUUID()) {
   return new Request("http://localhost/api/flows/plan", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey
+    },
     body: JSON.stringify({ goal })
   });
 }
@@ -139,6 +143,39 @@ describe("POST /api/flows/plan", () => {
     expect(logs[0].eventType).toBe("orchestration");
     // Privacy: goal text is never logged.
     expect(logs[0].title + logs[0].description).not.toContain("Find AI roles");
+  });
+
+  it("Chunk 21: replaying a plan idempotency key returns one cached plan and makes one model call", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    llmState.queue = [
+      { text: VALID_PLAN_JSON, costCents: 3 },
+      { text: JSON.stringify({ ...JSON.parse(VALID_PLAN_JSON), name: "Duplicate plan" }), costCents: 3 }
+    ];
+
+    const first = await planFlow(planRequest("Find AI roles and draft outreach for approval.", "plan-click-00000001"));
+    const replay = await planFlow(planRequest("Find AI roles and draft outreach for approval.", "plan-click-00000001"));
+    expect(first.status).toBe(200);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(await first.json());
+    expect(llmState.calls).toBe(1);
+    expect(await prisma.activityLog.count({ where: { userId: user.id } })).toBe(1);
+  });
+
+  it("Chunk 21: concurrent plan requests with one key perform one model call", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    await seedCatalog(user.id);
+    llmState.queue = [{ text: VALID_PLAN_JSON, costCents: 3, delayMs: 25 }];
+
+    const responses = await Promise.all([
+      planFlow(planRequest("Find AI roles and draft outreach for approval.", "plan-click-00000002")),
+      planFlow(planRequest("Find AI roles and draft outreach for approval.", "plan-click-00000002"))
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(llmState.calls).toBe(1);
+    expect(await prisma.activityLog.count({ where: { userId: user.id } })).toBe(1);
   });
 
   it("prefers the signed-in user's BYO provider key over the system env provider", async () => {

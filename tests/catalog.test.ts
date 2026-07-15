@@ -16,7 +16,7 @@ function params<T extends Record<string, string>>(p: T) {
 function jsonPost(url: string, body: unknown) {
   return new Request(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(body)
   });
 }

@@ -21,10 +21,13 @@ const flowPayload = {
   ]
 };
 
-function jsonRequest(url: string, body: unknown, method = "POST") {
+function jsonRequest(url: string, body: unknown, method = "POST", idempotencyKey = crypto.randomUUID()) {
   return new Request(url, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey
+    },
     body: JSON.stringify(body)
   });
 }
@@ -103,6 +106,37 @@ describe("Phase D data-model integrity", () => {
     const secondData = await second.json();
     expect(secondData.bootstrapped).toBe(false);
     expect(await tableCounts()).toEqual(countsAfterFirst);
+  });
+
+  it("Chunk 21: a flow-save key cannot be replayed with a different payload", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+
+    const first = await createWorkflow(jsonRequest("http://localhost/api/workflows", flowPayload, "POST", "save-click-00000001"));
+    expect(first.status).toBe(201);
+
+    const replay = await createWorkflow(jsonRequest(
+      "http://localhost/api/workflows",
+      { ...flowPayload, goal: "A different goal must not reuse the same operation key." },
+      "POST",
+      "save-click-00000001"
+    ));
+    expect(replay.status).toBe(409);
+    expect(await prisma.workflow.count({ where: { userId: user.id } })).toBe(1);
+    expect((await prisma.workflow.findFirstOrThrow({ where: { userId: user.id } })).goal).toBe(flowPayload.goal);
+  });
+
+  it("Chunk 21: concurrent identical saves create exactly one flow", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const key = "save-click-00000002";
+
+    const responses = await Promise.all([
+      createWorkflow(jsonRequest("http://localhost/api/workflows", flowPayload, "POST", key)),
+      createWorkflow(jsonRequest("http://localhost/api/workflows", flowPayload, "POST", key))
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    expect(await prisma.workflow.count({ where: { userId: user.id } })).toBe(1);
   });
 
   it("GET /api/workflows and GET /api/memory do not create data", async () => {

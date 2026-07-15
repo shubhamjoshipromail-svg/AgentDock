@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import {
   attachToolToFlow,
   listFlows,
   listToolServers,
+  newIdempotencyKey,
   planFlow,
   saveFlow
 } from "../../lib/api/client";
@@ -90,6 +91,10 @@ export function Builder({
   const [budgetEdit, setBudgetEdit] = useState<number | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingWorkflow, setSavingWorkflow] = useState(false);
+  const [plannedIdempotencyKey, setPlannedIdempotencyKey] = useState("");
+  const planInFlightRef = useRef(false);
+  const savePlanInFlightRef = useRef(false);
+  const saveDraftInFlightRef = useRef(false);
 
   // UI state: inspector tab + library collapse.
   const [inspectorTab, setInspectorTab] = useState<"plan" | "participant">("plan");
@@ -164,7 +169,11 @@ export function Builder({
   const generatePlan = async () => {
     if (!prompt.trim()) return toast("Describe the outcome first.", "warn");
     if (!session?.user) return toast("Sign in with Google to plan a flow with a model.", "warn");
+    if (planInFlightRef.current) return;
 
+    planInFlightRef.current = true;
+    const idempotencyKey = newIdempotencyKey();
+    setPlannedIdempotencyKey(idempotencyKey);
     setPlanning(true);
     setPlanned(null);
     setPlanError("");
@@ -177,7 +186,7 @@ export function Builder({
       // call with SSE token-streaming so nodes reveal in true real time as the
       // model emits them. Until then the wait is honest (elapsed + indeterminate)
       // and the staged reveal below renders the completed result.
-      const data = await planFlow(prompt);
+      const data = await planFlow(prompt, "Unable to plan this Flow.", idempotencyKey);
       setPlanned(data);
       setBudgetEdit(data.plan.estimatedBudgetCents);
       setPlanRevealKey((key) => key + 1);
@@ -193,6 +202,7 @@ export function Builder({
       setPlanError(message);
       toast(message, "danger");
     } finally {
+      planInFlightRef.current = false;
       setPlanning(false);
     }
   };
@@ -213,10 +223,16 @@ export function Builder({
     const plan = buildEditedPlan();
     if (!plan) return;
     if (!session?.user) return toast("Sign in to save this flow.", "warn");
+    if (savePlanInFlightRef.current) return;
 
+    savePlanInFlightRef.current = true;
     setSavingPlan(true);
     try {
-      const data = await saveFlow(planToSaveInput(plan), "Flow save failed.");
+      const data = await saveFlow(
+        planToSaveInput(plan),
+        "Flow save failed.",
+        plannedIdempotencyKey || newIdempotencyKey()
+      );
       onSave();
       setBuilderMode("saved");
       setSavedWorkflowId(data.workflow?.id ?? "");
@@ -227,6 +243,7 @@ export function Builder({
     } catch (error) {
       toast(error instanceof Error ? error.message : "Flow save failed.", "danger");
     } finally {
+      savePlanInFlightRef.current = false;
       setSavingPlan(false);
     }
   };
@@ -234,10 +251,13 @@ export function Builder({
   const saveDraftFlow = async () => {
     if (!session?.user) return toast("Sign in to save this flow to Flows.", "warn");
     if (!hasDraftWorkflow) return toast("Plan or load a flow before saving.", "warn");
+    if (saveDraftInFlightRef.current) return;
 
+    saveDraftInFlightRef.current = true;
+    const idempotencyKey = newIdempotencyKey();
     setSavingWorkflow(true);
     try {
-      const data = await saveFlow(serializeBuilderFlow(prompt, nodes), "Flow save failed.");
+      const data = await saveFlow(serializeBuilderFlow(prompt, nodes), "Flow save failed.", idempotencyKey);
       onSave();
       setBuilderMode("saved");
       setSavedWorkflowId(data.workflow?.id ?? "");
@@ -248,6 +268,7 @@ export function Builder({
     } catch (error) {
       toast(error instanceof Error ? error.message : "Flow save failed.", "danger");
     } finally {
+      saveDraftInFlightRef.current = false;
       setSavingWorkflow(false);
     }
   };

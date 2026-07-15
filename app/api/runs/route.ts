@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../lib/auth-user";
 import { prisma } from "../../../lib/prisma";
 import { createQueuedRun } from "../../../lib/execution/run-queue";
+import { readIdempotencyKey } from "../../../lib/idempotency";
 import { recordRunStarted } from "../../../lib/analytics/product-events";
 import { parseJsonBody } from "../../../lib/validation/parse";
 import { startRunSchema } from "../../../lib/validation/schemas";
@@ -33,6 +34,8 @@ export async function POST(request: Request) {
 
   const parsed = await parseJsonBody(request, startRunSchema);
   if (!parsed.ok) return parsed.response;
+  const idempotency = readIdempotencyKey(request);
+  if (!idempotency.ok) return idempotency.response;
 
   // --- daily run-cost cap: checked BEFORE any provider call ---
   const dailyCap = intEnv("USER_DAILY_RUN_COST_CAP_CENTS", 200);
@@ -50,12 +53,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const outcome = await createQueuedRun(user.id, parsed.data.workflowId);
+  const outcome = await createQueuedRun(user.id, parsed.data.workflowId, {
+    idempotencyKey: idempotency.key,
+    allowConcurrent: parsed.data.allowConcurrent
+  });
   if (!outcome.ok) {
     return NextResponse.json({ message: outcome.message }, { status: outcome.status });
   }
-  await recordRunStarted(user.id, outcome.result.runId, parsed.data.workflowId);
-  return NextResponse.json({ run: outcome.result }, { status: 201 });
+  if (outcome.created) {
+    await recordRunStarted(user.id, outcome.result.runId, parsed.data.workflowId);
+  }
+  return NextResponse.json(
+    { run: outcome.result },
+    {
+      status: outcome.created ? 201 : 200,
+      headers: outcome.created ? undefined : { "Idempotency-Replayed": "true" }
+    }
+  );
 }
 
 export async function GET() {

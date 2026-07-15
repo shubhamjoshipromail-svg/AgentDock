@@ -9,7 +9,7 @@ import { POST as createWorkflow } from "../app/api/workflows/route";
 import { loadRunnable } from "../lib/execution/run-engine";
 
 function jsonRequest(url: string, body: unknown) {
-  return new Request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return new Request(url, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(body) });
 }
 
 async function makeServer(slug: string) {

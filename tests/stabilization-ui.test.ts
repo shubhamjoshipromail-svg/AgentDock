@@ -43,4 +43,13 @@ describe("stabilization UI invariants", () => {
     expect(builder).not.toContain(": mcpTools.map");
     expect(builder).not.toContain("Execution stays off.");
   });
+
+  it("Chunk 21: only the workspace owns the real run trigger", () => {
+    const workspace = source("components/workspace/FlowWorkspace.tsx");
+    const legacyPanel = source("components/control/ControlPlane.tsx");
+
+    expect(workspace.match(/startRealRun\(flowId/g)).toHaveLength(1);
+    expect(legacyPanel).not.toContain("startRealRun");
+    expect(legacyPanel).not.toContain("Run for real");
+  });
 });

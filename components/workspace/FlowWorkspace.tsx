@@ -13,6 +13,7 @@ import {
   listConnections,
   listDiscoveredTools,
   listFlows,
+  newIdempotencyKey,
   removeToolGrant,
   resolveApproval,
   respondToIntent,
@@ -115,6 +116,7 @@ export function FlowWorkspace({
   // Describe-to-build
   const [describeText, setDescribeText] = useState("");
   const [planning, setPlanning] = useState(false);
+  const planStartInFlightRef = useRef(false);
   // The resolution report from the last plan: what was attached, clamped, or
   // FAILED to resolve — shown before anything saves, never a footnote.
   const [planReport, setPlanReport] = useState<ResolutionReport | null>(null);
@@ -291,10 +293,11 @@ export function FlowWorkspace({
     if (runStartInFlightRef.current) return;
 
     runStartInFlightRef.current = true;
+    const idempotencyKey = newIdempotencyKey();
     setStartingRun(true);
     try {
       terminalToastedRef.current = null;
-      const result = await startRealRun(flowId);
+      const result = await startRealRun(flowId, "Unable to start run.", idempotencyKey);
       // Set runId → the effect above subscribes to the live stream from here.
       setRun({ runId: result.run.runId, status: result.run.status || "queued", output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
       toast("Run queued. Streaming live…", "ok");
@@ -397,14 +400,17 @@ export function FlowWorkspace({
   const handleDescribe = async (goalText?: string) => {
     const goal = (goalText ?? describeText).trim();
     if (!goal) return toast("Describe what you want done first.", "warn");
+    if (planStartInFlightRef.current) return;
     if (goalText !== undefined) setDescribeText(goalText);
+    planStartInFlightRef.current = true;
+    const idempotencyKey = newIdempotencyKey();
     setPlanning(true);
     setPlanReport(null);
     try {
       const { planFlow } = await import("../../lib/api/client");
       const { planToSaveInput } = await import("../../lib/orchestrator/convert");
       const { saveFlow } = await import("../../lib/api/client");
-      const data = await planFlow(goal);
+      const data = await planFlow(goal, "Unable to plan this Flow.", idempotencyKey);
       const report = data.report ?? { attached: [], clamped: [], failed: [], replanned: false };
       setPlanReport(report);
 
@@ -417,7 +423,7 @@ export function FlowWorkspace({
         toast("The plan resolved zero agents — nothing to save. Rephrase your goal.", "danger");
         return;
       }
-      const saveResult = await saveFlow(planToSaveInput(data.plan), "Flow save failed.");
+      const saveResult = await saveFlow(planToSaveInput(data.plan), "Flow save failed.", idempotencyKey);
       const skipped = [
         ...(saveResult.skippedAgents ?? []),
         ...(saveResult.skippedTools ?? []),
@@ -435,6 +441,7 @@ export function FlowWorkspace({
     } catch (error) {
       toast(error instanceof Error ? error.message : "Planning failed.", "danger");
     } finally {
+      planStartInFlightRef.current = false;
       setPlanning(false);
     }
   };

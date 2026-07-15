@@ -10,7 +10,7 @@ import { POST as createWorkflow } from "../app/api/workflows/route";
 function jsonRequest(url: string, body: unknown, method = "POST") {
   return new Request(url, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(body)
   });
 }

@@ -10,7 +10,7 @@ import { POST as createWorkflow } from "../app/api/workflows/route";
 import { GET as getSending, PATCH as patchSending } from "../app/api/profile/sending/route";
 
 function jsonReq(url: string, body: unknown, method = "POST") {
-  return new Request(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return new Request(url, { method, headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(body) });
 }
 
 async function makeAgentAndFlow(userId: string) {

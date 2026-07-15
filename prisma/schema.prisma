@@ -210,6 +210,7 @@ model User {
   runJobs           RunJob[]
   serverConnections ServerConnection[]
   productEvents     ProductEvent[]
+  idempotencyRecords IdempotencyRecord[]
 
   @@map("users")
 }
@@ -373,6 +374,7 @@ model WorkflowRun {
   killedAt        DateTime?           @map("killed_at")
   killReason      String?             @map("kill_reason")
   riskLevel       String              @map("risk_level")
+  idempotencyKey  String?             @map("idempotency_key")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
   user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -384,7 +386,29 @@ model WorkflowRun {
 
   @@index([userId, createdAt])
   @@index([workflowId, createdAt])
+  @@unique([userId, idempotencyKey])
   @@map("workflow_runs")
+}
+
+// Durable replay protection for synchronous mutation APIs whose result is not
+// itself a single database row (planning and flow-save reconciliation).
+model IdempotencyRecord {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  scope       String
+  key         String
+  requestHash String   @map("request_hash")
+  status      String   @default("pending")
+  response    Json?
+  httpStatus  Int?     @map("http_status")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scope, key])
+  @@index([userId, createdAt])
+  @@map("idempotency_records")
 }
 
 model RunJob {

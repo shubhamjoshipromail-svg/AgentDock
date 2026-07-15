@@ -37,10 +37,17 @@ async function request<T>(path: string, fallbackMessage: string, init?: RequestI
   return data as T;
 }
 
-function jsonInit(method: string, body: unknown): RequestInit {
+export function newIdempotencyKey(): string {
+  return crypto.randomUUID();
+}
+
+function jsonInit(method: string, body: unknown, idempotencyKey?: string): RequestInit {
   return {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {})
+    },
     body: JSON.stringify(body)
   };
 }
@@ -59,15 +66,15 @@ export function bootstrap(fallbackMessage = "Unable to bootstrap workspace.") {
 
 // Calls the orchestrator. The server returns the clamped plan, warnings, and real
 // token/cost meta — the throw carries the route's message (503/429/422/502 etc.).
-export function planFlow(goal: string, fallbackMessage = "Unable to plan this Flow.") {
-  return request<PlannedFlowResponse>("/api/flows/plan", fallbackMessage, jsonInit("POST", { goal }));
+export function planFlow(goal: string, fallbackMessage = "Unable to plan this Flow.", idempotencyKey = newIdempotencyKey()) {
+  return request<PlannedFlowResponse>("/api/flows/plan", fallbackMessage, jsonInit("POST", { goal }, idempotencyKey));
 }
 
 export function listFlows(fallbackMessage = "Unable to load saved Flows.") {
   return request<{ workflows: PersistedWorkflow[]; bootstrapped?: boolean }>("/api/workflows", fallbackMessage);
 }
 
-export function saveFlow(payload: SaveFlowInput, fallbackMessage = "Flow save failed.") {
+export function saveFlow(payload: SaveFlowInput, fallbackMessage = "Flow save failed.", idempotencyKey = newIdempotencyKey()) {
   return request<{
     workflow: PersistedWorkflow;
     skippedAgents: string[];
@@ -77,7 +84,7 @@ export function saveFlow(payload: SaveFlowInput, fallbackMessage = "Flow save fa
   }>(
     "/api/workflows",
     fallbackMessage,
-    jsonInit("POST", payload)
+    jsonInit("POST", payload, idempotencyKey)
   );
 }
 
@@ -274,8 +281,17 @@ export type RealRunSummary = {
   createdAt: string; endedAt?: string | null;
 };
 
-export function startRealRun(workflowId: string, fallbackMessage = "Unable to start run.") {
-  return request<{ run: { runId: string; status: string } }>("/api/runs", fallbackMessage, jsonInit("POST", { workflowId }));
+export function startRealRun(
+  workflowId: string,
+  fallbackMessage = "Unable to start run.",
+  idempotencyKey = newIdempotencyKey(),
+  allowConcurrent = false
+) {
+  return request<{ run: { runId: string; status: string } }>(
+    "/api/runs",
+    fallbackMessage,
+    jsonInit("POST", { workflowId, allowConcurrent }, idempotencyKey)
+  );
 }
 
 export function getRealRun(id: string, fallbackMessage = "Unable to load run.") {

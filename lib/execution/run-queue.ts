@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { Prisma, type WorkflowRunStatus } from "@prisma/client";
 
 import { prisma } from "../prisma";
@@ -7,10 +9,9 @@ const DEFAULT_LEASE_MS = 60_000;
 const DEFAULT_POLL_MS = 2_000;
 const DEFAULT_PER_USER_CONCURRENCY = 1;
 
-// Non-terminal run statuses. At most one run per (user, flow) may be in one of
-// these at a time — enforced by the partial unique index
-// `workflow_runs_active_per_flow_unique` and by the guard in createQueuedRun.
+// Non-terminal run statuses used by the atomic 10-second workflow guard.
 const ACTIVE_RUN_STATUSES = ["queued", "running", "pending", "waiting_for_approval", "paused_for_approval"] satisfies WorkflowRunStatus[];
+const DEFAULT_RUN_CREATION_WINDOW_MS = 10_000;
 
 export type RunJobWithRun = {
   id: string;
@@ -49,34 +50,53 @@ function dateAfter(ms: number): Date {
 
 export async function createQueuedRun(
   userId: string,
-  workflowId: string
-): Promise<{ ok: true; result: RunResult } | { ok: false; status: number; message: string }> {
+  workflowId: string,
+  options: { idempotencyKey?: string; allowConcurrent?: boolean; recentWindowMs?: number } = {}
+): Promise<{ ok: true; result: RunResult; created: boolean } | { ok: false; status: number; message: string }> {
   const runnable = await loadRunnable(userId, workflowId);
   if (!runnable) return { ok: false, status: 404, message: "Flow not found." };
   if (runnable.agents.length === 0) return { ok: false, status: 400, message: "This flow has no agents — it was likely saved from a failed plan. Re-plan it (describe the goal again) or add agents on the build canvas." };
 
-  // In-flight guard: at most one active run per (user, flow). A second create
-  // (double-clicked Run, or two run-trigger surfaces firing) returns the EXISTING
-  // run instead of a duplicate. The partial unique index makes this race-proof;
-  // this pre-check avoids relying on the exception for the common (sequential) case.
-  const existingActive = await prisma.workflowRun.findFirst({
-    where: { userId, workflowId, status: { in: ACTIVE_RUN_STATUSES } },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, status: true }
-  });
-  if (existingActive) {
-    return { ok: true, result: { runId: existingActive.id, status: existingActive.status } };
-  }
+  const idempotencyKey = options.idempotencyKey ?? randomUUID();
+  const recentWindowMs = options.recentWindowMs ?? DEFAULT_RUN_CREATION_WINDOW_MS;
+  const cutoff = new Date(Date.now() - recentWindowMs);
+  const lockKey = `${userId}:${workflowId}`;
 
   try {
-    const run = await prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
+      // Serialize all creation decisions for this user+flow, including requests
+      // carrying different per-click keys. This makes the short-window rule
+      // atomic without forbidding an explicitly reviewed concurrent run.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0)) IS NULL AS locked`;
+
+      const replay = await tx.workflowRun.findUnique({
+        where: { userId_idempotencyKey: { userId, idempotencyKey } },
+        select: { id: true, status: true }
+      });
+      if (replay) return { run: replay, created: false };
+
+      if (!options.allowConcurrent) {
+        const recent = await tx.workflowRun.findFirst({
+          where: {
+            userId,
+            workflowId,
+            status: { in: ACTIVE_RUN_STATUSES },
+            createdAt: { gte: cutoff }
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, status: true }
+        });
+        if (recent) return { run: recent, created: false };
+      }
+
       const created = await tx.workflowRun.create({
         data: {
           userId,
           workflowId,
           status: "queued",
           riskLevel: "medium",
-          startedAt: new Date()
+          startedAt: new Date(),
+          idempotencyKey
         }
       });
 
@@ -88,20 +108,23 @@ export async function createQueuedRun(
         }
       });
 
-      return created;
+      return { run: created, created: true };
     });
 
-    return { ok: true, result: { runId: run.id, status: "queued" } };
+    return {
+      ok: true,
+      result: { runId: outcome.run.id, status: outcome.run.status },
+      created: outcome.created
+    };
   } catch (err) {
-    // Lost the race to the partial unique index — another request created the
-    // active run first. Return that one rather than erroring or duplicating.
+    // The same key can race on different flow locks. The DB uniqueness constraint
+    // remains the final authority and returns the original run on replay.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      const raced = await prisma.workflowRun.findFirst({
-        where: { userId, workflowId, status: { in: ACTIVE_RUN_STATUSES } },
-        orderBy: { createdAt: "desc" },
+      const raced = await prisma.workflowRun.findUnique({
+        where: { userId_idempotencyKey: { userId, idempotencyKey } },
         select: { id: true, status: true }
       });
-      if (raced) return { ok: true, result: { runId: raced.id, status: raced.status } };
+      if (raced) return { ok: true, result: { runId: raced.id, status: raced.status }, created: false };
     }
     throw err;
   }
