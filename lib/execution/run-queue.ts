@@ -1,9 +1,16 @@
+import { Prisma, type WorkflowRunStatus } from "@prisma/client";
+
 import { prisma } from "../prisma";
 import { executeExistingRun, loadRunnable, resumeRunFromLatestApproval, type RunResult } from "./run-engine";
 
 const DEFAULT_LEASE_MS = 60_000;
 const DEFAULT_POLL_MS = 2_000;
 const DEFAULT_PER_USER_CONCURRENCY = 1;
+
+// Non-terminal run statuses. At most one run per (user, flow) may be in one of
+// these at a time — enforced by the partial unique index
+// `workflow_runs_active_per_flow_unique` and by the guard in createQueuedRun.
+const ACTIVE_RUN_STATUSES = ["queued", "running", "pending", "waiting_for_approval", "paused_for_approval"] satisfies WorkflowRunStatus[];
 
 export type RunJobWithRun = {
   id: string;
@@ -48,29 +55,56 @@ export async function createQueuedRun(
   if (!runnable) return { ok: false, status: 404, message: "Flow not found." };
   if (runnable.agents.length === 0) return { ok: false, status: 400, message: "This flow has no agents — it was likely saved from a failed plan. Re-plan it (describe the goal again) or add agents on the build canvas." };
 
-  const run = await prisma.$transaction(async (tx) => {
-    const created = await tx.workflowRun.create({
-      data: {
-        userId,
-        workflowId,
-        status: "queued",
-        riskLevel: "medium",
-        startedAt: new Date()
-      }
-    });
-
-    await tx.runJob.create({
-      data: {
-        userId,
-        workflowRunId: created.id,
-        status: "queued"
-      }
-    });
-
-    return created;
+  // In-flight guard: at most one active run per (user, flow). A second create
+  // (double-clicked Run, or two run-trigger surfaces firing) returns the EXISTING
+  // run instead of a duplicate. The partial unique index makes this race-proof;
+  // this pre-check avoids relying on the exception for the common (sequential) case.
+  const existingActive = await prisma.workflowRun.findFirst({
+    where: { userId, workflowId, status: { in: ACTIVE_RUN_STATUSES } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true }
   });
+  if (existingActive) {
+    return { ok: true, result: { runId: existingActive.id, status: existingActive.status } };
+  }
 
-  return { ok: true, result: { runId: run.id, status: "queued" } };
+  try {
+    const run = await prisma.$transaction(async (tx) => {
+      const created = await tx.workflowRun.create({
+        data: {
+          userId,
+          workflowId,
+          status: "queued",
+          riskLevel: "medium",
+          startedAt: new Date()
+        }
+      });
+
+      await tx.runJob.create({
+        data: {
+          userId,
+          workflowRunId: created.id,
+          status: "queued"
+        }
+      });
+
+      return created;
+    });
+
+    return { ok: true, result: { runId: run.id, status: "queued" } };
+  } catch (err) {
+    // Lost the race to the partial unique index — another request created the
+    // active run first. Return that one rather than erroring or duplicating.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const raced = await prisma.workflowRun.findFirst({
+        where: { userId, workflowId, status: { in: ACTIVE_RUN_STATUSES } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true }
+      });
+      if (raced) return { ok: true, result: { runId: raced.id, status: raced.status } };
+    }
+    throw err;
+  }
 }
 
 export async function enqueueRunJob(userId: string, runId: string): Promise<{ ok: boolean; status?: string }> {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkflowRunStatus } from "@prisma/client";
 
 import { mockAuthUserModule, setCurrentUser } from "./helpers/auth";
 import { createTestUser, prisma, resetDatabase } from "./helpers/db";
@@ -44,8 +45,11 @@ vi.mock("../lib/execution/provider", () => ({
 }));
 
 import { startRun, resumeAfterApproval, killRun } from "../lib/execution/run-engine";
+import { createQueuedRun } from "../lib/execution/run-queue";
 import { POST as startRunRoute, GET as listRunsRoute } from "../app/api/runs/route";
 import { GET as runDetailRoute } from "../app/api/runs/[id]/route";
+
+const ACTIVE_RUN_STATUSES = ["queued", "running", "pending", "paused_for_approval", "waiting_for_approval"] satisfies WorkflowRunStatus[];
 
 const FINAL = (text = "done") => JSON.stringify({ type: "final", text });
 const TOOL = (tool: string, action = "read", input = "q") => JSON.stringify({ type: "tool_call", tool, action, input });
@@ -164,6 +168,61 @@ describe("run engine — bounded, gated, killable", () => {
 
     expect(run.status).toBe("completed");
     expect(run.resultText).toContain("rohu");
+  });
+
+  // E1 — duplicate runs: a second create for a flow that already has an in-flight
+  // run must NOT create a second run. The server-side guard returns the existing
+  // run so a double-fire (two UI surfaces / double-click) is idempotent.
+  it("E1: a second run request while one is in-flight returns the same run, no duplicate", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+
+    const first = await createQueuedRun(user.id, workflow.id);
+    const second = await createQueuedRun(user.id, workflow.id);
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      expect(second.result.runId).toBe(first.result.runId);
+    }
+    const active = await prisma.workflowRun.count({
+      where: { userId: user.id, workflowId: workflow.id, status: { in: ACTIVE_RUN_STATUSES } }
+    });
+    expect(active).toBe(1);
+  });
+
+  it("E1: concurrent run requests race to one database-backed active run", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+
+    const requests = await Promise.all(
+      Array.from({ length: 6 }, () => createQueuedRun(user.id, workflow.id))
+    );
+
+    expect(requests.every((request) => request.ok)).toBe(true);
+    const runIds = requests.flatMap((request) => request.ok ? [request.result.runId] : []);
+    expect(new Set(runIds).size).toBe(1);
+    expect(await prisma.workflowRun.count({
+      where: { userId: user.id, workflowId: workflow.id, status: { in: ACTIVE_RUN_STATUSES } }
+    })).toBe(1);
+    expect(await prisma.runJob.count({ where: { workflowRunId: runIds[0] } })).toBe(1);
+  });
+
+  // E1 — a fresh run IS allowed once the prior run has reached a terminal state.
+  it("E1: a new run is allowed after the previous run finished", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+
+    const first = await createQueuedRun(user.id, workflow.id);
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      await prisma.workflowRun.update({ where: { id: first.result.runId }, data: { status: "completed", endedAt: new Date() } });
+    }
+    const second = await createQueuedRun(user.id, workflow.id);
+    expect(second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      expect(second.result.runId).not.toBe(first.result.runId);
+    }
   });
 
   it("pipes the previous agent final output into the next agent as an untrusted handoff", async () => {

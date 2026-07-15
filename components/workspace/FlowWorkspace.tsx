@@ -104,9 +104,11 @@ export function FlowWorkspace({
   const [availableTools, setAvailableTools] = useState<DiscoveredTool[]>([]);
 
   const [run, setRun] = useState<RunState>({ runId: null, status: "", output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
+  const [startingRun, setStartingRun] = useState(false);
+  const runStartInFlightRef = useRef(false);
   // Server truth: a run is "running" until it reaches a terminal status. Derived
   // from the streamed status — never a local flag that can wedge on "Running…".
-  const running = run.runId != null && run.status !== "" && !isTerminalRunStatus(run.status);
+  const running = startingRun || (run.runId != null && run.status !== "" && !isTerminalRunStatus(run.status));
 
   // Describe-to-build
   const [describeText, setDescribeText] = useState("");
@@ -284,7 +286,10 @@ export function FlowWorkspace({
     if (totalGrants === 0) {
       return toast("This flow has no tools granted. Agents can only produce text — they cannot search, draft, or send. Grant tools from the right panel first.", "warn");
     }
+    if (runStartInFlightRef.current) return;
 
+    runStartInFlightRef.current = true;
+    setStartingRun(true);
     try {
       terminalToastedRef.current = null;
       const result = await startRealRun(flowId);
@@ -293,6 +298,9 @@ export function FlowWorkspace({
       toast("Run queued. Streaming live…", "ok");
     } catch (error) {
       toast(error instanceof Error ? error.message : "Run failed.", "danger");
+    } finally {
+      runStartInFlightRef.current = false;
+      setStartingRun(false);
     }
   };
 

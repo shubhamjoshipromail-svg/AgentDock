@@ -180,17 +180,33 @@ describe("async safety — governance under worker/queue execution", () => {
 
   it("PER-USER CONCURRENCY: over-cap jobs stay queued and are not claimed", async () => {
     const user = await createTestUser();
-    const { workflow } = await seedSearchFlow(user.id);
+    const { workflow, agent, server } = await seedSearchFlow(user.id);
 
-    // Create 3 runs for the same user.
+    // Create 3 runs for the same user across 3 different flows. E1 deliberately
+    // prevents duplicate active runs of one flow; this test isolates the worker's
+    // separate per-user concurrency limit.
+    const workflows = [workflow];
+    for (let i = 2; i <= 3; i++) {
+      const extra = await prisma.workflow.create({
+        data: { userId: user.id, name: `Race Flow ${i}`, goal: "Run.", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "approval_gated" }
+      });
+      await prisma.workflowAgent.create({
+        data: { workflowId: extra.id, agentId: agent.id, roleInWorkflow: "run", routeOrder: 1, defaultMode: "auto" }
+      });
+      await prisma.mcpAccessGrant.create({
+        data: { userId: user.id, workflowId: extra.id, agentId: agent.id, mcpServerId: server.id, canRead: true, requiresApproval: false }
+      });
+      workflows.push(extra);
+    }
+
     llm.queue = [
       { text: FINAL("run 1"), costCents: 1 },
       { text: FINAL("run 2"), costCents: 1 },
       { text: FINAL("run 3"), costCents: 1 }
     ];
 
-    for (let i = 0; i < 3; i++) {
-      const created = await createQueuedRun(user.id, workflow.id);
+    for (const target of workflows) {
+      const created = await createQueuedRun(user.id, target.id);
       expect(created.ok).toBe(true);
     }
 

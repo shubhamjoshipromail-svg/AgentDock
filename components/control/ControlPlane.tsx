@@ -7,18 +7,15 @@ import { useToast } from "../layout/Toast";
 import {
   getRealRun,
   killRealRun,
-  listFlows,
   listRealRuns,
   resolveApproval,
-  startRealRun,
   type RealRun,
   type RealRunEvent,
   type RealRunSummary
 } from "../../lib/api/client";
 import type {
   Decision,
-  PersistedApprovalRequest,
-  PersistedWorkflow
+  PersistedApprovalRequest
 } from "../../lib/types";
 import { Badge, Button, Card, Data, EmptyState, PageHeader, Pill } from "../layout/primitives";
 import { ApprovalCard } from "../a2ui/EventCard";
@@ -305,37 +302,25 @@ function RunDetail({
 export function ControlPlane() {
   const { data: session } = useSession();
   const toast = useToast();
-  const [savedWorkflows, setSavedWorkflows] = useState<PersistedWorkflow[]>([]);
   const [realRunHistory, setRealRunHistory] = useState<RealRunSummary[]>([]);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
   const [resolvingApprovalId, setResolvingApprovalId] = useState("");
   const [decisionFilter, setDecisionFilter] = useState<Decision | "all">("all");
   // Real governed run (Chunk 4).
   const [liveRun, setLiveRun] = useState<RealRun | null>(null);
   // Chunk 7: the board is the entry point; a run is only opened on click.
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [startingReal, setStartingReal] = useState(false);
   const [killing, setKilling] = useState(false);
   const [openingRunId, setOpeningRunId] = useState("");
 
   const loadControlPlaneData = async () => {
     if (!session?.user) {
-      setSavedWorkflows([]);
       setRealRunHistory([]);
-      setSelectedWorkflowId("");
       return;
     }
 
     try {
-      const [workflowsData, realRunsData] = await Promise.all([
-        listFlows("Unable to load saved Flows."),
-        listRealRuns("Unable to load real runs.")
-      ]);
-
-      const workflows = workflowsData.workflows ?? [];
-      setSavedWorkflows(workflows);
+      const realRunsData = await listRealRuns("Unable to load real runs.");
       setRealRunHistory(realRunsData.runs ?? []);
-      setSelectedWorkflowId((current) => current || workflows[0]?.id || "");
     } catch (error) {
       toast(error instanceof Error ? error.message : "Unable to load Control data.", "danger");
     }
@@ -352,24 +337,6 @@ export function ControlPlane() {
       if (["paused_for_approval"].includes(data.run.status)) await loadControlPlaneData();
     } catch {
       /* keep last state */
-    }
-  };
-
-  const startReal = async () => {
-    if (!session?.user) return toast("Sign in and add a provider key in Profile to run for real.", "warn");
-    const workflow = savedWorkflows.find((w) => w.id === selectedWorkflowId) ?? savedWorkflows[0];
-    if (!workflow?.id) return toast("Save a flow first to run it.", "warn");
-    setStartingReal(true);
-    try {
-      const data = await startRealRun(workflow.id);
-      toast(`Run ${data.run.status.replaceAll("_", " ")}.`, data.run.status === "completed" ? "ok" : "info");
-      setSelectedRunId(data.run.runId);
-      await refreshLiveRun(data.run.runId);
-      await loadControlPlaneData();
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Unable to start run.", "danger");
-    } finally {
-      setStartingReal(false);
     }
   };
 
@@ -451,8 +418,6 @@ export function ControlPlane() {
       ? liveRun.events
       : liveRun.events.filter((e) => (e.decision ?? "info") === decisionFilter))
     : [];
-  const selectedWorkflow = savedWorkflows.find((workflow) => workflow.id === selectedWorkflowId);
-
   // Spend + approvals computed from the real-run list only — no new endpoint,
   // nothing simulated.
   const todaySpendCents = realRunHistory.reduce((sum, run) => sum + run.totalCostCents, 0);
@@ -520,56 +485,37 @@ export function ControlPlane() {
                 ) : (
                   <EmptyState
                     title="No real runs yet"
-                    body="Select a saved Flow in the panel and run it for real. Each run appears here as a card."
+                    body="Start a saved flow from the workspace header. Each real run appears here as a card."
                   />
                 )
               ) : (
                 <EmptyState
-                  title="Sign in to run real flows"
-                  body="Control shows your real governed runs. Sign in with Google and add a provider key in Profile to start one."
+                  title="Sign in to inspect real runs"
+                  body="Activity shows your real governed run history. Start runs from the workspace header."
                 />
               )}
               <p className="opsFooterNote">
-                Real runs only: model calls and web search execute for real and are metered. Unimplemented tools are shown as unavailable, never fake success. Open a card to see its output and full process.
+                Real runs only: model calls and tools execute for real and are metered. Start runs from the single Run button in the workspace header; open a card here to inspect its output and full process.
               </p>
             </>
           )}
         </div>
 
         <div className="opsAside">
-          <Card title="Start a run" meta={session?.user ? `${activeRunCount} active` : "Sign in to run"}>
-            {session?.user && (
-              <label className="flowSelector">
-                <span>Flow to run</span>
-                <select value={selectedWorkflowId} onChange={(event) => setSelectedWorkflowId(event.target.value)}>
-                  {savedWorkflows.length ? (
-                    savedWorkflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)
-                  ) : (
-                    <option value="">No saved flows</option>
-                  )}
-                </select>
-              </label>
-            )}
-            {detailMode ? (
+          {detailMode && (
+            <Card title="Run status" meta={statusLabel(liveRun!.status)}>
               <div className="runMetricGrid">
                 <div className="metric"><span>Real spend</span><strong className="data">${(liveRun!.totalCostCents / 100).toFixed(2)} / ${(RUN_CAP_CENTS / 100).toFixed(2)}</strong></div>
                 <div className="metric"><span>Steps</span><strong className="data">{liveRun!.stepCount}</strong></div>
                 <div className="metric"><span>Tools executed</span><strong className="data">{liveRun!.toolCallCount}</strong></div>
                 <div className="metric"><span>Status</span><strong className="data">{statusLabel(liveRun!.status)}</strong></div>
               </div>
-            ) : (
-              <p className="inspectorNote">
-                {selectedWorkflow
-                  ? `${selectedWorkflow.name} is selected. Runs use the saved agents, tools, memory, and grants for that Flow.`
-                  : "Save a flow first, then select it here to run for real on your BYO key."}
-              </p>
-            )}
-            <div className="heroActions compactActions">
-              <Button variant="primary" onClick={startReal} loading={startingReal} disabled={liveRunning}>Run for real</Button>
-              {detailMode && liveRunning && <Button variant="danger" onClick={killLive} loading={killing}>Kill run</Button>}
-              {detailMode && <Button variant="secondary" onClick={backToBoard}>Back to board</Button>}
-            </div>
-          </Card>
+              <div className="heroActions compactActions">
+                {liveRunning && <Button variant="danger" onClick={killLive} loading={killing}>Kill run</Button>}
+                <Button variant="secondary" onClick={backToBoard}>Back to board</Button>
+              </div>
+            </Card>
+          )}
 
           <Card title="Approval inbox" meta={`${detailMode ? (liveRun?.approvalRequests.length ?? 0) : pendingCount} pending`}>
             {detailMode ? (
