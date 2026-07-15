@@ -317,9 +317,19 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
   }
 
   // Tool grants for this user, joined to servers. A grant applies to an agent if
-  // it is agent-scoped to that agent, or workflow-scoped to this workflow.
+  // it is workflow-scoped to this workflow, or is a genuinely global
+  // (workflowId=null) agent grant. Never import an agent-scoped grant from a
+  // different workflow: vetted agents are intentionally reused across flows,
+  // and a revoked grant in one flow must not kill every other flow using that
+  // agent.
   const grants = await prisma.mcpAccessGrant.findMany({
-    where: { userId, OR: [{ workflowId }, { agentId: { in: workflow.workflowAgents.map((wa) => wa.agentId) } }] },
+    where: {
+      userId,
+      OR: [
+        { workflowId },
+        { workflowId: null, agentId: { in: workflow.workflowAgents.map((wa) => wa.agentId) } }
+      ]
+    },
     include: { mcpServer: { include: { tools: true } } }
   });
 

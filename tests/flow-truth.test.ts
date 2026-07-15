@@ -130,6 +130,32 @@ describe("flow truth — authored == stored == executed", () => {
     expect(grants.map((grant) => grant.agentId)).toEqual([firstAgent.id, secondAgent.id]);
   });
 
+  it("does not import a reused agent's revoked grant from another workflow", async () => {
+    const user = await createTestUser();
+    const sharedAgent = await prisma.agent.create({
+      data: { userId: user.id, name: "Shared Researcher", category: "Research", provider: "p", verified: true, description: "d", systemPrompt: "research", model: "m" }
+    });
+    const oldTool = await makeServer("old-revoked-tool");
+    const currentTool = await makeServer("current-active-tool");
+    const oldWorkflow = await prisma.workflow.create({
+      data: { userId: user.id, name: "Old flow", goal: "Old", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "manual" }
+    });
+    const currentWorkflow = await prisma.workflow.create({
+      data: { userId: user.id, name: "Current flow", goal: "Current", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "manual" }
+    });
+    await prisma.workflowAgent.createMany({ data: [
+      { workflowId: oldWorkflow.id, agentId: sharedAgent.id, roleInWorkflow: "Research", routeOrder: 1, defaultMode: "Auto" },
+      { workflowId: currentWorkflow.id, agentId: sharedAgent.id, roleInWorkflow: "Research", routeOrder: 1, defaultMode: "Auto" }
+    ] });
+    await prisma.mcpAccessGrant.createMany({ data: [
+      { userId: user.id, workflowId: oldWorkflow.id, agentId: sharedAgent.id, mcpServerId: oldTool.id, canRead: true, revokedAt: new Date() },
+      { userId: user.id, workflowId: currentWorkflow.id, agentId: sharedAgent.id, mcpServerId: currentTool.id, canRead: true }
+    ] });
+
+    const runnable = await loadRunnable(user.id, currentWorkflow.id);
+    expect(runnable?.agents[0].allowedTools.map((tool) => tool.server.id)).toEqual([currentTool.id]);
+  });
+
   it("safely scopes legacy orchestrator grants that were saved workflow-wide", async () => {
     const user = await createTestUser();
     const firstAgent = await prisma.agent.create({
