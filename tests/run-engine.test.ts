@@ -137,37 +137,76 @@ describe("run engine — bounded, gated, killable", () => {
     });
   });
 
-  // E2 — honesty: the model's internal deliberation ("I need to check if there's
-  // a topic…") must NEVER be accepted as a completed deliverable. The run ends
-  // honestly as not-completed instead.
-  it("E2: deliberation/meta-reasoning is never recorded as a completed deliverable", async () => {
+  // Chunk 21 output contract — raw model text is never a deliverable. The engine
+  // gets one constrained correction attempt, then halts honestly.
+  it("Chunk 21: raw deliberation without a declared final retries once and never completes", async () => {
     const user = await createTestUser();
     const { workflow } = await seedFlow(user.id);
     const deliberation =
       "I need to check if there's a topic provided in the goal or if I need to ask the user. The handoff context doesn't contain a specific topic to research, so I'm unsure how to proceed.";
-    llm.queue = [{ text: deliberation, costCents: 2 }];
+    llm.queue = [{ text: deliberation, costCents: 2 }, { text: deliberation, costCents: 2 }];
 
     await startRun(user.id, workflow.id);
     const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
 
-    expect(run.status).not.toBe("completed");
+    expect(run.status).toBe("halted_error");
     expect(run.resultText ?? "").not.toContain("I need to check");
+    expect(llm.calls).toBe(2);
+    expect(llm.userPrompts[1]).toContain("INVALID ENVELOPE");
   });
 
-  // E2 companion — the fix must NOT regress genuine prose recovery: a substantive
-  // answer that isn't wrapped in the JSON envelope is still a valid deliverable.
-  it("E2: genuine substantive prose (not JSON, not deliberation) is still recovered", async () => {
+  it("Chunk 21: substantive raw prose without type final is never completed", async () => {
     const user = await createTestUser();
     const { workflow } = await seedFlow(user.id);
     const prose =
       "Common freshwater fish in India include rohu, catla, and mrigal, widely farmed across the Gangetic plains, while marine species such as pomfret and mackerel dominate coastal catches.";
-    llm.queue = [{ text: prose, costCents: 2 }];
+    llm.queue = [{ text: prose, costCents: 2 }, { text: prose, costCents: 2 }];
+
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+
+    expect(run.status).toBe("halted_error");
+    expect(run.resultText).toBeNull();
+  });
+
+  it("Chunk 21: one invalid envelope can be corrected by an explicit final", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+    llm.queue = [
+      { text: JSON.stringify({ type: "answer", text: "not a declared final" }) },
+      { text: FINAL("Correctly enveloped deliverable.") }
+    ];
 
     await startRun(user.id, workflow.id);
     const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
 
     expect(run.status).toBe("completed");
-    expect(run.resultText).toContain("rohu");
+    expect(run.resultText).toBe("Correctly enveloped deliverable.");
+    expect(llm.calls).toBe(2);
+    expect(llm.userPrompts[1]).toContain("SYSTEM POLICY FEEDBACK:\n[policy] INVALID ENVELOPE");
+  });
+
+  it("Chunk 21: a slightly malformed declared final preserves a long markdown deliverable", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+    const markdown = [
+      "# Market brief",
+      "",
+      "## Findings",
+      "- Governed agent workflows reduce operational ambiguity.",
+      "- Explicit approvals make external actions auditable.",
+      "",
+      "## Recommendation",
+      "Ship the three vetted paths and measure completion, approval, and error rates."
+    ].join("\n");
+    const malformedDeclaredFinal = JSON.stringify({ type: "final", text: markdown }).slice(0, -1);
+    llm.queue = [{ text: malformedDeclaredFinal }];
+
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+
+    expect(run.status).toBe("completed");
+    expect(run.resultText).toBe(markdown);
   });
 
   // E1 — duplicate runs: a second create for a flow that already has an in-flight

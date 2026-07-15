@@ -158,6 +158,43 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     expect(resumePrompt).toContain("<untrusted>");
   });
 
+  it("Chunk 21: a missing research topic pauses for a form and continues with the answer", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow } = await seedAgentFlow(user.id);
+    await prisma.workflow.update({
+      where: { id: workflow.id },
+      data: { goal: "Research and summarize, but no topic was supplied." }
+    });
+    const topicForm = {
+      prompt: "What should I research?",
+      fields: [{ name: "topic", label: "Research topic", type: "string", required: true }]
+    };
+
+    llm.queue = [{ text: INTENT("form", topicForm) }];
+    const started = await startRun(user.id, workflow.id);
+    expect(started.ok && started.result.status).toBe("paused_for_approval");
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const intent = await prisma.approvalRequest.findFirstOrThrow({
+      where: { workflowRunId: run.id, intentType: "form", status: "pending" }
+    });
+
+    const response = await resolveApproval(
+      new Request(`http://localhost/api/approvals/${intent.id}/resolve`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: { values: { topic: "governed AI agents" } } })
+      }),
+      { params: Promise.resolve({ id: intent.id }) }
+    );
+    expect(response.status).toBe(200);
+
+    llm.queue = [{ text: FINAL("Summary of governed AI agents.") }];
+    expect((await resumeAfterApproval(user.id, intent.id, true))?.status).toBe("completed");
+    expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: run.id } })).resultText)
+      .toBe("Summary of governed AI agents.");
+    expect(llm.prompts[llm.prompts.length - 1]).toContain("governed AI agents");
+  });
+
   it("a malformed response is rejected by the resolve route (400)", async () => {
     const user = await createTestUser();
     setCurrentUser(user);
