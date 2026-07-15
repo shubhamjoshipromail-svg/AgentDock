@@ -188,7 +188,37 @@ function parseEnvelope(text: string): Envelope {
   return { type: "final", text: body.slice(0, 4000) };
 }
 
-// Guards against raw JSON/envelopes leaking into the user-visible Output.
+// Deliberation / meta-reasoning: the model narrating its own uncertainty about
+// the task INPUTS (the goal, the handoff, whether to ask the user) instead of
+// producing a deliverable — e.g. "I need to check if there's a topic provided in
+// the goal or if I need to ask the user. The handoff context doesn't…". This is
+// never a completed deliverable; when a step lacks needed input the model is meant
+// to raise an interaction intent, and if it instead leaks its reasoning the run
+// must end honestly as not-completed rather than "complete" with that reasoning.
+//
+// Patterns are deliberately narrow — they target meta-statements about the task
+// machinery, not ordinary prose — so a genuine deliverable (which speaks about the
+// subject, not about the goal/handoff/asking the user) is never rejected.
+const DELIBERATION_PATTERNS: readonly RegExp[] = [
+  /\bhandoff context\b/i,
+  /\bi need to (check|determine|figure out|find out|know|confirm|see|understand)\s+(if|whether|what|which)\b/i,
+  /\b(if|whether)\s+i\s+need\s+to\s+ask\s+the\s+user\b/i,
+  /\bi\s+(should|need to|have to|must|will|'?ll)\s+ask\s+the\s+user\b/i,
+  /\bno\s+(specific\s+)?topic\s+(is|was|has been|seems|appears)?\s*(provided|specified|given|mentioned|defined)\b/i,
+  /\b(wasn'?t|was not|isn'?t|is not|not)\s+(provided|specified|given|mentioned)\s+in\s+the\s+goal\b/i,
+  /\bthe\s+goal\s+(doesn'?t|does not|didn'?t|did not)\s+(specify|provide|contain|mention|include|say)\b/i,
+  /\bi\s+(don'?t|do not)\s+have\s+(a|enough|the|any)\s+(topic|context|information|details?)\b/i
+];
+
+function looksLikeDeliberation(text: string): boolean {
+  // Deliberation leads with the reasoning; only inspect the head so a long, valid
+  // deliverable that merely quotes such a phrase deep inside is not caught.
+  const head = text.slice(0, 600);
+  return DELIBERATION_PATTERNS.some((re) => re.test(head));
+}
+
+// Guards against raw JSON/envelopes AND internal deliberation leaking into the
+// user-visible Output.
 function sanitizeDeliverable(text: string | null | undefined): string | null {
   if (!text) return null;
   const trimmed = text.trim();
@@ -198,6 +228,9 @@ function sanitizeDeliverable(text: string | null | undefined): string | null {
   }
   // If it's just the engine error placeholder, not a deliverable.
   if (trimmed.startsWith("[engine]")) return null;
+  // Internal deliberation/meta-reasoning is not a deliverable — reject it so the
+  // run ends honestly instead of "completing" with the model's own reasoning.
+  if (looksLikeDeliberation(trimmed)) return null;
   return trimmed;
 }
 

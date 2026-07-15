@@ -133,6 +133,39 @@ describe("run engine — bounded, gated, killable", () => {
     });
   });
 
+  // E2 — honesty: the model's internal deliberation ("I need to check if there's
+  // a topic…") must NEVER be accepted as a completed deliverable. The run ends
+  // honestly as not-completed instead.
+  it("E2: deliberation/meta-reasoning is never recorded as a completed deliverable", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+    const deliberation =
+      "I need to check if there's a topic provided in the goal or if I need to ask the user. The handoff context doesn't contain a specific topic to research, so I'm unsure how to proceed.";
+    llm.queue = [{ text: deliberation, costCents: 2 }];
+
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+
+    expect(run.status).not.toBe("completed");
+    expect(run.resultText ?? "").not.toContain("I need to check");
+  });
+
+  // E2 companion — the fix must NOT regress genuine prose recovery: a substantive
+  // answer that isn't wrapped in the JSON envelope is still a valid deliverable.
+  it("E2: genuine substantive prose (not JSON, not deliberation) is still recovered", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedFlow(user.id);
+    const prose =
+      "Common freshwater fish in India include rohu, catla, and mrigal, widely farmed across the Gangetic plains, while marine species such as pomfret and mackerel dominate coastal catches.";
+    llm.queue = [{ text: prose, costCents: 2 }];
+
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+
+    expect(run.status).toBe("completed");
+    expect(run.resultText).toContain("rohu");
+  });
+
   it("pipes the previous agent final output into the next agent as an untrusted handoff", async () => {
     const user = await createTestUser();
     const first = await prisma.agent.create({
