@@ -330,6 +330,14 @@ describe("prompt integrity (Chunk 19: plan by canonical identity)", () => {
     expect(system).toContain("AUTHORITATIVE");
   });
 
+  it("the draft-only posture tells a send goal to use an approved draft, not a hidden send tool", () => {
+    const { system } = buildPrompt("Send the update.", snapshot, { draftOnlySendFallback: true });
+    expect(system).toContain("DRAFT-ONLY DELIVERY");
+    expect(system).toContain("draft/compose tool");
+    expect(system).toContain("add an approvalGate");
+    expect(system).not.toContain("do NOT silently downgrade");
+  });
+
   it("the example is generated from the live snapshot — it never teaches a dead name", () => {
     const example = buildExample(snapshot);
     // Uses a real agent id and a real canonical key from THIS snapshot.

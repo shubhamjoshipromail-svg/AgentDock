@@ -32,14 +32,16 @@ import type { RunEventMeta } from "../types";
 // system) is untrusted and sandboxable.
 // ============================================================================
 
-// Governance classification for an MCP tool, derived generically from the
-// server's `isExternalSend` column — no tool-name special-casing. An external
-// send (real outbound effect) rides the send/approval path and the lethal-
-// trifecta guard. Everything else (e.g. a draft, which writes only to the user's
-// own mailbox) is a safe, reversible, non-external op for gating purposes; the
-// real tool name is always recorded in the audit event, so nothing is hidden.
-function classifyMcpTool(isExternalSend: boolean): { action: ActionKind; isExternalSend: boolean } {
-  return isExternalSend ? { action: "send", isExternalSend: true } : { action: "read", isExternalSend: false };
+// Governance classification comes from persisted server metadata, never tool
+// name branches. External sends are sends; draft-only tools are reversible
+// writes; remaining non-external tools are reads.
+function classifyMcpTool(
+  isExternalSend: boolean,
+  recommendedPermission: AllowedTool["server"]["recommendedPermission"]
+): { action: ActionKind; isExternalSend: boolean } {
+  if (isExternalSend) return { action: "send", isExternalSend: true };
+  if (recommendedPermission === "draft_only") return { action: "write", isExternalSend: false };
+  return { action: "read", isExternalSend: false };
 }
 
 // ============================================================================
@@ -721,10 +723,11 @@ async function runStep(
       toolResults.push(`[policy] '${envelope.tool}' was already executed successfully in this step. You have the result. Produce your final answer NOW — do NOT request this tool again.`);
       continue;
     }
-    // MCP tools are classified by tool name (send_email = external write →
-    // approval; create_draft = safe). Legacy/string tools use the model's action
-    // and the loadRunnable external-send heuristic.
-    const classified = tool && isMcpTool(tool) ? classifyMcpTool(tool.isExternalSend) : null;
+    // MCP tools are classified by persisted execution metadata. Legacy/string
+    // tools use the model's action and the loadRunnable external-send heuristic.
+    const classified = tool && isMcpTool(tool)
+      ? classifyMcpTool(tool.isExternalSend, tool.server.recommendedPermission)
+      : null;
     const actionKind: ActionKind = classified ? classified.action : envelope.action;
     const isExternalSend = classified ? classified.isExternalSend : tool?.isExternalSend ?? true;
 
@@ -1058,7 +1061,9 @@ async function executeApprovedTool(
 
   // Re-classify MCP tools so the re-gate uses the same external-send / action
   // semantics as the initial gate (an external send stays an external send).
-  const classified = isMcpTool(tool) ? classifyMcpTool(tool.isExternalSend) : null;
+  const classified = isMcpTool(tool)
+    ? classifyMcpTool(tool.isExternalSend, tool.server.recommendedPermission)
+    : null;
   const gate = authorizeToolCall({
     inAllowList: true,
     grant: { permission: effectiveGrantPermission(tool.grant), revokedAt: tool.grant.revokedAt },

@@ -89,8 +89,8 @@ async function seedGmailFlow(userId: string) {
         isExternalSend: tool === "send_email"
       }
     });
-    // draft_only grant (canWrite, no approval flag): create_draft → allowed,
-    // send_email → approval (external send) by classification.
+    // draft_only grant: create_draft is a reversible write and send_email is an
+    // external send; both require approval, but only send crosses the boundary.
     await prisma.mcpAccessGrant.create({
       data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, canWrite: true, requiresApproval: false }
     });
@@ -147,24 +147,27 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     expect(ctx?.env?.GMAIL_ACCESS_TOKEN).toBe("ya29.LIVE");
   });
 
-  it("create_draft executes WITHOUT approval (safe, no external side effect)", async () => {
+  it("create_draft requires approval, then writes through Gmail with the brokered token", async () => {
     const user = await createTestUser();
     const { workflow } = await seedGmailFlow(user.id);
-    llm.queue = [
-      { text: TOOL_ARGS("create_draft", { to: "b@example.com", subject: "Draft", body: "Body" }) },
-      { text: FINAL("Draft created.") }
-    ];
+    await storeGoogleOAuthToken(user.id, { accessToken: "ya29.DRAFT", expiresAt: Date.now() + 3_600_000 });
+    llm.queue = [{ text: TOOL_ARGS("create_draft", { to: "b@example.com", subject: "Draft", body: "Body" }) }];
 
     const outcome = await startRun(user.id, workflow.id);
     expect(outcome.ok).toBe(true);
     const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
-    expect(run.status).toBe("completed");
-    expect(await prisma.approvalRequest.count({ where: { workflowRunId: run.id } })).toBe(0);
+    expect(run.status).toBe("paused_for_approval");
+    expect(callMcpToolMock).not.toHaveBeenCalled();
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id, status: "pending" } });
+
+    llm.queue = [{ text: FINAL("Draft created in Gmail.") }];
+    expect((await resumeAfterApproval(user.id, approval.id, true))?.status).toBe("completed");
 
     expect(callMcpToolMock).toHaveBeenCalledTimes(1);
-    const [server, toolName] = callMcpToolMock.mock.calls[0];
+    const [server, toolName, , ctx] = callMcpToolMock.mock.calls[0];
     expect(server).toBe("gmail");
     expect(toolName).toBe("create_draft");
+    expect(ctx?.env?.GMAIL_ACCESS_TOKEN).toBe("ya29.DRAFT");
   });
 
   it("a send that ERRORS is reported as failure, never framed as success", async () => {

@@ -253,7 +253,8 @@ describe("POST /api/flows/plan", () => {
 
   it("a send goal with NO send-capable tool available yields the actionable connect-one error, not a broken flow", async () => {
     const user = await createTestUser();
-    setCurrentUser(user);
+    await prisma.user.update({ where: { id: user.id }, data: { sendingEnabled: true } });
+    setCurrentUser({ ...user, sendingEnabled: true });
     await seedCatalog(user.id); // catalog has no send tool
     llmState.queue = [{ text: VALID_PLAN_JSON, costCents: 2 }];
 
@@ -299,6 +300,46 @@ describe("POST /api/flows/plan", () => {
     expect(data.plan.tools.some((t: { key: string }) => t.key === "gmail:create_draft")).toBe(true);
     // "Draft" never silently escalates to send.
     expect(data.plan.tools.some((t: { key: string }) => t.key === "gmail:send_email")).toBe(false);
+  });
+
+  it("a send goal for a draft-only user becomes a draft with an approval gate", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user); // sendingEnabled defaults to false
+    await seedCatalog(user.id);
+    await prisma.mcpServer.createMany({
+      data: [
+        {
+          name: "gmail-create-draft", displayName: "Gmail Draft", description: "Creates a real Gmail draft.",
+          registrySource: "first-party", registryId: "agentdock:gmail:create_draft",
+          riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "draft_only",
+          mcpServerKey: "gmail", mcpToolName: "create_draft", isExternalSend: false
+        },
+        {
+          name: "gmail-send-email", displayName: "Gmail Send", description: "Sends a real email.",
+          registrySource: "first-party", registryId: "agentdock:gmail:send_email",
+          riskLevel: "medium", verificationStatus: "verified", recommendedPermission: "approval_required",
+          mcpServerKey: "gmail", mcpToolName: "send_email", isExternalSend: true
+        }
+      ]
+    });
+    llmState.queue = [{
+      text: JSON.stringify({
+        ...JSON.parse(VALID_PLAN_JSON),
+        tools: [{ key: "gmail:create_draft", requestedPermission: "draft_only", rationale: "Prepare the requested email as a draft." }],
+        approvalGates: []
+      }),
+      costCents: 2
+    }];
+
+    const res = await planFlow(planRequest("Send the weekly update to the team."));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(llmState.calls).toBe(1);
+    expect(data.report.failed).toEqual([]);
+    expect(data.plan.tools.some((t: { key: string }) => t.key === "gmail:create_draft")).toBe(true);
+    expect(data.plan.tools.some((t: { key: string }) => t.key === "gmail:send_email")).toBe(false);
+    expect(data.plan.approvalGates.length).toBeGreaterThan(0);
+    expect(data.warnings.some((warning: string) => warning.includes("Real sending is off"))).toBe(true);
   });
 
   it("summarize-memory-only goal: plannable with zero tools (no hard search requirement)", async () => {

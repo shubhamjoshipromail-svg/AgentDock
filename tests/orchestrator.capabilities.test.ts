@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  missingCapabilities, requiredCapabilities, toolCapabilities, ensureSendGate
+  ensureDraftGate, ensureSendGate, missingCapabilities, requiredCapabilities, toolCapabilities
 } from "../lib/orchestrator/capabilities";
 import { serializeSnapshot } from "../lib/orchestrator/prompt";
 import { resolvePlan } from "../lib/orchestrator/resolve";
@@ -159,6 +159,20 @@ describe("ensureSendGate — Rule 6 validated, not just suggested", () => {
     ensureSendGate(gated, w2);
     expect(gated.approvalGates).toHaveLength(1);
     expect(w2).toEqual([]);
+  });
+});
+
+describe("ensureDraftGate — mailbox writes are visibly approval-gated", () => {
+  it("auto-adds one gate for a draft tool and leaves an existing gate intact", () => {
+    const plan = planWith([asResolved(BIG_CATALOG.tools[7])], 0);
+    const warnings: string[] = [];
+    ensureDraftGate(plan, warnings);
+    expect(plan.approvalGates).toHaveLength(1);
+    expect(plan.approvalGates[0].actionType).toBe("email_draft");
+    expect(warnings.some((warning) => warning.includes("draft creation"))).toBe(true);
+
+    ensureDraftGate(plan, warnings);
+    expect(plan.approvalGates).toHaveLength(1);
   });
 });
 

@@ -216,7 +216,8 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
     const form = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id, intentType: "form" } });
 
-    // Answer, then the agent drafts (create_draft is not external-send → no approval).
+    // Answer, then the agent asks to create a real Gmail draft. Draft creation is
+    // a reversible write, so it pauses for approval before touching the mailbox.
     await resolveApproval(
       new Request(`http://localhost/api/approvals/${form.id}/resolve`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -229,13 +230,19 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
       { text: FINAL("Draft created from your brief.") }
     ];
     const result = await resumeAfterApproval(user.id, form.id, true);
-    expect(result?.status).toBe("completed");
+    expect(result?.status).toBe("paused_for_approval");
+    expect(callMcpToolMock).not.toHaveBeenCalled();
+    const draftApproval = await prisma.approvalRequest.findFirstOrThrow({
+      where: { workflowRunId: run.id, intentType: "approval", status: "pending" }
+    });
+
+    llm.queue = [{ text: FINAL("Draft created from your brief.") }];
+    expect((await resumeAfterApproval(user.id, draftApproval.id, true))?.status).toBe("completed");
     expect(callMcpToolMock).toHaveBeenCalledTimes(1);
     const [, toolName] = callMcpToolMock.mock.calls[0];
     expect(toolName).toBe("create_draft");
     // The agent saw the user's answers as framed data.
-    const draftPrompt = llm.prompts[llm.prompts.length - 1];
-    expect(draftPrompt).toContain("execs");
+    expect(llm.prompts.some((prompt) => prompt.includes("execs"))).toBe(true);
   });
 
   it("RED-TEAM injection: instruction-like text in a response is framed as inert data", async () => {

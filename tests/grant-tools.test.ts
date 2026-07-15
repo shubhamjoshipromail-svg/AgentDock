@@ -26,7 +26,7 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
 });
 
 import { callMcpTool } from "../lib/execution/mcp-client";
-import { startRun } from "../lib/execution/run-engine";
+import { resumeAfterApproval, startRun } from "../lib/execution/run-engine";
 
 const callMcpToolMock = vi.mocked(callMcpTool);
 
@@ -104,7 +104,7 @@ describe("Chunk 12 Phase 3 — grant discovered tools into a flow", () => {
 
     const { workflow, draftServer } = await seedDiscoveredFlow(user.id);
 
-    // Grant the draft tool (safe, no external send).
+    // Grant the draft tool (reversible mailbox write, no external send).
     await prisma.mcpAccessGrant.create({
       data: {
         userId: user.id, workflowId: workflow.id, mcpServerId: draftServer.id,
@@ -112,7 +112,7 @@ describe("Chunk 12 Phase 3 — grant discovered tools into a flow", () => {
       }
     });
 
-    // Run: agent only has create_draft, so it should execute without approval.
+    // Run: the generic gate pauses the draft write, then approval executes it.
     llm.queue = [
       { text: TOOL_ARGS("create_draft", { to: "x@y.com", subject: "Hi", body: "Hello" }) },
       { text: FINAL("Draft created.") }
@@ -121,7 +121,12 @@ describe("Chunk 12 Phase 3 — grant discovered tools into a flow", () => {
     const result = await startRun(user.id, workflow.id);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unexpected");
-    expect(result.result.status).toBe("completed");
+    expect(result.result.status).toBe("paused_for_approval");
+    expect(callMcpToolMock).not.toHaveBeenCalled();
+    const approval = await prisma.approvalRequest.findFirstOrThrow({
+      where: { workflowRunId: result.result.runId, status: "pending" }
+    });
+    expect((await resumeAfterApproval(user.id, approval.id, true))?.status).toBe("completed");
 
     // create_draft was called via the real MCP execution path.
     expect(callMcpToolMock).toHaveBeenCalled();

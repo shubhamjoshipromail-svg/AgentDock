@@ -4,7 +4,7 @@ import { getCurrentUser } from "../../../../lib/auth-user";
 import { recordProductEvent } from "../../../../lib/analytics/product-events";
 import { getRunProvider } from "../../../../lib/execution/provider";
 import { getProvider } from "../../../../lib/llm";
-import { ensureSendGate, missingCapabilities, requiredCapabilities, RESEARCH_GOAL, toolCapabilities } from "../../../../lib/orchestrator/capabilities";
+import { ensureDraftGate, ensureSendGate, missingCapabilities, requiredCapabilities, RESEARCH_GOAL, toolCapabilities } from "../../../../lib/orchestrator/capabilities";
 import { clampPermissions } from "../../../../lib/orchestrator/clamp";
 import { planToSaveInput } from "../../../../lib/orchestrator/convert";
 import { buildPrompt } from "../../../../lib/orchestrator/prompt";
@@ -148,8 +148,13 @@ export async function POST(request: Request) {
     );
   }
 
+  const requestedCapabilities = requiredCapabilities(goal);
+  const draftOnlySendFallback = requestedCapabilities.includes("send") && !user.sendingEnabled;
+  const required = draftOnlySendFallback
+    ? requestedCapabilities.map((capability) => capability === "send" ? "draft" as const : capability)
+    : requestedCapabilities;
   const snapshot = await buildCatalogSnapshot(user.id, goal, user.sendingEnabled);
-  const { system, user: userPrompt } = buildPrompt(goal, snapshot);
+  const { system, user: userPrompt } = buildPrompt(goal, snapshot, { draftOnlySendFallback });
 
   let totalCostCents = 0;
   let inputTokens = 0;
@@ -257,11 +262,10 @@ export async function POST(request: Request) {
   // --- Resolve by canonical identity + validate goal capabilities. Misses and
   // missing required capabilities are NEVER silent: one automatic feedback
   // re-plan, then any remainder is surfaced loudly. ---
-  const required = requiredCapabilities(goal);
   // Draft-only default: if the goal wants to send but the user has not enabled
   // real sending, say so plainly (the snapshot already withheld send tools, so
   // the plan drafts instead of proposing an ungrantable send).
-  if (required.includes("send") && !user.sendingEnabled) {
+  if (draftOnlySendFallback) {
     warnings.push(
       "Real sending is off for your account, so this plan will DRAFT the message (drafts still require your approval) rather than send it. Enable real sending in Profile to grant a send step."
     );
@@ -272,6 +276,7 @@ export async function POST(request: Request) {
     // capability check reflects the plan the user would actually get.
     ensureSearchAttached(r.plan, snapshot, goal, r.warnings);
     ensureSendGate(r.plan, r.warnings);
+    if (required.includes("draft")) ensureDraftGate(r.plan, r.warnings);
     const gaps = missingCapabilities(r.plan, snapshot, required);
     return { ...r, gaps };
   };

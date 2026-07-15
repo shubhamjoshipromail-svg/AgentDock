@@ -461,8 +461,9 @@ a structured `arguments` object matching the tool's input schema; the legacy
 The first connected server is a first-party Gmail MCP server (`servers/gmail/`)
 exposing two tools:
 
-- `create_draft` — writes only to your own Drafts. Safe, reversible, no external
-  side effect; executes without approval.
+- `create_draft` — writes a real message into the signed-in user's Gmail
+  **Drafts** folder. It is reversible and does not send externally, but it is a
+  mailbox write, so AgentDock asks for approval before creating it.
 - `send_email` — a real outbound send. Classified as an external write, so it is
   **always approval-gated and never auto-sends** — there is no grant
   configuration under which a send is auto-allowed. Injected instructions buried
@@ -473,6 +474,17 @@ The user's Google OAuth token (scopes `gmail.compose` + `gmail.send`) is stored
 server's process environment and is never returned to a client or handed to an
 agent. The founder performs the live Google consent once (see below).
 
+Real sending defaults to off for new users. When such a user asks to "send,"
+the planner visibly substitutes `create_draft` plus an approval gate; it never
+attaches the withheld send tool. AgentDock does not store a second copy of the
+draft: after the run, Output shows the agent's final result and Activity records
+the Gmail tool confirmation, while the editable message itself lives in Gmail's
+Drafts folder (there is currently no AgentDock draft link or draft editor).
+
+Each separate run creates a new Gmail draft. Re-running the same flow therefore
+creates multiple drafts—one per run—by design. Idempotency only suppresses a
+duplicate tool call while recovering/retrying the same run.
+
 Connecting **arbitrary third-party MCP servers is intentionally not enabled** —
 only the allowlisted first-party server is connectable. Untrusted-server vetting
 is a separate trust chunk.
@@ -482,9 +494,9 @@ is a separate trust chunk.
 1. Add `gmail.compose` + `gmail.send` to the OAuth consent screen scopes in
    Google Cloud, then sign out and sign back in to re-consent.
 2. Build a flow, grant a Gmail tool, and give the agent a goal that needs an
-   email. `send_email` will pause at an approval card showing the exact
-   to/subject/body; approving sends for real. `create_draft` lands a draft with
-   no approval. The agent never receives your token.
+   email. Both tools pause at an approval card showing the exact to/subject/body.
+   Approving `send_email` sends for real; approving `create_draft` writes the
+   message to Gmail's Drafts without sending. The agent never receives your token.
 
 ## Flow Persistence and Run Preview
 

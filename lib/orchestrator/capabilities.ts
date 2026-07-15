@@ -108,3 +108,17 @@ export function ensureSendGate(plan: ResolvedFlow, warnings: string[]): void {
   });
   warnings.push("Approval gate auto-added before the send step (external sends are always approval-gated).");
 }
+
+// Draft creation is a reversible mailbox write, not a read. Keep that approval
+// visible in the authored plan as well as enforcing it again at runtime.
+export function ensureDraftGate(plan: ResolvedFlow, warnings: string[]): void {
+  const hasDraft = plan.tools.some((tool) => toolCapabilities(tool).includes("draft"));
+  if (!hasDraft || plan.approvalGates.length > 0 || plan.agents.length === 0) return;
+  const lastOrder = Math.max(...plan.agents.map((agent) => agent.order));
+  plan.approvalGates.push({
+    afterAgentOrder: lastOrder,
+    trigger: "Before the draft is written to the connected account",
+    actionType: "email_draft"
+  });
+  warnings.push("Approval gate auto-added before draft creation (drafts write to the connected account).");
+}
