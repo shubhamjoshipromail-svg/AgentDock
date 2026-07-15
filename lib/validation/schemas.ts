@@ -127,6 +127,7 @@ export const memoryGrantPatchSchema = z.object({
 
 export const toolAttachSchema = z.object({
   mcpServerId: z.string().uuid({ message: "mcpServerId must be a UUID. Sync the MCP registry first." }),
+  agentId: z.string().uuid().optional(),
   purpose: z.string().optional(),
   defaultPermission: z.enum(["read_only", "draft_only", "approval_required", "blocked"]).optional()
 });

@@ -103,6 +103,16 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
       return NextResponse.json({ message: "Workflow not found for the signed-in user." }, { status: 404 });
     }
 
+    if (body.agentId) {
+      const participant = await prisma.workflowAgent.findUnique({
+        where: { workflowId_agentId: { workflowId: workflow.id, agentId: body.agentId } },
+        select: { id: true }
+      });
+      if (!participant) {
+        return NextResponse.json({ message: "The selected agent is not a participant in this flow." }, { status: 400 });
+      }
+    }
+
     const mcpServer = await prisma.mcpServer.findUnique({
       where: { id: body.mcpServerId }
     });
@@ -183,6 +193,7 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
         ? await tx.mcpAccessGrant.update({
             where: { id: existingGrant.id },
             data: {
+              agentId: body.agentId ?? null,
               ...grantTemplate,
               allowedActions: grantTemplate.allowedActions,
               blockedActions: grantTemplate.blockedActions,
@@ -198,6 +209,7 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
             data: {
               userId: user.id,
               workflowId: workflow.id,
+              agentId: body.agentId ?? null,
               mcpServerId: mcpServer.id,
               ...grantTemplate,
               allowedActions: grantTemplate.allowedActions,
@@ -216,7 +228,7 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
           workflowId: workflow.id,
           eventType: "mcp_tool_use",
           title: "MCP attached to workflow",
-          description: `${mcpServer.displayName} attached to ${workflow.name} with ${defaultPermission.replaceAll("_", " ")} permission.`,
+          description: `${mcpServer.displayName} attached to ${workflow.name}${body.agentId ? " for one selected agent" : ""} with ${defaultPermission.replaceAll("_", " ")} permission.`,
           decision: "info",
           costCents: 0,
           metadata: {

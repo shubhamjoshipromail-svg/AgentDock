@@ -372,6 +372,7 @@ export function FlowWorkspace({
     try {
       await attachToolToFlow(flowId, {
         mcpServerId: tool.serverRowId,
+        agentId: participant.agentId,
         purpose: `${tool.displayName} for ${participant.agentName}`,
         defaultPermission: tool.isExternalSend ? "approval_required" : "draft_only"
       });

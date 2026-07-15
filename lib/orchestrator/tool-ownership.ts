@@ -15,7 +15,8 @@ export async function repairLegacyOrchestratorToolOwners(userId: string): Promis
     where: { userId },
     include: {
       workflowAgents: { orderBy: { routeOrder: "asc" } },
-      mcpAccessGrants: { where: { agentId: null }, include: { mcpServer: true } }
+      workflowMcps: { select: { mcpServerId: true } },
+      mcpAccessGrants: { include: { mcpServer: true } }
     }
   });
   let repaired = 0;
@@ -23,16 +24,28 @@ export async function repairLegacyOrchestratorToolOwners(userId: string): Promis
     const layout = workflow.layout as { source?: unknown; plan?: { tools?: unknown } } | null;
     if (layout?.source !== "orchestrator" || workflow.workflowAgents.length === 0) continue;
     const plannedTools = Array.isArray(layout.plan?.tools) ? layout.plan.tools as PersistedPlanTool[] : [];
+    const authoritativeServerIds = new Set([
+      ...plannedTools.flatMap((tool) => typeof tool.mcpServerId === "string" ? [tool.mcpServerId] : []),
+      ...workflow.workflowMcps.map((attachment) => attachment.mcpServerId)
+    ]);
     const first = workflow.workflowAgents[0];
     const last = workflow.workflowAgents[workflow.workflowAgents.length - 1];
     for (const grant of workflow.mcpAccessGrants) {
+      if (!authoritativeServerIds.has(grant.mcpServerId)) {
+        const removed = await prisma.mcpAccessGrant.deleteMany({ where: { id: grant.id } });
+        repaired += removed.count;
+        continue;
+      }
       const planned = plannedTools.find((tool) => tool.mcpServerId === grant.mcpServerId);
+      // A tool attached manually after planning keeps its explicit owner. Only
+      // infer ownership for plan-authored tools or legacy null-owner grants.
+      if (!planned && grant.agentId) continue;
       const explicitOrder = typeof planned?.agentOrder === "number" ? planned.agentOrder : null;
       const owner = explicitOrder === null
         ? ((planned?.effectivePermission ?? grant.mcpServer.recommendedPermission) === "read_only" && !grant.mcpServer.isExternalSend ? first : last)
         : workflow.workflowAgents.find((entry) => entry.routeOrder === explicitOrder) ?? last;
       const updated = await prisma.mcpAccessGrant.updateMany({
-        where: { id: grant.id, agentId: null },
+        where: { id: grant.id, OR: [{ agentId: null }, { agentId: { not: owner.agentId } }] },
         data: { agentId: owner.agentId }
       });
       repaired += updated.count;
