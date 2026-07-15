@@ -34,4 +34,13 @@ describe("stabilization UI invariants", () => {
     expect(builder).not.toContain(">Grants</button>");
     expect(builder).not.toContain('inspectorTab === "grants"');
   });
+
+  it("E7: the tool palette only offers executable server/tool identities", () => {
+    const builder = source("components/build/Builder.tsx");
+
+    expect(builder).toContain("server.mcpServerKey && server.mcpToolName");
+    expect(builder).toContain("Only connected, executable tools are shown.");
+    expect(builder).not.toContain(": mcpTools.map");
+    expect(builder).not.toContain("Execution stays off.");
+  });
 });

@@ -13,7 +13,6 @@ import {
 import { planToSaveInput } from "../../lib/orchestrator/convert";
 import { PERMISSION_VALUES, permissionRank, type PlannedFlow, type PlannedFlowResponse } from "../../lib/orchestrator/schema";
 import {
-  mcpTools,
   recommendedBuilderNodes,
   stepDisplayNames
 } from "../mock-data";
@@ -26,7 +25,6 @@ import type {
   BuilderNode,
   McpDefaultPermission,
   McpRiskLevel,
-  McpVerificationStatus,
   PersistedMcpServer,
   PersistedWorkflow
 } from "../../lib/types";
@@ -311,20 +309,9 @@ export function Builder({
     }
   };
 
-  const paletteServers = mcpServers.length
-    ? mcpServers
-    : mcpTools.map((tool) => ({
-        id: tool.name,
-        name: tool.name.toLowerCase().replaceAll(" ", "-").replaceAll("/", "-"),
-        displayName: tool.name,
-        description: tool.scopes,
-        registrySource: "mock",
-        verificationStatus: (tool.verified === "Verified" ? "verified" : "unverified") as McpVerificationStatus,
-        riskLevel: tool.risk.toLowerCase() as McpRiskLevel,
-        recommendedPermission: (tool.permission.toLowerCase().replaceAll(" ", "_") || "approval_required") as McpDefaultPermission,
-        category: tool.workflows,
-        tools: []
-      }));
+  const paletteServers = mcpServers.filter(
+    (server) => Boolean(server.mcpServerKey && server.mcpToolName)
+  );
 
   const stepDetails = selectedNode
     ? {
@@ -354,8 +341,11 @@ export function Builder({
             </div>
             <div className="buildLibrarySection">
               <span className="buildLibraryLabel">Tools</span>
-              <p className="buildLibraryHint">Add tool metadata to the canvas. Execution stays off.</p>
+              <p className="buildLibraryHint">Only connected, executable tools are shown.</p>
               <div className="paletteList">
+                {paletteServers.length === 0 && (
+                  <p className="buildLibraryHint">No executable tools are connected. Use Connect to add and discover one.</p>
+                )}
                 {paletteServers.slice(0, 8).map((server) => (
                   <div className="paletteCard" key={server.id}>
                     <div className="paletteCardTop">
@@ -364,7 +354,7 @@ export function Builder({
                     </div>
                     <div className="paletteCardActions">
                       <Button variant="ghost" size="sm" onClick={() => addMcpVisualNode(server)}>Add to canvas</Button>
-                      <Button variant="secondary" size="sm" disabled={attachingMcpId === server.id || !mcpServers.length} onClick={() => attachBuilderMcp(server as PersistedMcpServer)}>
+                      <Button variant="secondary" size="sm" disabled={attachingMcpId === server.id} onClick={() => attachBuilderMcp(server)}>
                         {attachingMcpId === server.id ? "Adding…" : "Add tool"}
                       </Button>
                     </div>
