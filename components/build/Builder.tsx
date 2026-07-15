@@ -94,7 +94,7 @@ export function Builder({
   const [savingWorkflow, setSavingWorkflow] = useState(false);
 
   // UI state: inspector tab + library collapse.
-  const [inspectorTab, setInspectorTab] = useState<"plan" | "step" | "grants">("plan");
+  const [inspectorTab, setInspectorTab] = useState<"plan" | "participant">("plan");
   const [libraryOpen, setLibraryOpen] = useState(true);
 
   const hasDraftWorkflow = builderMode !== "empty";
@@ -159,7 +159,7 @@ export function Builder({
     setBuilderMode("draft");
     setSavedWorkflowId("");
     setPlanned(null);
-    setInspectorTab("step");
+    setInspectorTab("participant");
     toast("Template loaded as a draft. Save to Flows to run.", "info");
   };
 
@@ -435,7 +435,7 @@ export function Builder({
           ) : hasPlan && planned ? (
             <FlowGraph key={planRevealKey} input={plannedFlowToGraph(planned.plan)} animate />
           ) : hasDraftWorkflow ? (
-            <FlowGraph input={builderNodesToGraph(prompt, nodes)} selectedId={selectedNode?.id} onSelect={(id) => { setSelectedNodeId(id); setInspectorTab("step"); }} />
+            <FlowGraph input={builderNodesToGraph(prompt, nodes)} selectedId={selectedNode?.id} onSelect={(id) => { setSelectedNodeId(id); setInspectorTab("participant"); }} />
           ) : (
             <div className="canvasEmpty">
               <EmptyState
@@ -456,8 +456,7 @@ export function Builder({
       <aside className="buildInspector">
         <div className="inspectorTabs" role="tablist">
           <button role="tab" aria-selected={inspectorTab === "plan"} className={inspectorTab === "plan" ? "inspectorTab active" : "inspectorTab"} onClick={() => setInspectorTab("plan")}>Plan</button>
-          <button role="tab" aria-selected={inspectorTab === "step"} className={inspectorTab === "step" ? "inspectorTab active" : "inspectorTab"} onClick={() => setInspectorTab("step")}>Step</button>
-          <button role="tab" aria-selected={inspectorTab === "grants"} className={inspectorTab === "grants" ? "inspectorTab active" : "inspectorTab"} onClick={() => setInspectorTab("grants")}>Grants</button>
+          <button role="tab" aria-selected={inspectorTab === "participant"} className={inspectorTab === "participant" ? "inspectorTab active" : "inspectorTab"} onClick={() => setInspectorTab("participant")}>Participant</button>
         </div>
 
         <div className="inspectorBody">
@@ -559,37 +558,42 @@ export function Builder({
               <EmptyState title="No plan yet" body="Describe an outcome and press Plan flow. The plan appears here and on the canvas." />
             )
           ) : selectedNode && stepDetails ? (
-            <div className="inspectorBlock">
-              <h3>{stepDisplayNames[selectedNode.name] ?? selectedNode.name}</h3>
-              <p>{stepDetails.purpose}</p>
-              <div className="inspectorGrid">
-                <DetailBlock label="Type" value={stepDetails.type} />
-                <DetailBlock label="Risk" value={stepDetails.risk} />
-                <DetailBlock label="Memory" value={stepDetails.memory} />
-                <DetailBlock label="Cost" value={stepDetails.cost} />
-                <DetailBlock label="Approvals" value={stepDetails.approvals} />
-              </div>
-              {selectedNode.type !== "goal" && (
-                <div className="inspectorActions">
-                  <Button variant="danger" size="sm" onClick={() => onRemoveNode(selectedNode.id)}>Remove from canvas</Button>
-                  <Button variant="ghost" size="sm" onClick={onViewLogs}>View timeline</Button>
+            <>
+              <div className="inspectorBlock">
+                <h3>{stepDisplayNames[selectedNode.name] ?? selectedNode.name}</h3>
+                <p>{stepDetails.purpose}</p>
+                <div className="inspectorGrid">
+                  <DetailBlock label="Type" value={stepDetails.type} />
+                  <DetailBlock label="Risk" value={stepDetails.risk} />
+                  <DetailBlock label="Memory" value={stepDetails.memory} />
+                  <DetailBlock label="Cost" value={stepDetails.cost} />
+                  <DetailBlock label="Approvals" value={stepDetails.approvals} />
                 </div>
-              )}
-            </div>
-          ) : inspectorTab === "grants" ? (
-            <div className="inspectorBlock">
-              <h3>Tool grants</h3>
-              <GrantPanel
-                workflowId={savedWorkflowId || currentWorkflow?.id || ""}
-                workflowName={currentWorkflow?.name ?? "Draft flow"}
-                existingGrants={
-                  currentWorkflow?.mcpAccessGrants?.map((g) => ({
-                    mcpServerId: g.mcpServer.id,
-                    id: g.id
-                  })) ?? []
-                }
-              />
-            </div>
+                {selectedNode.type !== "goal" && (
+                  <div className="inspectorActions">
+                    <Button variant="danger" size="sm" onClick={() => onRemoveNode(selectedNode.id)}>Remove from canvas</Button>
+                    <Button variant="ghost" size="sm" onClick={onViewLogs}>View timeline</Button>
+                  </div>
+                )}
+              </div>
+              <div className="inspectorBlock">
+                <h3>Tool grants</h3>
+                {savedWorkflowId || currentWorkflow?.id ? (
+                  <GrantPanel
+                    workflowId={savedWorkflowId || currentWorkflow?.id || ""}
+                    workflowName={currentWorkflow?.name ?? "Draft flow"}
+                    existingGrants={
+                      currentWorkflow?.mcpAccessGrants?.map((g) => ({
+                        mcpServerId: g.mcpServer.id,
+                        id: g.id
+                      })) ?? []
+                    }
+                  />
+                ) : (
+                  <p className="inspectorNote">Save the flow before granting tools. Ungranted tools remain blocked.</p>
+                )}
+              </div>
+            </>
           ) : (
             <EmptyState title="Select a step" body="Click a node on the canvas to inspect its access, memory, cost, and approvals." />
           )}
