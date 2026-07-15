@@ -2,6 +2,9 @@
 
 Date: 2026-07-15
 
+This is the historical Phase 0 snapshot. The completed local invariant map and
+remaining hosted founder gates are in `docs/chunk21-invariants.md`.
+
 This pass starts from `codex/complete-interrupted-claude-task` at `a426d60`.
 The repository, commits, tests, and migration state were treated as the source of
 truth; the stale Desktop checkout was not used.
