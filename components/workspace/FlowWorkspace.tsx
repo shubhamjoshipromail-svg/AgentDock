@@ -88,8 +88,8 @@ export function FlowWorkspace({
   const [openDrawer, setOpenDrawer] = useState<WorkspaceDrawer | null>(null);
   const toggleDrawer = (d: WorkspaceDrawer) => setOpenDrawer((cur) => (cur === d ? null : d));
 
-  // Builder state (moved in from page.tsx).
-  const [builderPrompt, setBuilderPrompt] = useState("Describe an outcome…");
+  // Builder graph state (moved in from page.tsx). The planner goal itself lives
+  // in describeText below so the workspace and open Build drawer cannot drift.
   const [builderNodes, setBuilderNodes] = useState<BuilderNode[]>([recommendedBuilderNodes[0]]);
   const [selectedBuilderNodeId, setSelectedBuilderNodeId] = useState(recommendedBuilderNodes[0].id);
   const [builderSaved, setBuilderSaved] = useState(false);
@@ -495,18 +495,20 @@ export function FlowWorkspace({
       <div className="workspaceRoot">
       {/* LEFT: Flows list + Participants */}
       <div className="workspaceLeft">
-        <div className="describeBar">
-          <input
-            className="describeInput"
-            placeholder="Describe what you want done…"
-            value={describeText}
-            onChange={(e) => setDescribeText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleDescribe()}
-          />
-          <Button variant="primary" size="sm" loading={planning} onClick={() => handleDescribe()}>
-            Plan
-          </Button>
-        </div>
+        {openDrawer !== "build" && (
+          <div className="describeBar">
+            <input
+              className="describeInput"
+              placeholder="Describe what you want done…"
+              value={describeText}
+              onChange={(e) => setDescribeText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleDescribe()}
+            />
+            <Button variant="primary" size="sm" loading={planning} onClick={() => handleDescribe()}>
+              Plan
+            </Button>
+          </div>
+        )}
 
         <div className="participantsHead">
           <h2>Participants</h2>
@@ -786,7 +788,7 @@ export function FlowWorkspace({
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => (document.querySelector(".describeInput") as HTMLInputElement | null)?.focus()}
+                onClick={() => (document.querySelector(openDrawer === "build" ? ".commandInput" : ".describeInput") as HTMLInputElement | null)?.focus()}
               >
                 Describe a flow
               </Button>
@@ -814,8 +816,8 @@ export function FlowWorkspace({
         {openDrawer === "build" && (
           <div className="wsDrawerPanel">
             <Builder
-              prompt={builderPrompt}
-              setPrompt={setBuilderPrompt}
+              prompt={describeText}
+              setPrompt={setDescribeText}
               nodes={builderNodes}
               selectedNodeId={selectedBuilderNodeId}
               setSelectedNodeId={setSelectedBuilderNodeId}
