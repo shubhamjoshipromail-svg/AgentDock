@@ -100,7 +100,7 @@ describe("red-team — guarantees hold under attack", () => {
     expect(events.some((e) => e.title.includes("gmail") && e.decision === "allowed")).toBe(false);
   });
 
-  it("COST/LOOP: a runaway tool-calling model is halted by the tool-call ceiling", async () => {
+  it("COST/LOOP: a runaway repeated read is bounded and recovered from its verified result", async () => {
     vi.stubEnv("RUN_MAX_TOOL_CALLS", "2");
     const user = await createTestUser();
     const { workflow } = await baseAgentFlow(user.id);
@@ -108,9 +108,11 @@ describe("red-team — guarantees hold under attack", () => {
 
     await startRun(user.id, workflow.id);
     const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
-    expect(run.status).toBe("halted_error");
+    expect(run.status).toBe("completed");
     expect(run.toolCallCount).toBeLessThanOrEqual(2);
     expect(llm.calls).toBeLessThanOrEqual(4); // bounded — no infinite loop
+    expect(run.resultText).toContain("completed successfully");
+    expect(run.resultText).not.toContain("delete_repo");
   });
 
   it("KILL-SWITCH RACE: revoking the tool grant mid-run halts before the next tool call", async () => {

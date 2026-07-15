@@ -502,18 +502,22 @@ function classifyProviderError(error: unknown): string {
   return msg.slice(0, 200);
 }
 
-function buildSystem(agent: RunnableAgent): string {
-  const toolList = agent.allowedTools.length
-    ? agent.allowedTools.map((t) => {
+function buildSystem(agent: RunnableAgent, completedTools: ReadonlySet<string> = new Set()): string {
+  const availableTools = agent.allowedTools.filter((tool) => !completedTools.has(tool.toolName));
+  const toolList = availableTools.length
+    ? availableTools.map((t) => {
         const ext = t.isExternalSend ? "⚠ REQUIRES APPROVAL" : "safe";
         const catName = t.server.name !== t.toolName ? ` (catalog: ${t.server.name})` : "";
         return `- TOOL "${t.toolName}"${catName} — ${ext} | risk: ${t.server.riskLevel}`;
       }).join("\n")
     : "NONE — you have no tools. You can only produce text answers.";
-  const noFabricate = agent.allowedTools.length === 0
+  const noFabricate = availableTools.length === 0
     ? "CRITICAL: You have NO tools. You cannot create drafts, send emails, search, or perform any action. Only answer in text. NEVER claim you did something you cannot do."
     : "CRITICAL: Call tools by their EXACT name shown above. If a tool returns '(unavailable)' or is blocked, DO NOT retry it — report honestly that it is not available. NEVER fabricate or claim you performed an action that did not actually execute.";
-  return `${SECURITY_PREAMBLE}\n\n${noFabricate}\n\n${agent.systemPrompt}\n\n${INTERACTION_POLICY}\n\nAVAILABLE TOOLS (use these EXACT names):\n${toolList}`;
+  const completed = completedTools.size
+    ? `\n\nCOMPLETED TOOLS (results are already in context; these are no longer callable):\n${Array.from(completedTools).map((name) => `- ${name}`).join("\n")}\nYour next response MUST be a non-tool envelope required by the task: an interaction intent (for example the researched choice) or a final answer.`
+    : "";
+  return `${SECURITY_PREAMBLE}\n\n${noFabricate}\n\n${agent.systemPrompt}\n\n${INTERACTION_POLICY}${completed}\n\nAVAILABLE TOOLS (use these EXACT names):\n${toolList}`;
 }
 
 function buildUser(goal: string, memoryContext: string, toolResults: string[], handoffContent: string | null, remainingIters?: number, userEmail?: string): string {
@@ -531,7 +535,7 @@ function buildUser(goal: string, memoryContext: string, toolResults: string[], h
     else parts.push(`<untrusted>\n${r}\n</untrusted>`);
   }
   if (remainingIters !== undefined && remainingIters <= 1) {
-    parts.push("You have NO remaining tool calls. You MUST produce your best final answer NOW using the tool results above. Synthesize everything you've found into a clear, complete deliverable. Do NOT request another tool.");
+    parts.push("You have NO remaining tool calls. Your next response MUST be a non-tool envelope: emit the interaction intent required by your instructions (such as a researched choice), or produce your best final answer using the results above. Do NOT request another tool.");
   } else if (remainingIters !== undefined && remainingIters <= 2) {
     parts.push(`You have ${remainingIters} tool call(s) remaining. After that, you MUST produce a final answer.`);
   }
@@ -564,6 +568,14 @@ function completedActionFallback(
   const handoff = sanitizeDeliverable(handoffContent);
   if (handoff) return `${handoff}\n\nAction status: ${status}`;
   return `## ${agent.name}\n\n${status}`;
+}
+
+function completedReadFallback(agent: RunnableAgent, toolName: string, result: string): string {
+  // Tool output is untrusted and may contain prompt injection. If the provider
+  // refuses the non-tool recovery instruction twice, report a truthful neutral
+  // status rather than promoting raw untrusted text into the deliverable.
+  void result;
+  return `## ${agent.name}\n\n${toolName} completed successfully, but the agent could not synthesize the result into the required response.`;
 }
 
 // --- Step executor -----------------------------------------------------------
@@ -656,6 +668,7 @@ async function runStep(
   let repeatBlocks = 0;
   let invalidEnvelopeRetries = 0;
   let redundantIntentBlocks = 0;
+  const completedTools = new Set<string>();
 
   // If resuming from an approval, execute the approved call first.
   let pending = approvedCall;
@@ -699,7 +712,7 @@ async function runStep(
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         const remainingIters = MAX_TOOL_ITERS_PER_STEP - iter;
-        completion = await callModel(ctx.provider, buildSystem(agent), buildUser(ctx.goal, memoryContext, toolResults, handoffContent, remainingIters, ctx.userEmail), ctx.c.stepTimeoutMs);
+        completion = await callModel(ctx.provider, buildSystem(agent, completedTools), buildUser(ctx.goal, memoryContext, toolResults, handoffContent, remainingIters, ctx.userEmail), ctx.c.stepTimeoutMs);
         lastError = null;
         break;
       } catch (error) {
@@ -751,7 +764,7 @@ async function runStep(
       }
       invalidEnvelopeRetries += 1;
       toolResults.push(
-        '[policy] INVALID ENVELOPE. Respond once more with ONLY one valid JSON object: ' +
+        '[policy] INVALID ENVELOPE. Respond once more with ONLY one valid JSON object. Never invent or include tool results; the runtime supplies those only after a tool executes: ' +
         '{"type":"final","text":"..."}, {"type":"tool_call",...}, or a schema-valid {"type":"intent",...}. ' +
         'Do not include free prose, analysis, or markdown outside the JSON object.'
       );
@@ -851,7 +864,7 @@ async function runStep(
     if (iter >= MAX_TOOL_ITERS_PER_STEP - 1) {
       const forceUser = `${buildUser(ctx.goal, memoryContext, toolResults, handoffContent, 0, ctx.userEmail)}\n\nCRITICAL: You have exceeded your tool call budget. You MUST produce a {"type":"final","text":"..."} answer NOW. Synthesize everything from the tool results above. Do NOT request another tool — you have none left.`;
       try {
-        const forcedCompletion = await callModel(ctx.provider, buildSystem(agent), forceUser, ctx.c.stepTimeoutMs);
+        const forcedCompletion = await callModel(ctx.provider, buildSystem(agent, completedTools), forceUser, ctx.c.stepTimeoutMs);
         await meter(ctx.runId, forcedCompletion.costCents);
         const forcedEnvelope = parseEnvelope(forcedCompletion.text);
         if (forcedEnvelope.type === "final" && forcedEnvelope.text && forcedEnvelope.text.length > 20) {
@@ -883,7 +896,7 @@ async function runStep(
       await appendEvent({
         runId: ctx.runId, userId: ctx.userId, eventType: "action_blocked",
         title: `Already executed: ${envelope.tool}`,
-        description: `'${envelope.tool}' already ran successfully and returned results. The model should now produce its final answer — it does not need to search again.`,
+        description: `'${envelope.tool}' already ran successfully and returned results. The model must now produce the next required non-tool response.`,
         decision: "blocked", actorType: "agent", resourceType: "tool"
       });
       // First repeat: nudge it to finalize or move to another needed tool. If a
@@ -905,10 +918,18 @@ async function runStep(
           });
           return { kind: "done", finalText };
         }
-        await haltError(ctx, "repeated tool-call loop — runaway model re-requesting an already-succeeded tool", { toolName: envelope.tool, repeatBlocks });
-        return { kind: "halted", status: "halted_error" };
+        const finalText = completedReadFallback(agent, tool.toolName, priorSuccess!);
+        await appendEvent({
+          runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId,
+          eventType: "orchestration", title: "Repeated read suppressed; step recovered",
+          description: `${tool.toolName} had already succeeded. The repeated request was not executed and the verified read result was preserved instead of halting the run.`,
+          decision: "info", actorType: "system", resourceType: "tool", resourceId: tool.server.id,
+          metadata: { toolName: tool.toolName, repeatBlocks, recovery: "verified_read_result" }
+        });
+        return { kind: "done", finalText };
       }
-      toolResults.push(`[policy] '${envelope.tool}' was already executed successfully in this step. You have the result. Produce your final answer NOW — do NOT request this tool again.`);
+      completedTools.add(tool.toolName);
+      toolResults.push(`[policy] '${envelope.tool}' was already executed successfully in this step and has now been removed from AVAILABLE TOOLS. Use its result. Your next response MUST be the required non-tool interaction intent (such as a researched choice) or a final answer.`);
       continue;
     }
     // MCP tools are classified by persisted execution metadata. Legacy/string

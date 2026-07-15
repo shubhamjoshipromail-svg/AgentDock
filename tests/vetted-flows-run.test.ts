@@ -135,6 +135,10 @@ describe("Chunk 21 vetted flows — mocked end to end", () => {
     await storeGoogleOAuthToken(user.id, { accessToken: "ya29.CHOICE", expiresAt: Date.now() + 3_600_000 });
     llm.queue = [
       TOOL("web_search", { query: "notable AI agent platform companies" }),
+      // A provider may repeat the successful read once. The runtime removes
+      // that completed tool from the next model turn instead of halting before
+      // the required A2UI choice can be emitted.
+      TOOL("web_search", { query: "notable AI agent platform companies" }),
       INTENT("choice", {
         prompt: "Choose up to three options to email",
         options: [
@@ -150,6 +154,7 @@ describe("Chunk 21 vetted flows — mocked end to end", () => {
     const choice = await prisma.approvalRequest.findFirstOrThrow({
       where: { workflowRunId: run.id, intentType: "choice", status: "pending" }
     });
+    expect(callMcpToolMock.mock.calls.filter((call) => call[1] === "web_search")).toHaveLength(1);
     llm.queue = [
       TOOL("create_draft", {
         to: user.email,
