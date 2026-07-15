@@ -1,121 +1,232 @@
-# Deploying AgentDock
+# Deploy AgentDock on Railway
 
-AgentDock is **two long-lived processes** sharing one Postgres database and one
-container image:
+AgentDock needs three Railway services in one project:
 
-| Process | Command | Role |
-|---|---|---|
-| **web** | `npm run start` | Next.js server — UI + API on port 3000 |
-| **worker** | `npm run worker` | Claims run jobs and executes flows (real model + tool calls) |
+| Railway service | Source | Config file | Public? | Purpose |
+|---|---|---|---|---|
+| `Postgres` | Railway PostgreSQL | managed by Railway | no | Shared durable database |
+| `web` | this GitHub repository | `/railway.web.json` | yes | Next.js UI and API |
+| `worker` | this GitHub repository | `/railway.worker.json` | no | Claims and executes run jobs |
 
-**Without the worker, flows queue forever and nothing runs.** Deploy both.
+The two application services build the same root `Dockerfile`. That image builds
+Next.js plus the first-party Gmail and Search MCP servers. The config files give
+each service its own start command, run `prisma migrate deploy` before release,
+and keep the processes supervised. The web service also binds to Railway's
+injected `PORT` through `next start` and checks `/api/health` before it receives
+traffic.
 
-The image (`Dockerfile`) builds the Next app and pre-compiles the first-party MCP
-servers (`servers/gmail/dist`, `servers/search/dist`), which the worker spawns as
-child processes. Both processes run from the same image; only the command differs.
+Without `worker`, runs remain queued. Do not combine the two processes for the
+production alpha.
 
----
+## 1. Prerequisites
 
-## 0. Prerequisites
+Have these ready before opening Railway:
 
-- A container host that can run **two services** and keep the worker **supervised**
-  (auto-restart on crash): Railway, Render, Fly.io, Docker on a VM, etc.
-- A **managed Postgres** (Railway/Render/Neon/RDS…). Do **not** use the repo's
-  dev-only embedded Postgres (`.pgbin`/`.pgdata`) in production.
-- A **Google Cloud** project for OAuth + Gmail.
-- One **model provider key** for the planner (Anthropic / OpenAI / OpenRouter).
+- the branch to deploy pushed to GitHub;
+- a Railway account and project plan;
+- a Google Cloud project where you can configure OAuth and enable Gmail;
+- one system planner key: Anthropic, OpenAI, or OpenRouter;
+- the founder and alpha-user Gmail addresses.
 
----
-
-## 1. Provision Postgres
-
-Create a managed Postgres instance and copy its connection string. This is your
-`DATABASE_URL` (append `?schema=public` if the platform doesn't).
-
-## 2. Configure environment variables
-
-Set these on **both** the web and worker services (see `.env.example` for the
-full annotated list):
-
-| Variable | Required | Notes |
-|---|---|---|
-| `DATABASE_URL` | ✅ | Managed Postgres connection string |
-| `AUTH_SECRET` | ✅ | `openssl rand -base64 32` |
-| `AUTH_URL` | ✅ | Public HTTPS origin, e.g. `https://agentdock.example.com` |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | ✅ | From step 5 |
-| `CREDENTIAL_ENCRYPTION_KEY` | ✅ | `openssl rand -base64 32`; encrypts stored keys/tokens at rest |
-| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` / `OPENROUTER_API_KEY`) | ✅ | Planner key |
-| `ANTHROPIC_MODEL` etc. | ⬜ | Optional model override |
-| `RUN_MAX_COST_CENTS`, `USER_DAILY_RUN_COST_CAP_CENTS`, … | ⬜ | Spend caps (safe defaults in code) |
-
-> Users bring their **own** provider key for *runs* (Profile → Provider keys). The
-> `ANTHROPIC_API_KEY` above is the system **planner** key only. Keep them distinct.
-
-## 3. Run database migrations
-
-Run once per deploy, before/at release, against the production `DATABASE_URL`:
+Generate two different production secrets locally. Do not reuse development
+values and do not commit the output:
 
 ```bash
-npx prisma migrate deploy
+openssl rand -base64 32 # NEXTAUTH_SECRET
+openssl rand -base64 32 # CREDENTIAL_ENCRYPTION_KEY
 ```
 
-On most PaaS platforms this is a **release command** / pre-deploy hook. In the
-bundled `docker-compose.yml` it is the one-shot `migrate` service that `web` and
-`worker` wait on.
+The encryption key must remain stable. Changing it makes stored provider keys and
+Google tokens unreadable.
 
-## 4. Deploy the two services
+## 2. Create the Railway project and Postgres
 
-Both use the same image; set the start command per service:
+1. In Railway, click **New Project** → **Empty Project**.
+2. On the project canvas, click **+ New** → **Database** → **Add PostgreSQL**.
+3. Keep the database service name `Postgres`. If you rename it, replace
+   `Postgres` in every `${{Postgres.DATABASE_URL}}` reference below.
+4. For a production alpha, enable Railway backups for the Postgres service.
 
-- **web** → `npm run start`, expose port **3000**, attach a health check to
-  `GET /api/health` (see §6).
-- **worker** → `npm run worker`, **no** public port, **restart on failure**.
+Railway supplies the database's `DATABASE_URL`; do not paste an externally
+exposed Postgres URL into the app services.
 
-### Platform notes
-- **Railway / Render:** create **two services** from this repo/image. One web
-  (port 3000, health check `/api/health`), one **background worker**
-  (`npm run worker`, no port). Add `npx prisma migrate deploy` as the release
-  command. Set the env vars on both.
-- **Fly.io:** two process groups in `fly.toml` (`app = "npm run start"`,
-  `worker = "npm run worker"`); `release_command = "npx prisma migrate deploy"`.
-  Give the worker a restart policy.
-- **Single VM:** `docker compose up -d --build` (bundled compose runs migrate +
-  web + worker with `restart: unless-stopped`). Front it with TLS (Caddy/nginx).
+## 3. Add the web service
 
-## 5. Google OAuth + Gmail
+1. On the project canvas, click **+ New** → **GitHub Repo** and select this repo.
+2. Rename the service `web`.
+3. Open `web` → **Settings** and set **Config File Path** to
+   `/railway.web.json`.
+4. Confirm the deployment details resolve to:
+   - Dockerfile: `Dockerfile`
+   - pre-deploy: `npx prisma migrate deploy`
+   - start: `npm run start`
+   - healthcheck: `/api/health`
+   - restart policy: always
+5. Under **Settings** → **Networking**, click **Generate Domain**. Keep the exact
+   `https://...up.railway.app` origin for the Google step.
+
+Do not set a fixed `PORT`. Railway injects it, and `next start` listens on it.
+
+## 4. Add the worker service
+
+1. Click **+ New** → **GitHub Repo** again and select the same repo and branch.
+2. Rename this service `worker`.
+3. Open `worker` → **Settings** and set **Config File Path** to
+   `/railway.worker.json`.
+4. Confirm the deployment details resolve to:
+   - Dockerfile: `Dockerfile`
+   - pre-deploy: `npx prisma migrate deploy`
+   - start: `npm run worker`
+   - restart policy: always
+5. Do **not** generate a domain for the worker. It is a background process.
+
+Both services may run the migration command during the same release. Prisma's
+production migration command is repeatable; after the first service applies a
+migration, the other sees no pending work.
+
+## 5. Add production variables
+
+Open each service's **Variables** tab and use **Raw Editor**. Replace every
+`<...>` value. Railway reference expressions must be pasted literally.
+
+### `web` variables
+
+```dotenv
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+NEXTAUTH_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}
+NEXTAUTH_SECRET=<fresh-nextauth-secret>
+GOOGLE_CLIENT_ID=<google-oauth-client-id>
+GOOGLE_CLIENT_SECRET=<google-oauth-client-secret>
+CREDENTIAL_ENCRYPTION_KEY=<fresh-encryption-key>
+ANTHROPIC_API_KEY=<planner-key>
+FOUNDER_EMAILS=<comma-separated-founder-emails>
+RUN_MAX_COST_CENTS=50
+USER_DAILY_RUN_COST_CAP_CENTS=200
+ORCHESTRATOR_MAX_COST_CENTS_PER_CALL=10
+ORCHESTRATOR_DAILY_USER_COST_CAP_CENTS=100
+```
+
+Use `OPENAI_API_KEY` or `OPENROUTER_API_KEY` instead of `ANTHROPIC_API_KEY` if
+that is the planner provider. `ORCHESTRATOR_PROVIDER` and model overrides are
+optional; `.env.example` is the complete reference.
+
+### `worker` variables
+
+```dotenv
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+GOOGLE_CLIENT_ID=<same-google-oauth-client-id>
+GOOGLE_CLIENT_SECRET=<same-google-oauth-client-secret>
+CREDENTIAL_ENCRYPTION_KEY=<same-encryption-key-as-web>
+RUN_MAX_COST_CENTS=50
+USER_DAILY_RUN_COST_CAP_CENTS=200
+RUN_MAX_STEPS=16
+RUN_MAX_TOOL_CALLS=8
+WORKER_POLL_MS=2000
+WORKER_LEASE_MS=60000
+WORKER_PER_USER_CONCURRENCY=1
+```
+
+The Google client secret and encryption key must match across `web` and
+`worker`: web stores OAuth tokens and worker decrypts and refreshes them. Seal
+secret variables in Railway after saving them.
+
+Users add their own run-provider key in **Profile**. The system planner key on
+`web` is only for planning a new flow.
+
+## 6. Configure Google OAuth and Gmail
 
 In Google Cloud Console:
 
-1. **Enable the Gmail API** for the project (APIs & Services → Library → Gmail API).
-2. **OAuth consent screen:** while in **Testing** mode, add each alpha user's
-   Google address under **Test users** (only they can sign in). Scopes requested:
-   `openid email profile gmail.compose gmail.send`.
-3. **Credentials → OAuth client ID (Web application):** set the **Authorized
-   redirect URI** to `${AUTH_URL}/api/auth/callback/google` (exactly matching
-   your deployed origin). Copy the client id/secret into the env vars.
+1. Open **APIs & Services** → **Library**, find **Gmail API**, and enable it.
+2. Open **Google Auth Platform** / **OAuth consent screen**. While the app is in
+   Testing, add every founder and alpha Gmail address under **Test users**.
+3. Open **APIs & Services** → **Credentials** → the Web application OAuth client.
+4. Add this exact authorized redirect URI, substituting the generated web domain:
 
-## 6. Verify the deploy
+   ```text
+   https://<railway-domain>/api/auth/callback/google
+   ```
 
-1. **Health:** `curl https://<your-host>/api/health` → `200` with
-   `{ "ok": true, "db": { "ok": true }, "worker": { "ok": true, "lastSeenAt": … } }`.
-   - `db.ok: false` → the web app can't reach Postgres (`503`).
-   - `worker.ok: false` or `lastSeenAt: null` → the **worker isn't running**; flows
-     will queue and never execute. Check the worker service is up and supervised.
-2. **End-to-end:** sign in with a Test User → set a provider key → describe a goal
-   → run → approve the draft → confirm the deliverable and the audit trail. This
-   is the release-gate journey (see `FOUNDER_LAUNCH_CHECKLIST`).
+5. Save, then make sure that client's id and secret match the Railway variables
+   on both services.
 
----
+The application requests `openid`, `email`, `profile`, `gmail.compose`, and
+`gmail.send`. Sending remains opt-in and every real send remains approval-gated.
 
-## Operations
+## 7. Deploy
 
-- **Worker liveness:** `GET /api/health` reports `worker.lastSeenAt` and
-  `staleSeconds` (heartbeat older than 90s ⇒ `worker.ok: false`). Point an uptime
-  monitor at `/api/health` and alert on `db.ok` **and** `worker.ok`.
-- **Supervision:** the worker must auto-restart. It drains the current job on
-  `SIGTERM`/`SIGINT`; expired leases are reclaimed by the next worker, and external
-  sends are idempotent, so a crash mid-run is recovered without double-firing.
-- **Scaling:** more than one worker is safe (jobs are claimed with
-  `FOR UPDATE SKIP LOCKED`, bounded per-user concurrency).
-- **Secrets:** `CREDENTIAL_ENCRYPTION_KEY` must be stable — rotating it
-  invalidates all stored encrypted provider keys and Google tokens.
+1. Review Railway's staged changes and click **Deploy**.
+2. In `web` deployment logs, confirm the Dockerfile builds Next.js plus
+   `build:gmail` and `build:search`, then `prisma migrate deploy` succeeds.
+3. In `worker` logs, confirm a line beginning `[worker] ... starting` appears and
+   the service remains running.
+4. If variables changed after the first deployment, redeploy both services.
+
+## 8. Production smoke checklist
+
+First, query the public web domain:
+
+```bash
+curl -fsS https://<railway-domain>/api/health
+```
+
+The response must be HTTP 200 and contain both of these truths (timestamps and
+durations vary):
+
+```json
+{"ok":true,"db":{"ok":true},"worker":{"ok":true,"lastSeenAt":"..."}}
+```
+
+HTTP 200 alone is not enough: the health route keeps the web service available
+when the independent worker is down. For release, inspect `worker.ok` and require
+it to be `true`.
+
+Then perform the hosted investor path:
+
+1. Open the hosted URL in a private window and sign in as an OAuth test user.
+2. Confirm the fresh account has exactly these flows:
+   - `Research & email me a summary`
+   - `Research → you choose → email your picks`
+   - `Brief → draft`
+3. In **Profile**, save a run-provider key.
+4. Run `Research → you choose → email your picks`.
+5. Enter a topic, wait for real Search results, choose two options in the choice
+   surface, and continue.
+6. Confirm the email approval card shows the exact action. Approve it.
+7. Confirm the Gmail draft lands, the deliverable is clean, and Activity shows
+   the governed audit trail.
+8. Open `/api/admin/funnel` while signed in as an address listed in
+   `FOUNDER_EMAILS`; confirm the session ends in an activation event.
+
+Draft-only remains the default. To test a real send, explicitly enable **Real
+sending** in Profile; `send_email` still pauses for approval.
+
+## 9. Founder investor-readiness checks
+
+Before sharing the URL, perform all five on the hosted deployment:
+
+1. A fresh account signs in and sees exactly the three vetted flows.
+2. The choice flow completes end-to-end in roughly 60 seconds with a real draft
+   or approved send and a clean audit trail.
+3. Rapidly double-click and spam the one visible Run button; exactly one run is
+   created.
+4. Run with a missing topic; a form asks for it and no internal reasoning appears
+   as a completed result.
+5. `/api/admin/funnel` records the activation journey.
+
+## Troubleshooting
+
+- `db.ok: false` or HTTP 503: verify `DATABASE_URL` is exactly
+  `${{Postgres.DATABASE_URL}}` on that service and inspect the migration logs.
+- `worker.ok: false`: the worker is missing, crashed, using a different database,
+  or has not heartbeated within 90 seconds. Inspect `worker` logs and variables.
+- Google `redirect_uri_mismatch`: compare the full HTTPS callback character for
+  character; do not omit `/api/auth/callback/google`.
+- Runs fail to refresh Gmail access: verify both services share the same Google
+  client values and `CREDENTIAL_ENCRYPTION_KEY`.
+- A run queues forever: the worker is not healthy even if the web endpoint still
+  returns HTTP 200.
+
+Railway's deployment healthcheck is a release-time readiness check, not ongoing
+monitoring. Add an external uptime check for `/api/health` and alert when either
+`db.ok` or `worker.ok` is false.

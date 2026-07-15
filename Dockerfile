@@ -1,7 +1,7 @@
 # AgentDock — single image, two runtime commands.
 #
 # The SAME image runs both processes; the command selects which:
-#   web    → npm run start   (Next.js server, serves UI + API on :3000)
+#   web    → npm run start   (Next.js server, uses PORT; defaults to :3000)
 #   worker → npm run worker  (claims run jobs and executes flows via tsx)
 # docker-compose.yml runs them as two supervised services (restart: unless-stopped).
 #
@@ -41,5 +41,5 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 EXPOSE 3000
 
-# Default to the web server; the worker service overrides this in compose.
+# Default to the web server; Compose or Railway's worker config overrides this.
 CMD ["npm", "run", "start"]

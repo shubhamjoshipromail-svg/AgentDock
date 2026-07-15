@@ -24,6 +24,7 @@ if (!process.env.NEXTAUTH_SECRET && process.env.AUTH_SECRET) {
 }
 
 const hasGoogleConfig = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const authSecret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as NextAuthOptions["adapter"],
@@ -44,7 +45,7 @@ export const authOptions: NextAuthOptions = {
         })
       ]
     : [],
-  secret: process.env.AUTH_SECRET,
+  secret: authSecret,
   session: {
     strategy: "database"
   },
