@@ -2,6 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 const { PrismaPg } = require("@prisma/adapter-pg");
 
 const { agentDefaults } = require("../lib/catalog/agent-defaults");
+const { ensureVettedFlowsForUser } = require("../lib/catalog/vetted-flows");
 
 const connectionString = process.env.DATABASE_URL ?? "postgresql://agentdock:agentdock@localhost:5432/agentdock?schema=public";
 const acceptsInvalidCerts = connectionString.includes("sslaccept=accept_invalid_certs");
@@ -423,65 +424,10 @@ async function main() {
     ]
   });
 
-  // --- Chunk 18: choose-then-act showcase flows (seeded, vetted catalog flows) ---
-  // Seeded for EVERY user (incl. the founder's real Google account) so the A2UI
-  // demo is runnable live. Search is first-party; the send/draft need Gmail
-  // connected. Re-seedable: prior showcase flows are replaced by name.
-  const searchRow = await prisma.mcpServer.findFirst({ where: { registryId: "agentdock:search-mcp" } });
-  const gmailSendRow = await prisma.mcpServer.findFirst({ where: { registryId: "agentdock:discovered:gmail:send_email" } });
-  const gmailDraftRow = await prisma.mcpServer.findFirst({ where: { registryId: "agentdock:discovered:gmail:create_draft" } });
-
-  const showcaseAgents = [
-    {
-      name: "Event Concierge",
-      category: "Concierge", provider: "AgentDock", verified: true,
-      description: "Researches options, asks you to choose, then emails your picks.",
-      model: "claude-sonnet-4-6",
-      systemPrompt:
-        "You help the user choose, then act on their choice. Steps: (1) Use web_search to research real options for the user's topic (e.g. events this month in their city). " +
-        "(2) Present the best 4-6 options to the USER as a choice intent so THEY pick which matter — emit " +
-        "{\"type\":\"intent\",\"intentType\":\"choice\",\"payload\":{\"prompt\":\"Pick the ones to email\",\"options\":[{\"id\":\"o1\",\"title\":\"…\",\"description\":\"…\"}],\"maxSelect\":3}}. Do NOT guess for them. " +
-        "(3) After they choose, email THEM a concise summary of ONLY their chosen options with send_email; the gate will ask them to approve the send. Never send before they have chosen."
-    },
-    {
-      name: "Brief Draft Assistant",
-      category: "Writing", provider: "AgentDock", verified: true,
-      description: "Asks a short brief, then drafts the artifact from your answers.",
-      model: "claude-sonnet-4-6",
-      systemPrompt:
-        "Before writing anything, ask the user a form intent with exactly three fields — emit " +
-        "{\"type\":\"intent\",\"intentType\":\"form\",\"payload\":{\"prompt\":\"Tell me about the piece\",\"fields\":[{\"name\":\"audience\",\"label\":\"Audience\",\"type\":\"string\",\"required\":true},{\"name\":\"tone\",\"label\":\"Tone\",\"type\":\"string\",\"required\":true},{\"name\":\"key_point\",\"label\":\"Key point\",\"type\":\"string\",\"required\":true}]}}. " +
-        "After the user answers, use create_draft to produce a Gmail draft tailored to their audience, tone, and key point. Do not fabricate the answers."
-    }
-  ];
-
-  const grantFlags = {
-    read_only: { canRead: true, canWrite: false, canExecute: false, canDelete: false, requiresApproval: false },
-    approval_required: { canRead: true, canWrite: true, canExecute: false, canDelete: false, requiresApproval: true },
-    draft_only: { canRead: true, canWrite: true, canExecute: false, canDelete: false, requiresApproval: false }
-  };
-  const showcaseNames = ["Research → you choose → email your picks", "Brief → form → draft"];
-
+  // Install/backfill the same managed MVP flows used by real-user bootstrap.
+  // This is idempotent and preserves user-created and explicitly archived flows.
   for (const u of await prisma.user.findMany({ select: { id: true } })) {
-    const agentByName = {};
-    for (const a of showcaseAgents) {
-      const { name, ...defaults } = a;
-      agentByName[name] = await prisma.agent.upsert({
-        where: { userId_name: { userId: u.id, name } },
-        update: defaults,
-        create: { userId: u.id, name, ...defaults }
-      });
-    }
-    await prisma.workflow.deleteMany({ where: { userId: u.id, name: { in: showcaseNames } } });
-
-    const flow1 = await prisma.workflow.create({ data: { userId: u.id, name: showcaseNames[0], goal: "Research options for a topic, let the user choose, then email their picks.", status: "active", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "approval_gated" } });
-    await prisma.workflowAgent.create({ data: { workflowId: flow1.id, agentId: agentByName["Event Concierge"].id, roleInWorkflow: "Concierge", routeOrder: 1, defaultMode: "auto" } });
-    if (searchRow) await prisma.mcpAccessGrant.create({ data: { userId: u.id, workflowId: flow1.id, agentId: agentByName["Event Concierge"].id, mcpServerId: searchRow.id, ...grantFlags.read_only } });
-    if (gmailSendRow) await prisma.mcpAccessGrant.create({ data: { userId: u.id, workflowId: flow1.id, agentId: agentByName["Event Concierge"].id, mcpServerId: gmailSendRow.id, ...grantFlags.approval_required } });
-
-    const flow2 = await prisma.workflow.create({ data: { userId: u.id, name: showcaseNames[1], goal: "Ask for a brief, then draft the artifact from the answers.", status: "active", weeklyBudgetCents: 500, maxRunBudgetCents: 100, approvalMode: "approval_gated" } });
-    await prisma.workflowAgent.create({ data: { workflowId: flow2.id, agentId: agentByName["Brief Draft Assistant"].id, roleInWorkflow: "Writer", routeOrder: 1, defaultMode: "auto" } });
-    if (gmailDraftRow) await prisma.mcpAccessGrant.create({ data: { userId: u.id, workflowId: flow2.id, agentId: agentByName["Brief Draft Assistant"].id, mcpServerId: gmailDraftRow.id, ...grantFlags.draft_only } });
+    await ensureVettedFlowsForUser(prisma, u.id);
   }
 
   console.log("Seeded AgentDock mock database.");

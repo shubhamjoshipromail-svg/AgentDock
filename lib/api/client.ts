@@ -57,7 +57,7 @@ export type SaveFlowAgentInput = CreateFlowAgentInput;
 export type SaveFlowInput = CreateFlowInput;
 
 export function bootstrap(fallbackMessage = "Unable to bootstrap workspace.") {
-  return request<{ bootstrapped: boolean; createdWorkflow: boolean; createdPartitions: string[] }>(
+  return request<{ bootstrapped: boolean; createdWorkflow: boolean; createdWorkflows?: string[]; createdPartitions: string[] }>(
     "/api/bootstrap",
     fallbackMessage,
     { method: "POST" }

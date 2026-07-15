@@ -4,12 +4,12 @@ import type { DefaultAccessPolicy, MemoryAction, AccessDecision, MemoryPartition
 import { getCurrentUser } from "../../../lib/auth-user";
 import { agentDefaults } from "../../../lib/catalog/agent-defaults";
 import {
-  starterFlowTemplate,
   starterMemoryGrants,
   starterMemoryItems,
   starterMemoryLogs,
   starterMemoryPartitions
 } from "../../../lib/catalog/templates";
+import { ensureVettedFlowsForUser } from "../../../lib/catalog/vetted-flows";
 import { prisma } from "../../../lib/prisma";
 
 // Idempotent per-user bootstrap. Called once from the client after sign-in;
@@ -35,44 +35,13 @@ export async function POST() {
       });
     }
 
-    let workflow = await prisma.workflow.findFirst({
-      where: { userId, name: starterFlowTemplate.name }
-    });
-    let createdWorkflow = false;
-
-    if (!workflow) {
-      workflow = await prisma.workflow.create({
-        data: {
-          userId,
-          name: starterFlowTemplate.name,
-          goal: starterFlowTemplate.goal,
-          status: "active",
-          weeklyBudgetCents: starterFlowTemplate.weeklyBudgetCents,
-          maxRunBudgetCents: starterFlowTemplate.maxRunBudgetCents,
-          approvalMode: starterFlowTemplate.approvalMode
-        }
-      });
-      createdWorkflow = true;
-
-      for (const templateAgent of starterFlowTemplate.agents) {
-        await prisma.workflowAgent.upsert({
-          where: {
-            workflowId_agentId: {
-              workflowId: workflow.id,
-              agentId: agents[templateAgent.agentName].id
-            }
-          },
-          update: {},
-          create: {
-            workflowId: workflow.id,
-            agentId: agents[templateAgent.agentName].id,
-            roleInWorkflow: templateAgent.roleInWorkflow,
-            routeOrder: templateAgent.routeOrder,
-            defaultMode: templateAgent.defaultMode
-          }
-        });
-      }
-    }
+    // One concurrency-safe installer owns the managed MVP flows for fresh and
+    // returning users. It never deletes user-created flows and never reactivates
+    // a vetted flow the user explicitly archived.
+    const vetted = await ensureVettedFlowsForUser(prisma, userId);
+    const workflow = vetted.workflows[0];
+    if (!workflow) throw new Error("Vetted flow bootstrap returned no workflows.");
+    const createdWorkflow = vetted.createdWorkflowNames.length > 0;
 
     const partitions: Record<string, { id: string }> = {};
     const createdPartitions = new Set<string>();
@@ -158,6 +127,7 @@ export async function POST() {
     return NextResponse.json({
       bootstrapped: createdWorkflow || createdPartitions.size > 0,
       createdWorkflow,
+      createdWorkflows: vetted.createdWorkflowNames,
       createdPartitions: Array.from(createdPartitions)
     });
   } catch (error) {
