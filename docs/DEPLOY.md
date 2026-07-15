@@ -18,6 +18,22 @@ traffic.
 Without `worker`, runs remain queued. Do not combine the two processes for the
 production alpha.
 
+## Current alpha deployment
+
+As of 2026-07-15, the `AgentDock` Railway project's `production` environment is
+deployed from branch `codex/chunk21-final-pass`:
+
+- Public web URL: `https://web-production-e123b.up.railway.app`
+- Google callback to register: `https://web-production-e123b.up.railway.app/api/auth/callback/google`
+- `web`, `worker`, and Railway `Postgres`: running in EU West
+- Infrastructure smoke: `/` returned HTTP 200 and `/api/health` returned
+  `db.ok: true` plus `worker.ok: true`
+
+Fresh `NEXTAUTH_SECRET` and `CREDENTIAL_ENCRYPTION_KEY` values are already set in
+Railway and were not printed or committed. Google OAuth/client variables and a
+planner key are intentionally still unset, so the hosted sign-in and end-to-end
+Gmail smoke remain pending the steps below.
+
 ## 1. Prerequisites
 
 Have these ready before opening Railway:

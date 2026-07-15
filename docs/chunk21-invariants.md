@@ -129,14 +129,19 @@ Regression evidence:
 - Local production server validation on a non-default `PORT` with
   `/api/health` returning HTTP 200 and `db.ok: true`.
 
-Docker itself is unavailable on the verification machine, so no Docker daemon
-build is claimed. Railway project creation, secret entry, Google redirect/test
-users, live worker health, and the hosted end-to-end flow require founder access.
+Docker itself is unavailable on the verification machine, but Railway built both
+Docker images successfully from the pushed branch. Railway `web`, `worker`, and
+Postgres are live in EU West; all 23 migrations applied, `/` returned HTTP 200,
+and `/api/health` returned both `db.ok: true` and `worker.ok: true`. Google OAuth,
+OAuth test users, a planner key, and the hosted Gmail flow still require founder
+credentials/configuration.
 
 ## Final hosted release gate
 
-The chunk is externally complete only after the founder follows `docs/DEPLOY.md`
-and records all of these on the hosted URL:
+Infrastructure item 1 passed on 2026-07-15 at
+`https://web-production-e123b.up.railway.app`. The chunk is externally complete
+only after the founder follows `docs/DEPLOY.md` and records the remaining checks
+on that hosted URL:
 
 1. `db.ok` and `worker.ok` are both true.
 2. A fresh OAuth test account sees exactly the three vetted flows.
