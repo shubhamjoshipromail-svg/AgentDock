@@ -335,6 +335,8 @@ describe("prompt integrity (Chunk 19: plan by canonical identity)", () => {
     expect(system).toContain("DRAFT-ONLY DELIVERY");
     expect(system).toContain("draft/compose tool");
     expect(system).toContain("add an approvalGate");
+    expect(system).toContain("Do not select an agent whose role is only sending or dispatching");
+    expect(system).toContain("create the draft exactly once");
     expect(system).not.toContain("do NOT silently downgrade");
   });
 

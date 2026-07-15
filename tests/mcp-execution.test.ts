@@ -330,6 +330,31 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     expect(finalRun.status).toBe("completed");
   });
 
+  it("recovers when a model repeatedly requests an already-successful approved write", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedGmailFlow(user.id);
+    await storeGoogleOAuthToken(user.id, { accessToken: "ya29.LIVE", expiresAt: Date.now() + 3_600_000 });
+
+    const draft = TOOL_ARGS("create_draft", { to: "a@example.com", subject: "Hi", body: "Hello" });
+    llm.queue = [{ text: draft }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    // Production repro: the approved draft succeeds, but the provider ignores
+    // the finalize nudge and asks for the identical write twice more.
+    llm.queue = [{ text: draft }, { text: draft }];
+    await resumeAfterApproval(user.id, approval.id, true);
+
+    const finalRun = await prisma.workflowRun.findUniqueOrThrow({ where: { id: run.id } });
+    expect(finalRun.status).toBe("completed");
+    expect(finalRun.resultText).toContain("ok: performed");
+    expect(callMcpToolMock).toHaveBeenCalledTimes(1);
+    expect(await prisma.workflowRunEvent.count({
+      where: { workflowRunId: run.id, title: "Duplicate action suppressed; step completed" }
+    })).toBe(1);
+  });
+
   it("resume does not re-emit the memory_access events already recorded before the pause", async () => {
     const user = await createTestUser();
     const { agent, workflow } = await seedGmailFlow(user.id);

@@ -489,6 +489,33 @@ function buildUser(goal: string, memoryContext: string, toolResults: string[], h
   return parts.join("\n\n");
 }
 
+function successfulToolResult(toolName: string, toolResults: string[]): string | null {
+  return [...toolResults].reverse().find((result) =>
+    result.startsWith(`${toolName} result:`) &&
+    (result.includes("✅ ran successfully") || result.includes("⚠️ ACTION EXECUTED"))
+  ) ?? null;
+}
+
+// A provider can ignore repeated "finalize now" feedback even after a real
+// write/send has succeeded. At that point another model/tool retry adds cost and
+// risks turning a successful governed action into a red failed run. Build a
+// truthful, deterministic deliverable from the verified tool result instead.
+function completedActionFallback(
+  agent: RunnableAgent,
+  toolName: string,
+  result: string,
+  handoffContent: string | null
+): string {
+  const status = result
+    .replace(`${toolName} result:`, "")
+    .replace(/\s+✅ ran successfully[\s\S]*$/, "")
+    .replace(/\s+⚠️ ACTION EXECUTED[\s\S]*$/, "")
+    .trim();
+  const handoff = sanitizeDeliverable(handoffContent);
+  if (handoff) return `${handoff}\n\nAction status: ${status}`;
+  return `## ${agent.name}\n\n${status}`;
+}
+
 // --- Step executor -----------------------------------------------------------
 
 type StepOutcome =
@@ -722,9 +749,8 @@ async function runStep(
 
     // If this exact tool was already executed successfully in this step,
     // block the repeat. The agent already got the result — it must finalize.
-    const alreadyExecuted = toolResults.some((r) =>
-      r.startsWith(`${tool?.toolName ?? envelope.tool} result:`) && r.includes("✅ ran successfully")
-    );
+    const priorSuccess = successfulToolResult(tool?.toolName ?? envelope.tool, toolResults);
+    const alreadyExecuted = priorSuccess !== null;
     if (alreadyExecuted && tool) {
       repeatBlocks += 1;
       await appendEvent({
@@ -733,9 +759,25 @@ async function runStep(
         description: `'${envelope.tool}' already ran successfully and returned results. The model should now produce its final answer — it does not need to search again.`,
         decision: "blocked", actorType: "agent", resourceType: "tool"
       });
-      // First repeat: nudge it to finalize. A second repeat means the model is
-      // stuck in a runaway loop — halt it rather than spin until iter exhaustion.
+      // First repeat: nudge it to finalize or move to another needed tool. If a
+      // consequential action already succeeded and the provider requests that
+      // same action again, finish deterministically from the verified result:
+      // never re-run it and never turn real success into a false failed run.
       if (repeatBlocks >= 2) {
+        const completedAction = isMcpTool(tool)
+          ? classifyMcpTool(tool.isExternalSend, tool.server.recommendedPermission).action
+          : envelope.action;
+        if (completedAction !== "read") {
+          const finalText = completedActionFallback(agent, tool.toolName, priorSuccess!, handoffContent);
+          await appendEvent({
+            runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId,
+            eventType: "orchestration", title: "Duplicate action suppressed; step completed",
+            description: `${tool.toolName} had already succeeded. The repeated request was not executed; the step completed from the verified result.`,
+            decision: "info", actorType: "system", resourceType: "tool", resourceId: tool.server.id,
+            metadata: { toolName: tool.toolName, repeatBlocks, recovery: "verified_tool_result" }
+          });
+          return { kind: "done", finalText };
+        }
         await haltError(ctx, "repeated tool-call loop — runaway model re-requesting an already-succeeded tool", { toolName: envelope.tool, repeatBlocks });
         return { kind: "halted", status: "halted_error" };
       }
