@@ -52,6 +52,7 @@ export function clampPermissions(flow: ResolvedFlow): { plan: PlannedFlow; warni
       serverName: tool.serverName,
       displayName: tool.displayName,
       mcpServerId: tool.mcpServerId,
+      agentOrder: tool.agentOrder,
       requestedPermission: tool.requestedPermission,
       effectivePermission: effective,
       ceiling,

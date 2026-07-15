@@ -10,6 +10,7 @@ import {
   starterMemoryPartitions
 } from "../../../lib/catalog/templates";
 import { ensureVettedFlowsForUser } from "../../../lib/catalog/vetted-flows";
+import { repairLegacyOrchestratorToolOwners } from "../../../lib/orchestrator/tool-ownership";
 import { prisma } from "../../../lib/prisma";
 
 // Idempotent per-user bootstrap. Called once from the client after sign-in;
@@ -39,6 +40,7 @@ export async function POST() {
     // returning users. It never deletes user-created flows and never reactivates
     // a vetted flow the user explicitly archived.
     const vetted = await ensureVettedFlowsForUser(prisma, userId);
+    await repairLegacyOrchestratorToolOwners(userId);
     const workflow = vetted.workflows[0];
     if (!workflow) throw new Error("Vetted flow bootstrap returned no workflows.");
     const createdWorkflow = vetted.createdWorkflowNames.length > 0;

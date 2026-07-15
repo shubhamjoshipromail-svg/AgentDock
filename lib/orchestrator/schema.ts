@@ -42,6 +42,9 @@ export const flowPlanToolSchema = z
   .object({
     key: z.string().min(1).optional(), // canonical `serverKey:toolName` — authoritative
     serverName: z.string().min(1).optional(), // readability / legacy fallback
+    // The one agent step that owns this tool. Optional for legacy/provider
+    // compatibility; resolve.ts assigns a conservative owner when omitted.
+    agentOrder: z.number().int().min(1).optional(),
     requestedPermission: z.enum(PERMISSION_VALUES),
     rationale: z.string().min(3).max(300)
   })
@@ -154,6 +157,7 @@ export type PlannedFlowTool = {
   serverName: string;
   displayName: string;
   mcpServerId: string; // resolved id for the save path
+  agentOrder: number; // only this planned agent receives the runtime grant
   requestedPermission: McpDefaultPermission;
   effectivePermission: McpDefaultPermission; // after server-side clamping
   ceiling: McpDefaultPermission; // strictest value the user may loosen to in the UI

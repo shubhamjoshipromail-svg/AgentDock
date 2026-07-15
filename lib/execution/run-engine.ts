@@ -110,6 +110,13 @@ const SECURITY_PREAMBLE =
   'Example for a missing topic: {"type":"intent","intentType":"form","payload":{"prompt":"What should I research?","fields":[{"name":"topic","label":"Research topic","type":"string","required":true}]}}. ' +
   'Only ask when the answer materially changes what you do.';
 
+const INTERACTION_POLICY =
+  "PLATFORM INTERACTION POLICY (authoritative; overrides any agent template that says to always ask a fixed form): " +
+  "A2UI is for information or a decision that is genuinely missing and materially required. Inspect the GOAL, USER EMAIL, " +
+  "handoff, memory, and prior user responses first. Never ask for information already present. Never ask a generic audience/tone/key-point " +
+  "form when a usable brief or research handoff already exists; use a neutral professional tone unless the user made tone material. " +
+  "If input is truly missing, ask once and include only the missing fields. After the user responds, continue the task—do not ask a second form.";
+
 type Envelope =
   | { type: "final"; text: string }
   | { type: "tool_call"; tool: string; action: ActionKind; input: string; arguments?: Record<string, unknown> }
@@ -285,6 +292,30 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
   });
   if (!workflow) return null;
 
+  // Compatibility for orchestrator flows saved before per-agent tool ownership
+  // existed. Their grants have agentId=null, but the persisted plan identifies
+  // the flow as orchestrated. Confine harmless reads to the first participant
+  // and consequential tools to the final participant until the flow is re-saved.
+  // Manually authored flows retain their explicit workflow-wide semantics.
+  const layout = workflow.layout as { source?: unknown; plan?: { tools?: unknown } } | null;
+  const orchestrated = layout?.source === "orchestrator";
+  const plannedTools = Array.isArray(layout?.plan?.tools)
+    ? layout.plan.tools as Array<{ mcpServerId?: unknown; agentOrder?: unknown; effectivePermission?: unknown }>
+    : [];
+  const firstWorkflowAgent = workflow.workflowAgents[0];
+  const lastWorkflowAgent = workflow.workflowAgents[workflow.workflowAgents.length - 1];
+  const legacyOwnerByServer = new Map<string, string>();
+  if (orchestrated) {
+    for (const plannedTool of plannedTools) {
+      if (typeof plannedTool.mcpServerId !== "string") continue;
+      const explicitOrder = typeof plannedTool.agentOrder === "number" ? plannedTool.agentOrder : null;
+      const owner = explicitOrder === null
+        ? (plannedTool.effectivePermission === "read_only" ? firstWorkflowAgent : lastWorkflowAgent)
+        : workflow.workflowAgents.find((entry) => entry.routeOrder === explicitOrder);
+      if (owner) legacyOwnerByServer.set(plannedTool.mcpServerId, owner.agentId);
+    }
+  }
+
   // Tool grants for this user, joined to servers. A grant applies to an agent if
   // it is agent-scoped to that agent, or workflow-scoped to this workflow.
   const grants = await prisma.mcpAccessGrant.findMany({
@@ -293,7 +324,16 @@ export async function loadRunnable(userId: string, workflowId: string): Promise<
   });
 
   const agents: RunnableAgent[] = workflow.workflowAgents.map((wa, index) => {
-    const applicable = grants.filter((g) => g.agentId === wa.agentId || (g.agentId === null && g.workflowId === workflowId));
+    const applicable = grants.filter((g) => {
+      if (g.agentId === wa.agentId) return true;
+      if (g.agentId !== null || g.workflowId !== workflowId) return false;
+      if (!orchestrated) return true;
+      const inferredOwner = legacyOwnerByServer.get(g.mcpServerId) ??
+        (g.mcpServer.recommendedPermission === "read_only" && !g.mcpServer.isExternalSend
+          ? firstWorkflowAgent?.agentId
+          : lastWorkflowAgent?.agentId);
+      return inferredOwner === wa.agentId;
+    });
     // Deny-by-default + canonical identity: only grants whose row carries a
     // canonical executable identity (mcpServerKey + mcpToolName) are runnable.
     // The DB guard already forbids granting anything else, so this is a defensive
@@ -463,7 +503,7 @@ function buildSystem(agent: RunnableAgent): string {
   const noFabricate = agent.allowedTools.length === 0
     ? "CRITICAL: You have NO tools. You cannot create drafts, send emails, search, or perform any action. Only answer in text. NEVER claim you did something you cannot do."
     : "CRITICAL: Call tools by their EXACT name shown above. If a tool returns '(unavailable)' or is blocked, DO NOT retry it — report honestly that it is not available. NEVER fabricate or claim you performed an action that did not actually execute.";
-  return `${SECURITY_PREAMBLE}\n\n${noFabricate}\n\n${agent.systemPrompt}\n\nAVAILABLE TOOLS (use these EXACT names):\n${toolList}`;
+  return `${SECURITY_PREAMBLE}\n\n${noFabricate}\n\n${agent.systemPrompt}\n\n${INTERACTION_POLICY}\n\nAVAILABLE TOOLS (use these EXACT names):\n${toolList}`;
 }
 
 function buildUser(goal: string, memoryContext: string, toolResults: string[], handoffContent: string | null, remainingIters?: number, userEmail?: string): string {
@@ -540,6 +580,51 @@ async function totals(runId: string) {
   return run;
 }
 
+type CompletedEmailAction = {
+  agentId: string | null;
+  toolName: "create_draft" | "send_email";
+  toolOutput: string;
+};
+
+function isEmailActionTool(tool: AllowedTool): tool is AllowedTool {
+  return tool.server.mcpServerKey === "gmail" &&
+    (tool.toolName === "create_draft" || tool.toolName === "send_email");
+}
+
+async function completedEmailActions(runId: string): Promise<CompletedEmailAction[]> {
+  const events = await prisma.workflowRunEvent.findMany({
+    where: { workflowRunId: runId, eventType: "mcp_tool_use", decision: "allowed" },
+    orderBy: { createdAt: "asc" },
+    select: { agentId: true, metadata: true }
+  });
+  return events.flatMap((event) => {
+    const meta = event.metadata as { real?: unknown; error?: unknown; toolName?: unknown; toolOutput?: unknown };
+    if (meta.real !== true || meta.error === true) return [];
+    if (meta.toolName !== "create_draft" && meta.toolName !== "send_email") return [];
+    return [{
+      agentId: event.agentId,
+      toolName: meta.toolName,
+      toolOutput: typeof meta.toolOutput === "string" ? meta.toolOutput : `${meta.toolName} completed successfully.`
+    }];
+  });
+}
+
+function priorActionBlocking(tool: AllowedTool, actions: CompletedEmailAction[]): CompletedEmailAction | null {
+  if (!isEmailActionTool(tool)) return null;
+  const priorSend = actions.find((action) => action.toolName === "send_email");
+  if (priorSend) return priorSend;
+  if (tool.toolName === "create_draft") {
+    return actions.find((action) => action.toolName === "create_draft") ?? null;
+  }
+  return null;
+}
+
+function priorDeliveryFallback(agent: RunnableAgent, prior: CompletedEmailAction, handoffContent: string | null): string {
+  const handoff = sanitizeDeliverable(handoffContent);
+  const status = `Delivery status: ${prior.toolOutput}`;
+  return handoff ? `${handoff}\n\n${status}` : `## ${agent.name}\n\n${status}`;
+}
+
 async function runStep(
   ctx: Ctx,
   agent: RunnableAgent,
@@ -560,6 +645,7 @@ async function runStep(
   // iteration exhaustion (and left the run dangling at "running").
   let repeatBlocks = 0;
   let invalidEnvelopeRetries = 0;
+  let redundantIntentBlocks = 0;
 
   // If resuming from an approval, execute the approved call first.
   let pending = approvedCall;
@@ -695,6 +781,37 @@ async function runStep(
         toolResults.push(`[policy] Your ${envelope.intentType} surface was invalid: ${validation.error}. Fix the payload to match the schema, or produce your final answer.`);
         continue;
       }
+      // One response per interaction type per agent step. A responded form is
+      // authoritative input; asking another hardcoded form after receiving it
+      // is orchestration churn, not useful A2UI. Different types remain valid
+      // (for example: a missing-topic form followed by a researched choice).
+      const priorResponse = await prisma.approvalRequest.findFirst({
+        where: {
+          workflowRunId: ctx.runId,
+          agentId: agent.agentId,
+          stepIndex: agent.index,
+          intentType: envelope.intentType,
+          status: "responded"
+        },
+        select: { id: true }
+      });
+      if (priorResponse) {
+        redundantIntentBlocks += 1;
+        await appendEvent({
+          runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId,
+          eventType: "action_blocked", title: "Redundant input request suppressed",
+          description: "The user already answered this agent's information request. No second form was shown.",
+          decision: "blocked", actorType: "system",
+          metadata: { intentType: envelope.intentType, redundantIntentBlocks }
+        });
+        if (redundantIntentBlocks >= 2) {
+          const fallback = sanitizeDeliverable(handoffContent) ??
+            `${agent.name} received the requested information but did not produce an additional deliverable.`;
+          return { kind: "done", finalText: fallback };
+        }
+        toolResults.push("[policy] The user already answered your information request. Do NOT ask another form, choice, or confirmation. Continue now using the goal, handoff, USER EMAIL, and response already provided.");
+        continue;
+      }
       const intent = await prisma.approvalRequest.create({
         data: {
           userId: ctx.userId, workflowRunId: ctx.runId, agentId: agent.agentId,
@@ -805,6 +922,23 @@ async function runStep(
       });
       toolResults.push(`[policy] TOOL UNAVAILABLE: '${envelope.tool}' is not available. Available tools: ${agent.allowedTools.map((t) => t.toolName).join(", ")}. DO NOT retry this tool — it does not exist. Use one of the available tools or produce a final answer.`);
       continue;
+    }
+
+    // Run-wide email invariant: at most one real draft and one real send, and
+    // never another email action after a send. This is checked before the gate,
+    // so a redundant downstream agent cannot even create another approval card.
+    if (tool && isEmailActionTool(tool)) {
+      const prior = priorActionBlocking(tool, await completedEmailActions(ctx.runId));
+      if (prior) {
+        await appendEvent({
+          runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId,
+          eventType: "action_blocked", title: "Duplicate email action suppressed",
+          description: `${prior.toolName} already completed in this run. ${tool.toolName} was not requested or executed again.`,
+          decision: "blocked", actorType: "system", resourceType: "tool", resourceId: tool.server.id,
+          metadata: { attemptedTool: tool.toolName, completedTool: prior.toolName, invariant: "one_draft_one_send" }
+        });
+        return { kind: "done", finalText: priorDeliveryFallback(agent, prior, handoffContent) };
+      }
     }
 
     const gate = authorizeToolCall({
@@ -952,6 +1086,23 @@ async function executeAllowedTool(
   // what let an agent claim an email was sent after the send actually errored.
   let toolErrored = false;
   let toolInputForAudit = input;
+
+  // Final execution-boundary check. The model/gate path above normally catches
+  // duplicates before approval, but a queued approval or crash recovery can
+  // resume later. Never let that race produce another real Gmail action.
+  if (isEmailActionTool(tool)) {
+    const prior = priorActionBlocking(tool, await completedEmailActions(ctx.runId));
+    if (prior) {
+      await appendEvent({
+        runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId,
+        eventType: "action_blocked", title: "Duplicate email action suppressed",
+        description: `${prior.toolName} already completed in this run. ${tool.toolName} was not executed again.`,
+        decision: "blocked", actorType: "system", resourceType: "tool", resourceId: tool.server.id,
+        metadata: { attemptedTool: tool.toolName, completedTool: prior.toolName, invariant: "one_draft_one_send" }
+      });
+      return { text: `${tool.toolName} result: ${prior.toolOutput} ✅ NO DUPLICATE ACTION NEEDED — produce your final answer.` };
+    }
+  }
 
   // --- Idempotency guard for real external-send tools -----------------------
   // A deterministic key stable across retries. If a worker crashes after the
@@ -1224,16 +1375,32 @@ async function drive(
   firstApprovedCall: { toolName: string; serverId: string; action: ActionKind; input: string; arguments?: Record<string, unknown> | null } | null,
   opts?: DriveOptions
 ): Promise<RunResult> {
-  let lastFinalText: string | null = null;
+  let lastFinalText: string | null = firstStepHandoff;
   // Track the best deliverable across agents — use the longest substantive
   // output, not just the last agent's (which may be a short refusal).
-  let bestDeliverable: string | null = null;
+  let bestDeliverable: string | null = firstStepHandoff;
   let handoff: { from: string; content: string } | null = firstStepHandoff
     ? { from: fromStep > 0 ? ctx.agents[fromStep - 1]?.name ?? "Previous agent" : "Previous agent", content: firstStepHandoff }
     : null;
   for (let i = fromStep; i < ctx.agents.length; i++) {
     const agent = ctx.agents[i];
     const stepHandoff = handoff?.content ?? null;
+    // Once a real email was sent, the delivery goal is terminally satisfied.
+    // Skip every downstream agent before it can ask another form, create a
+    // draft, request another approval, or send again. Existing legacy flows
+    // with workflow-wide grants are therefore safe immediately.
+    const completedSend = (await completedEmailActions(ctx.runId)).find((action) => action.toolName === "send_email");
+    if (completedSend && completedSend.agentId !== agent.agentId) {
+      await appendEvent({
+        runId: ctx.runId, userId: ctx.userId, agentId: agent.agentId,
+        eventType: "action_blocked", title: "Agent skipped — email already sent",
+        description: `${agent.name} was not run because this workflow already sent its email successfully.`,
+        decision: "blocked", actorType: "system",
+        metadata: { completedTool: completedSend.toolName, invariant: "stop_after_send" }
+      });
+      await opts?.onAgentStepComplete?.(i + 1);
+      continue;
+    }
     // On resume, the fromStep's handoff event was already emitted before the
     // pause — do not re-emit it. Later steps are genuinely new.
     const resumingThisStep = i === fromStep && (firstApprovedCall != null || Boolean(opts?.firstStepResuming));

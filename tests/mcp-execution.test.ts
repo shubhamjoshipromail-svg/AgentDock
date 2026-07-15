@@ -355,6 +355,36 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     })).toBe(1);
   });
 
+  it("stops downstream agents after one real email send", async () => {
+    const user = await createTestUser();
+    const { workflow } = await seedGmailFlow(user.id);
+    await storeGoogleOAuthToken(user.id, { accessToken: "ya29.LIVE", expiresAt: Date.now() + 3_600_000 });
+    const downstream = await prisma.agent.create({
+      data: { userId: user.id, name: "Redundant Sender", category: "Comms", provider: "OpenAI", verified: true, description: "Would send again.", systemPrompt: "Ask a form, draft, then send.", model: "claude-sonnet-4-6" }
+    });
+    await prisma.workflowAgent.create({
+      data: { workflowId: workflow.id, agentId: downstream.id, roleInWorkflow: "send again", routeOrder: 2, defaultMode: "auto" }
+    });
+
+    llm.queue = [{ text: TOOL_ARGS("send_email", { to: "a@example.com", subject: "Hi", body: "Hello" }) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
+
+    // Only the first agent gets a synthesis completion. The downstream agent
+    // must be skipped without a model call, form, approval, draft, or send.
+    llm.queue = [{ text: FINAL("The email was sent once.") }];
+    await resumeAfterApproval(user.id, approval.id, true);
+
+    const finalRun = await prisma.workflowRun.findUniqueOrThrow({ where: { id: run.id } });
+    expect(finalRun.status).toBe("completed");
+    expect(callMcpToolMock).toHaveBeenCalledTimes(1);
+    expect(await prisma.approvalRequest.count({ where: { workflowRunId: run.id } })).toBe(1);
+    expect(await prisma.workflowRunEvent.count({
+      where: { workflowRunId: run.id, title: "Agent skipped — email already sent" }
+    })).toBe(1);
+  });
+
   it("resume does not re-emit the memory_access events already recorded before the pause", async () => {
     const user = await createTestUser();
     const { agent, workflow } = await seedGmailFlow(user.id);

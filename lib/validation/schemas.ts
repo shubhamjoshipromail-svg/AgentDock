@@ -14,6 +14,7 @@ export const createFlowAgentSchema = z.object({
 
 export const createFlowToolSchema = z.object({
   mcpServerId: z.string().uuid(),
+  agentId: z.string().uuid().optional(),
   purpose: z.string().optional(),
   defaultPermission: z.enum(["read_only", "draft_only", "approval_required", "blocked"]).optional()
 });

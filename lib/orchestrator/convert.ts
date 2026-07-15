@@ -27,6 +27,7 @@ export function planToSaveInput(plan: PlannedFlow): CreateFlowInput {
     })),
     tools: plan.tools.map((tool) => ({
       mcpServerId: tool.mcpServerId,
+      agentId: plan.agents.find((agent) => agent.order === tool.agentOrder)?.agentId,
       purpose: tool.rationale,
       defaultPermission: tool.effectivePermission
     })),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ensureDraftGate, ensureSendGate, missingCapabilities, requiredCapabilities, toolCapabilities
+  enforceSingleDeliveryPath, ensureDraftGate, ensureSendGate, missingCapabilities, requiredCapabilities, toolCapabilities
 } from "../lib/orchestrator/capabilities";
 import { serializeSnapshot } from "../lib/orchestrator/prompt";
 import { resolvePlan } from "../lib/orchestrator/resolve";
@@ -72,6 +72,7 @@ function planWith(tools: ResolvedTool[], gates = 0): ResolvedFlow {
 function asResolved(t: CatalogSnapshotTool): ResolvedTool {
   return {
     key: t.key as string, serverName: t.serverName, displayName: t.displayName, mcpServerId: t.id,
+    agentOrder: 1,
     requestedPermission: t.recommendedPermission, recommendedPermission: t.recommendedPermission,
     riskLevel: t.riskLevel, verificationStatus: t.verificationStatus, isExternalSend: t.isExternalSend, rationale: "picked"
   };
@@ -159,6 +160,16 @@ describe("ensureSendGate — Rule 6 validated, not just suggested", () => {
     ensureSendGate(gated, w2);
     expect(gated.approvalGates).toHaveLength(1);
     expect(w2).toEqual([]);
+  });
+});
+
+describe("enforceSingleDeliveryPath — one terminal email path", () => {
+  it("removes create_draft when a send goal already has send_email", () => {
+    const plan = planWith([asResolved(BIG_CATALOG.tools[7]), asResolved(BIG_CATALOG.tools[9])]);
+    const warnings: string[] = [];
+    enforceSingleDeliveryPath(plan, ["send"], warnings);
+    expect(plan.tools.map((tool) => tool.key)).toEqual(["gmail:send_email"]);
+    expect(warnings[0]).toContain("redundant draft tool");
   });
 });
 

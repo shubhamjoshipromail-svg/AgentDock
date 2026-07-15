@@ -15,6 +15,7 @@ export type ResolvedTool = {
   serverName: string;
   displayName: string;
   mcpServerId: string;
+  agentOrder: number;
   requestedPermission: McpDefaultPermission;
   recommendedPermission: McpDefaultPermission;
   riskLevel: McpRiskLevel;
@@ -205,11 +206,26 @@ export function resolvePlan(
       });
       continue;
     }
+    const explicitOwner = tool.agentOrder === undefined
+      ? undefined
+      : remap.find((entry) => entry.originalOrder === tool.agentOrder);
+    const defaultOwner = match.recommendedPermission === "read_only" && !match.isExternalSend
+      ? remap[0]
+      : remap[remap.length - 1];
+    const owner = explicitOwner ?? defaultOwner;
+    if (!owner) {
+      failures.push({ kind: "tool", asked, reason: "cannot assign the tool because no resolved agent owns it", closestMatches: [] });
+      continue;
+    }
+    if (tool.agentOrder !== undefined && !explicitOwner) {
+      warnings.push(`Re-pointed ${match.displayName} from missing agent order ${tool.agentOrder} to agent ${owner.newOrder} (${owner.match.name}).`);
+    }
     tools.push({
       key: match.key,
       serverName: match.serverName,
       displayName: match.displayName,
       mcpServerId: match.id,
+      agentOrder: owner.newOrder,
       requestedPermission: tool.requestedPermission,
       recommendedPermission: match.recommendedPermission,
       riskLevel: match.riskLevel,

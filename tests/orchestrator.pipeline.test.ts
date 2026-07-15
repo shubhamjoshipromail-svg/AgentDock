@@ -186,6 +186,7 @@ describe("resolvePlan", () => {
 function resolvedTool(partial: Partial<ResolvedTool> & Pick<ResolvedTool, "requestedPermission">): ResolvedTool {
   return {
     key: "t:do_thing", serverName: "T", displayName: "T", mcpServerId: "00000000-0000-4000-8000-000000000000", isExternalSend: false,
+    agentOrder: 1,
     recommendedPermission: "read_only", riskLevel: "low", verificationStatus: "verified", rationale: "because",
     ...partial
   };
@@ -290,6 +291,7 @@ describe("planToSaveInput", () => {
     // Budget 0 became a positive default; tool carries the clamped permission.
     expect(payload.weeklyBudgetCents).toBeGreaterThan(0);
     expect(payload.tools?.[0].defaultPermission).toBe("approval_required");
+    expect(payload.tools?.[0].agentId).toBe(plan.agents[0].agentId);
     expect(payload.approvalMode).toBe("approval_gated");
   });
 
@@ -338,6 +340,8 @@ describe("prompt integrity (Chunk 19: plan by canonical identity)", () => {
     expect(system).toContain("Do not select an agent whose role is only sending or dispatching");
     expect(system).toContain("create the draft exactly once");
     expect(system).not.toContain("do NOT silently downgrade");
+    expect(system).toContain("every tool has exactly one agentOrder");
+    expect(system).toContain("Never expose every tool to every agent");
   });
 
   it("the example is generated from the live snapshot — it never teaches a dead name", () => {

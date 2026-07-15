@@ -53,7 +53,7 @@ const SCHEMA_DESCRIPTION = `Respond with ONLY a single JSON object (no markdown,
   "name": string (3-80 chars, a short flow title),
   "goal": string (3-500 chars, restate the user's goal),
   "agents": [ { "agentId": string (MUST be an id from AGENTS above), "agentName": string (that agent's name, for readability), "role": string (3-120), "order": integer >= 1, "rationale": string (3-300) } ]  // 1-8 items,
-  "tools": [ { "key": string (MUST be a key from TOOLS above, e.g. "search:web_search"), "requestedPermission": "read_only"|"draft_only"|"approval_required"|"blocked", "rationale": string (3-300) } ]  // 0-6 items,
+  "tools": [ { "key": string (MUST be a key from TOOLS above, e.g. "search:web_search"), "agentOrder": integer (MUST match the ONE agent order that will use this tool), "requestedPermission": "read_only"|"draft_only"|"approval_required"|"blocked", "rationale": string (3-300) } ]  // 0-6 items,
   "memoryAttachments": [ { "partitionId": string (MUST be an id from MEMORY above), "partitionName": string (readability), "access": "read"|"read_write", "rationale": string (3-300) } ]  // 0-8 items,
   "approvalGates": [ { "afterAgentOrder": integer, "trigger": string (3-200), "actionType": string (3-80) } ]  // 0-4 items,
   "estimatedBudgetCents": integer (0-100000),
@@ -70,8 +70,8 @@ export function buildExample(snapshot: CatalogSnapshot): string {
   const agentId = agent?.id ?? "<agent-id-from-AGENTS>";
   const agentName = agent?.name ?? "<agent-name>";
   const toolPart = tool
-    ? `{"key":"${tool.key}","requestedPermission":"read_only","rationale":"Public lookups."}`
-    : `{"key":"<key-from-TOOLS>","requestedPermission":"read_only","rationale":"Public lookups."}`;
+    ? `{"key":"${tool.key}","agentOrder":1,"requestedPermission":"read_only","rationale":"Public lookups."}`
+    : `{"key":"<key-from-TOOLS>","agentOrder":1,"requestedPermission":"read_only","rationale":"Public lookups."}`;
   return `Example (shape only — ids/keys copied from THIS catalog): {"name":"Research brief","goal":"Summarize three companies.","agents":[{"agentId":"${agentId}","agentName":"${agentName}","role":"Summarize companies","order":1,"rationale":"Reads public sources."}],"tools":[${toolPart}],"memoryAttachments":[],"approvalGates":[],"estimatedBudgetCents":200,"risks":[{"level":"low","description":"Summaries may omit recent news."}]}`;
 }
 
@@ -82,7 +82,7 @@ export function buildPrompt(
 ): { system: string; user: string } {
   const deliveryRule = options.draftOnlySendFallback
     ? "6. DRAFT-ONLY DELIVERY: real sending is disabled for this account. If the goal asks to SEND, attach the available draft/compose tool with requestedPermission \"draft_only\" and add an approvalGate after the final drafting step. Do not invent or select a send tool. Do not select an agent whose role is only sending or dispatching; end with a drafting-capable agent instead. Keep the flow minimal and create the draft exactly once. The user will review the real draft in their connected account."
-    : "6. SENDING: if the goal explicitly asks to SEND (not merely draft) an email or message, you MUST (a) include a final agent step whose role is to send it — prefer an agent named for sending/dispatch if one exists in the catalog — (b) attach the email SEND tool (the one that actually sends, not the draft-only tool) with requestedPermission \"approval_required\", and (c) add an approvalGate after that step. Sending is allowed BECAUSE it is approval-gated (the user approves the exact email before delivery) — do NOT silently downgrade an explicit 'send' to a draft. Rule 2's conservatism does not mean dropping a capability the goal explicitly requires.";
+    : "6. SENDING: if the goal explicitly asks to SEND (not merely draft) an email or message, include exactly one final delivery step, attach the actual SEND tool (not create_draft) to that agentOrder with requestedPermission \"approval_required\", and add one approvalGate after that step. Do not attach both draft and send tools unless the user explicitly requested a separate saved-draft review stage. Sending is allowed BECAUSE it is approval-gated — do NOT silently downgrade an explicit send to a draft.";
   const system = [
     "You are AgentDock's flow planner. You PLAN multi-agent flows; you never execute anything.",
     "",
@@ -93,6 +93,8 @@ export function buildPrompt(
     "4. Respond with ONLY the JSON object. No markdown, no code fences, no commentary.",
     "5. RESEARCH: if the goal involves researching, looking up, finding, or summarizing public information, you MUST include a research/search tool (e.g. the web search tool) with read_only, so the flow can actually research. Never plan a research goal with no search tool.",
     deliveryRule,
+    "7. MINIMAL FLOW: use the fewest non-overlapping agents needed. For research-and-send, use a research step and one final send step (or one agent that can do both). Do not add a separate Brief Draft Assistant unless the user explicitly asks to save/review a draft before sending.",
+    "8. TOOL OWNERSHIP: every tool has exactly one agentOrder. Assign search/read tools only to the agent that researches, draft tools only to the drafting agent, and send tools only to the final sending agent. Never expose every tool to every agent.",
     "",
     SCHEMA_DESCRIPTION,
     "",

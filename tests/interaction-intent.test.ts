@@ -283,6 +283,57 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     expect(llm.prompts.some((prompt) => prompt.includes("execs"))).toBe(true);
   });
 
+  it("does not show a second hardcoded form after the user already answered", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow } = await seedAgentFlow(user.id, { withDraft: true });
+
+    llm.queue = [{ text: INTENT("form", FORM_PAYLOAD) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const form = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id, intentType: "form" } });
+    await resolveApproval(
+      new Request(`http://localhost/api/approvals/${form.id}/resolve`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: { values: { audience: "me", tone: "neutral", key_point: "the research summary" } } })
+      }),
+      { params: Promise.resolve({ id: form.id }) }
+    );
+
+    // Production repro: the model asks another three-field form. The engine
+    // suppresses it, feeds back the prior response, and proceeds to the action.
+    llm.queue = [
+      { text: INTENT("form", { ...FORM_PAYLOAD, prompt: "Tell me about the draft email" }) },
+      { text: TOOL_ARGS("create_draft", { to: "u@example.com", subject: "Summary", body: "Research summary" }) }
+    ];
+    expect((await resumeAfterApproval(user.id, form.id, true))?.status).toBe("paused_for_approval");
+    expect(await prisma.approvalRequest.count({ where: { workflowRunId: run.id, intentType: "form" } })).toBe(1);
+    expect(await prisma.workflowRunEvent.count({
+      where: { workflowRunId: run.id, title: "Redundant input request suppressed" }
+    })).toBe(1);
+  });
+
+  it("allows a different A2UI type after a form (missing topic → researched choice)", async () => {
+    const user = await createTestUser();
+    setCurrentUser(user);
+    const { workflow } = await seedAgentFlow(user.id);
+    llm.queue = [{ text: INTENT("form", FORM_PAYLOAD) }];
+    await startRun(user.id, workflow.id);
+    const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
+    const form = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id, intentType: "form" } });
+    await resolveApproval(
+      new Request(`http://localhost/api/approvals/${form.id}/resolve`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: { values: { audience: "me", tone: "neutral", key_point: "options" } } })
+      }),
+      { params: Promise.resolve({ id: form.id }) }
+    );
+
+    llm.queue = [{ text: INTENT("choice", CHOICE_PAYLOAD) }];
+    expect((await resumeAfterApproval(user.id, form.id, true))?.status).toBe("paused_for_approval");
+    expect(await prisma.approvalRequest.count({ where: { workflowRunId: run.id, intentType: "choice" } })).toBe(1);
+  });
+
   it("RED-TEAM injection: instruction-like text in a response is framed as inert data", async () => {
     const evil = {
       prompt: "Pick",

@@ -122,3 +122,37 @@ export function ensureDraftGate(plan: ResolvedFlow, warnings: string[]): void {
   });
   warnings.push("Approval gate auto-added before draft creation (drafts write to the connected account).");
 }
+
+// A normal delivery goal chooses one terminal path: draft OR send. Attaching
+// both made every workflow-scoped agent see both Gmail actions and produced a
+// draft plus repeated sends. A separate draft-review stage remains possible only
+// when the goal itself explicitly requires drafting (the caller passes both).
+export function enforceSingleDeliveryPath(
+  plan: ResolvedFlow,
+  required: Capability[],
+  warnings: string[]
+): void {
+  const needsSend = required.includes("send");
+  const needsDraft = required.includes("draft");
+  if (needsSend && !needsDraft && plan.tools.some((tool) => toolCapabilities(tool).includes("send"))) {
+    const sendingServers = new Set(
+      plan.tools
+        .filter((tool) => toolCapabilities(tool).includes("send"))
+        .map((tool) => tool.key.split(":")[0])
+    );
+    const before = plan.tools.length;
+    plan.tools = plan.tools.filter((tool) =>
+      !toolCapabilities(tool).includes("draft") || !sendingServers.has(tool.key.split(":")[0])
+    );
+    if (plan.tools.length !== before) {
+      warnings.push("Removed the redundant draft tool because this goal uses one approval-gated send path.");
+    }
+  }
+  if (needsDraft && !needsSend) {
+    const before = plan.tools.length;
+    plan.tools = plan.tools.filter((tool) => !toolCapabilities(tool).includes("send"));
+    if (plan.tools.length !== before) {
+      warnings.push("Removed the send tool because this goal requests a draft, not delivery.");
+    }
+  }
+}

@@ -5,7 +5,7 @@ import { recordProductEvent } from "../../../../lib/analytics/product-events";
 import { getRunProvider } from "../../../../lib/execution/provider";
 import { getProvider } from "../../../../lib/llm";
 import { runIdempotently } from "../../../../lib/idempotency";
-import { ensureDraftGate, ensureSendGate, missingCapabilities, requiredCapabilities, RESEARCH_GOAL, toolCapabilities } from "../../../../lib/orchestrator/capabilities";
+import { enforceSingleDeliveryPath, ensureDraftGate, ensureSendGate, missingCapabilities, requiredCapabilities, RESEARCH_GOAL, toolCapabilities } from "../../../../lib/orchestrator/capabilities";
 import { clampPermissions } from "../../../../lib/orchestrator/clamp";
 import { planToSaveInput } from "../../../../lib/orchestrator/convert";
 import { buildPrompt } from "../../../../lib/orchestrator/prompt";
@@ -62,6 +62,7 @@ function ensureSearchAttached(
     serverName: search.serverName,
     displayName: search.displayName,
     mcpServerId: search.id,
+    agentOrder: plan.agents[0]?.order ?? 1,
     requestedPermission: "read_only",
     recommendedPermission: search.recommendedPermission,
     riskLevel: search.riskLevel,
@@ -283,6 +284,7 @@ export async function POST(request: Request) {
     // Auto-repairs first (read-only search attach, send approval gate) so the
     // capability check reflects the plan the user would actually get.
     ensureSearchAttached(r.plan, snapshot, goal, r.warnings);
+    enforceSingleDeliveryPath(r.plan, required, r.warnings);
     ensureSendGate(r.plan, r.warnings);
     if (required.includes("draft")) ensureDraftGate(r.plan, r.warnings);
     const gaps = missingCapabilities(r.plan, snapshot, required);
