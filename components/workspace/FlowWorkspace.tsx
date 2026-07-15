@@ -839,20 +839,20 @@ export function FlowWorkspace({
 
       {/* BOTTOM DRAWERS — heavy sub-tasks expand in place; they never replace the
           flow surface, so you never lose sight of the flow to do a sub-task. */}
-      <div className="wsDrawers">
-        <div className="wsDrawerTabs">
-          <button className="wsDrawerTab" data-active={openDrawer === "build"} onClick={() => toggleDrawer("build")}>
+      <div className="wsDrawers" data-open={openDrawer ?? undefined}>
+        <div className="wsDrawerTabs" role="tablist" aria-label="Workspace tools">
+          <button role="tab" aria-selected={openDrawer === "build"} className="wsDrawerTab" data-active={openDrawer === "build"} onClick={() => toggleDrawer("build")}>
             {openDrawer === "build" ? "⌃" : "⌄"} Build canvas
           </button>
-          <button className="wsDrawerTab" data-active={openDrawer === "connect"} onClick={() => toggleDrawer("connect")}>
+          <button role="tab" aria-selected={openDrawer === "connect"} className="wsDrawerTab" data-active={openDrawer === "connect"} onClick={() => toggleDrawer("connect")}>
             {openDrawer === "connect" ? "⌃" : "⌄"} Connect a server
           </button>
-          <button className="wsDrawerTab" data-active={openDrawer === "activity"} onClick={() => toggleDrawer("activity")}>
+          <button role="tab" aria-selected={openDrawer === "activity"} className="wsDrawerTab" data-active={openDrawer === "activity"} onClick={() => toggleDrawer("activity")}>
             {openDrawer === "activity" ? "⌃" : "⌄"} Activity
           </button>
         </div>
         {openDrawer === "build" && (
-          <div className="wsDrawerPanel">
+          <div className="wsDrawerPanel" data-drawer="build" role="tabpanel">
             <Builder
               prompt={describeText}
               setPrompt={setDescribeText}
@@ -872,10 +872,10 @@ export function FlowWorkspace({
           </div>
         )}
         {openDrawer === "connect" && (
-          <div className="wsDrawerPanel"><ConnectPanel /></div>
+          <div className="wsDrawerPanel" data-drawer="connect" role="tabpanel"><ConnectPanel /></div>
         )}
         {openDrawer === "activity" && (
-          <div className="wsDrawerPanel"><ControlPlane /></div>
+          <div className="wsDrawerPanel" data-drawer="activity" role="tabpanel"><ControlPlane /></div>
         )}
       </div>
     </div>

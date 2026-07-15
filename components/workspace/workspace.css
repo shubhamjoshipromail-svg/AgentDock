@@ -746,11 +746,17 @@
   background: var(--bg-raised);
   display: flex;
   flex-direction: column;
+  min-height: 0;
+}
+
+.wsDrawers[data-open] {
+  height: min(56vh, 620px);
   max-height: 60%;
 }
 
 .wsDrawerTabs {
   display: flex;
+  flex-shrink: 0;
   gap: 0;
 }
 
@@ -777,8 +783,25 @@
 .wsDrawerPanel {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border-top: 1px solid var(--line);
+}
+
+.wsDrawerPanel[data-drawer="build"],
+.wsDrawerPanel[data-drawer="activity"] {
+  padding: var(--sp-4);
+}
+
+.wsDrawerPanel[data-drawer="connect"] .connectRoot {
+  padding: var(--sp-4);
+}
+
+.wsDrawerPanel[data-drawer="build"] > .buildWorkspace,
+.wsDrawerPanel[data-drawer="activity"] > .controlPlanePage {
+  min-height: 100%;
 }
 
 /* --- Empty glyph (teaching empty states) --- */

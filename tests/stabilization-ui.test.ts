@@ -52,4 +52,29 @@ describe("stabilization UI invariants", () => {
     expect(legacyPanel).not.toContain("startRealRun");
     expect(legacyPanel).not.toContain("Run for real");
   });
+
+  it("Chunk 21: open drawers get a bounded height, one active tab, and internal scrolling", () => {
+    const workspace = source("components/workspace/FlowWorkspace.tsx");
+    const css = source("components/workspace/workspace.css");
+
+    expect(workspace).toContain('data-open={openDrawer ?? undefined}');
+    expect(workspace).toContain('role="tablist"');
+    expect(workspace.match(/aria-selected={openDrawer ===/g)).toHaveLength(3);
+    expect(workspace).toContain('data-drawer="build"');
+    expect(workspace).toContain('data-drawer="connect"');
+    expect(workspace).toContain('data-drawer="activity"');
+    expect(css).toContain('.wsDrawers[data-open]');
+    expect(css).toContain('height: min(56vh, 620px)');
+    expect(css).toContain('overflow-y: auto');
+    expect(css).toContain('scrollbar-gutter: stable');
+  });
+
+  it("Chunk 21: the goal anchor never renders as a fake participant detail card", () => {
+    const builder = source("components/build/Builder.tsx");
+
+    expect(builder).toContain('selectedNode && selectedNode.type !== "goal"');
+    expect(builder).toContain('selectedNode?.type === "goal"');
+    expect(builder).toContain('title="Select a participant"');
+    expect(builder).toContain("has no grants, risk, cost, or execution settings");
+  });
 });

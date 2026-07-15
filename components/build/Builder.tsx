@@ -33,9 +33,9 @@ import { Badge, Button, DetailBlock, EmptyState } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 
 const EXAMPLE_GOALS = [
-  "Find AI platform roles, tailor my resume, and draft outreach for approval.",
-  "Research 5 competitors and draft a weekly market digest for approval.",
-  "Triage new GitHub issues and draft replies without posting."
+  "Research the latest governed-agent developments and draft an email summary.",
+  "Research AI agent platforms, let me choose three, and draft an email of my picks.",
+  "Ask for an audience, tone, and key point, then create a Gmail draft."
 ];
 
 
@@ -334,7 +334,7 @@ export function Builder({
     (server) => Boolean(server.mcpServerKey && server.mcpToolName)
   );
 
-  const stepDetails = selectedNode
+  const stepDetails = selectedNode && selectedNode.type !== "goal"
     ? {
         purpose: stepDisplayNames[selectedNode.name] ?? selectedNode.approvalMode ?? "Flow component.",
         type: selectedNode.type === "control" ? "approval" : selectedNode.type === "mcp" ? "tool" : selectedNode.type,
@@ -568,6 +568,11 @@ export function Builder({
             ) : (
               <EmptyState title="No plan yet" body="Describe an outcome and press Plan flow. The plan appears here and on the canvas." />
             )
+          ) : selectedNode?.type === "goal" ? (
+            <EmptyState
+              title="Select a participant"
+              body="The goal anchors the flow but has no grants, risk, cost, or execution settings. Select an agent or tool node to inspect what it does and what it can access."
+            />
           ) : selectedNode && stepDetails ? (
             <>
               <div className="inspectorBlock">
@@ -580,12 +585,10 @@ export function Builder({
                   <DetailBlock label="Cost" value={stepDetails.cost} />
                   <DetailBlock label="Approvals" value={stepDetails.approvals} />
                 </div>
-                {selectedNode.type !== "goal" && (
-                  <div className="inspectorActions">
-                    <Button variant="danger" size="sm" onClick={() => onRemoveNode(selectedNode.id)}>Remove from canvas</Button>
-                    <Button variant="ghost" size="sm" onClick={onViewLogs}>View timeline</Button>
-                  </div>
-                )}
+                <div className="inspectorActions">
+                  <Button variant="danger" size="sm" onClick={() => onRemoveNode(selectedNode.id)}>Remove from canvas</Button>
+                  <Button variant="ghost" size="sm" onClick={onViewLogs}>View timeline</Button>
+                </div>
               </div>
               <div className="inspectorBlock">
                 <h3>Tool grants</h3>
