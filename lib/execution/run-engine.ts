@@ -286,7 +286,7 @@ export type RunResult = {
 // rest). This stays the single source of "what can run".
 export async function loadRunnable(userId: string, workflowId: string): Promise<{ workflow: { id: string; goal: string }; agents: RunnableAgent[] } | null> {
   const workflow = await prisma.workflow.findFirst({
-    where: { id: workflowId, userId },
+    where: { id: workflowId, userId, status: { not: "archived" } },
     include: {
       workflowAgents: { include: { agent: true }, orderBy: { routeOrder: "asc" } }
     }

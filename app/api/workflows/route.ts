@@ -291,7 +291,7 @@ async function saveWorkflowForUser(userId: string, body: CreateWorkflowInput, se
 
 async function findWorkflowsForUser(userId: string) {
   return prisma.workflow.findMany({
-    where: { userId },
+    where: { userId, status: { not: "archived" } },
     include: workflowInclude,
     orderBy: { updatedAt: "desc" }
   });

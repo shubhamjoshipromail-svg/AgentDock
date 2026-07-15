@@ -16,4 +16,12 @@ describe("stabilization UI invariants", () => {
     expect(workspace).toContain("setPrompt={setDescribeText}");
     expect(workspace).toContain('{openDrawer !== "build" && (');
   });
+
+  it("E5: the selected flow exposes a soft-archive action that clears the workspace selection", () => {
+    const workspace = source("components/workspace/FlowWorkspace.tsx");
+
+    expect(workspace).toContain("archiveFlow(flowId)");
+    expect(workspace).toContain("Archive flow");
+    expect(workspace).toContain("onFlowChange?.(null)");
+  });
 });

@@ -7,6 +7,7 @@ import { isTerminalRunStatus } from "../../lib/runs/terminal";
 import type { ResolutionReport } from "../../lib/orchestrator/schema";
 
 import {
+  archiveFlow,
   attachToolToFlow,
   killRealRun,
   listConnections,
@@ -96,6 +97,7 @@ export function FlowWorkspace({
 
   const [flows, setFlows] = useState<PersistedWorkflow[]>([]);
   const [flow, setFlow] = useState<PersistedWorkflow | null>(null);
+  const [archivingFlow, setArchivingFlow] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedP, setSelectedP] = useState<string | null>(null);
   // Which participant's inline "+ grant tool" picker is open (agentId), if any.
@@ -315,6 +317,28 @@ export function FlowWorkspace({
     }
   };
 
+  const handleArchiveFlow = async () => {
+    if (!flowId || !flow) return;
+    if (!window.confirm(`Archive “${flow.name}”? Its run history and audit trail will be preserved.`)) return;
+
+    setArchivingFlow(true);
+    try {
+      await archiveFlow(flowId);
+      setFlows((current) => current.filter((item) => item.id !== flowId));
+      setFlow(null);
+      setParticipants([]);
+      setSelectedP(null);
+      setRun({ runId: null, status: "", output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
+      onFlowChange?.(null);
+      toast("Flow archived. Its run history is still available in Activity.", "ok");
+      await loadFlows();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to archive flow.", "danger");
+    } finally {
+      setArchivingFlow(false);
+    }
+  };
+
   const handleApprove = async (approvalId: string, approved: boolean) => {
     try {
       await resolveApproval(approvalId, approved ? "approved" : "denied");
@@ -449,7 +473,14 @@ export function FlowWorkspace({
               </option>
             ))}
           </select>
-          {flow && <span className="wsFlowName">{flow.name}</span>}
+          {flow && (
+            <>
+              <span className="wsFlowName">{flow.name}</span>
+              <Button variant="ghost" size="sm" title="Archive flow" loading={archivingFlow} disabled={running} onClick={handleArchiveFlow}>
+                Archive
+              </Button>
+            </>
+          )}
         </div>
         <div className="wsHeaderControls">
           {flow && (

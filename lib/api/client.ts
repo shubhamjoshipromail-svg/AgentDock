@@ -81,6 +81,14 @@ export function saveFlow(payload: SaveFlowInput, fallbackMessage = "Flow save fa
   );
 }
 
+export function archiveFlow(id: string, fallbackMessage = "Unable to archive flow.") {
+  return request<{ workflow: { id: string; name: string; status: string } }>(
+    `/api/workflows/${id}/archive`,
+    fallbackMessage,
+    { method: "POST" }
+  );
+}
+
 export function listRuns(fallbackMessage = "Unable to load runs.") {
   return request<{ workflowRuns: PersistedWorkflowRun[] }>("/api/workflow-runs", fallbackMessage);
 }
