@@ -195,10 +195,21 @@
 }
 
 .attnWindowContext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: var(--fs-13);
   color: var(--text-secondary);
 }
 .attnWindowContext strong { color: var(--text-primary); font-weight: 600; }
+
+.attnWindowEyebrow {
+  color: var(--warn);
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 
 .attnWindowClose {
   border: 1px solid var(--line);
@@ -216,6 +227,22 @@
   padding: var(--sp-6);
   overflow-y: auto;
 }
+
+.attnWindowGuide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-card);
+  background: var(--warn-bg);
+  color: var(--text-secondary);
+  font-size: var(--fs-13);
+  line-height: 1.45;
+}
+
+.attnWindowGuide strong { color: var(--text-primary); }
 
 .attnWindowFoot {
   padding: var(--sp-2) var(--sp-6);

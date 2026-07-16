@@ -8,7 +8,13 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   listPendingIntents, resolveApproval, respondToIntent, type PendingIntentSummary
 } from "../../lib/api/client";
-import { bannerState, sortNewestFirst } from "../../lib/attention/pending";
+import {
+  bannerState,
+  intentGuidance,
+  intentNotification,
+  newestUnannouncedIntent,
+  sortNewestFirst
+} from "../../lib/attention/pending";
 import { IntentSurface } from "../workspace/IntentSurface";
 import { useToast } from "../layout/Toast";
 import "./attention.css";
@@ -47,20 +53,44 @@ const DEBOUNCE_MS = 1_500;
 
 export function AttentionProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
+  const toast = useToast();
   const signedIn = Boolean(session?.user);
 
   const [intents, setIntents] = useState<PendingIntentSummary[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const lastFetchRef = useRef(0);
+  const focusedIdRef = useRef<string | null>(null);
+  const openedAtRef = useRef(0);
+  const announcedIdsRef = useRef(new Set<string>());
+  useEffect(() => { focusedIdRef.current = focusedId; }, [focusedId]);
 
   const fetchNow = useCallback(async () => {
-    if (!signedIn) { setIntents([]); return; }
+    if (!signedIn) {
+      setIntents([]);
+      announcedIdsRef.current.clear();
+      return;
+    }
     lastFetchRef.current = Date.now();
     try {
       const data = await listPendingIntents();
-      setIntents(sortNewestFirst(data.intents ?? []));
+      const next = sortNewestFirst(data.intents ?? []);
+      setIntents(next);
+
+      // A new ask should summon the user, not wait behind a tiny banner. Each
+      // intent auto-opens once per page session; closing it marks it seen and
+      // leaves the run safely paused without nagging it open every poll.
+      const unseen = newestUnannouncedIntent(next, announcedIdsRef.current);
+      if (unseen) {
+        announcedIdsRef.current.add(unseen.id);
+        toast(intentNotification(unseen), "warn");
+        if (!focusedIdRef.current) {
+          openedAtRef.current = Date.now();
+          focusedIdRef.current = unseen.id;
+          setFocusedId(unseen.id);
+        }
+      }
     } catch { /* transient — keep last known state; next poll corrects */ }
-  }, [signedIn]);
+  }, [signedIn, toast]);
 
   const trailingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refresh = useCallback(() => {
@@ -98,7 +128,6 @@ export function AttentionProvider({ children }: { children: React.ReactNode }) {
   // the window must not linger on a dead ask. But an intent opened from a live
   // run stream may be newer than our last fetch — only auto-close once a fetch
   // that STARTED AFTER the open has confirmed the intent is gone.
-  const openedAtRef = useRef(0);
   useEffect(() => {
     if (!focusedId) return;
     if (intents.some((i) => i.id === focusedId)) return;
@@ -107,12 +136,16 @@ export function AttentionProvider({ children }: { children: React.ReactNode }) {
 
   const open = useCallback((intentId: string) => {
     openedAtRef.current = Date.now();
+    focusedIdRef.current = intentId;
     setFocusedId(intentId);
     // The workspace stream can learn about an ask before our poll does —
     // re-read immediately so the window has the intent to render.
     void fetchNow();
   }, [fetchNow]);
-  const close = useCallback(() => setFocusedId(null), []);
+  const close = useCallback(() => {
+    focusedIdRef.current = null;
+    setFocusedId(null);
+  }, []);
 
   return (
     <AttentionContext.Provider value={{ intents, refresh, open, focusedId, close }}>
@@ -232,7 +265,8 @@ export function AttentionWindow() {
           <div className="attnWindowHead">
             <Dialog.Title asChild>
               <span className="attnWindowContext">
-                <strong>{intent.agentName ?? "Agent"}</strong> in <strong>{intent.flowName}</strong> is asking:
+                <span className="attnWindowEyebrow">Action needed</span>
+                <strong>{intent.agentName ?? "Agent"}</strong> in <strong>{intent.flowName}</strong>
               </span>
             </Dialog.Title>
             <Dialog.Close asChild>
@@ -240,6 +274,10 @@ export function AttentionWindow() {
             </Dialog.Close>
           </div>
           <div className="attnWindowBody">
+            <div className="attnWindowGuide" role="note">
+              <strong>What you need to do</strong>
+              <span>{intentGuidance(intent)}</span>
+            </div>
             <IntentSurface
               intent={{
                 id: intent.id,
@@ -253,7 +291,7 @@ export function AttentionWindow() {
               onResolveApproval={(id, approved) => void handleResolveApproval(id, approved)}
             />
           </div>
-          <div className="attnWindowFoot">Closing without responding keeps the run paused.</div>
+          <div className="attnWindowFoot">The run is safely paused. Closing this window does not approve or execute anything.</div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

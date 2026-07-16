@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
+import * as Dialog from "@radix-ui/react-dialog";
 
 import { isTerminalRunStatus } from "../../lib/runs/terminal";
 import type { ResolutionReport } from "../../lib/orchestrator/schema";
@@ -74,12 +75,21 @@ type RunState = {
   spentCents: number;
 };
 
+type RunNotice = {
+  title: string;
+  reason: string;
+  nextAction: string;
+  actionTarget: "retry" | "profile" | "grants" | "activity";
+};
+
 export function FlowWorkspace({
   flowId,
-  onFlowChange
+  onFlowChange,
+  onOpenProfile
 }: {
   flowId: string | null;
   onFlowChange?: (id: string | null) => void;
+  onOpenProfile?: () => void;
 }) {
   const { data: session } = useSession();
   const toast = useToast();
@@ -107,6 +117,7 @@ export function FlowWorkspace({
   const [availableTools, setAvailableTools] = useState<DiscoveredTool[]>([]);
 
   const [run, setRun] = useState<RunState>({ runId: null, status: "", output: null, steps: [], approvals: [], toolCallCount: 0, stepCount: 0, spentCents: 0 });
+  const [runNotice, setRunNotice] = useState<RunNotice | null>(null);
   const [startingRun, setStartingRun] = useState(false);
   const runStartInFlightRef = useRef(false);
   // Server truth: a run is "running" until it reaches a terminal status. Derived
@@ -255,7 +266,20 @@ export function FlowWorkspace({
         setRun((prev) => prev.runId !== runId ? prev : { ...prev, status });
         if (terminalToastedRef.current !== runId) {
           terminalToastedRef.current = runId;
-          toast(status === "completed" ? "Run complete." : `Run ended: ${status}`, status === "completed" ? "ok" : "warn");
+          if (status === "completed") {
+            toast("Run complete.", "ok");
+          } else {
+            const notice: RunNotice = {
+              title: String(data.title ?? "The run could not finish"),
+              reason: String(data.reason ?? `Run ended: ${status}`),
+              nextAction: String(data.nextAction ?? "Review the last failed step and start a new run."),
+              actionTarget: (["retry", "profile", "grants", "activity"].includes(String(data.actionTarget))
+                ? String(data.actionTarget)
+                : "activity") as RunNotice["actionTarget"]
+            };
+            setRunNotice(notice);
+            toast(`${notice.title} — action needed.`, "danger");
+          }
         }
         es.close(); // never let a terminal run keep a stream open / auto-reconnect
         return;
@@ -295,6 +319,7 @@ export function FlowWorkspace({
     runStartInFlightRef.current = true;
     const idempotencyKey = newIdempotencyKey();
     setStartingRun(true);
+    setRunNotice(null);
     try {
       terminalToastedRef.current = null;
       const result = await startRealRun(flowId, "Unable to start run.", idempotencyKey);
@@ -465,6 +490,47 @@ export function FlowWorkspace({
 
   return (
     <div className="wsShell">
+      <Dialog.Root open={Boolean(runNotice)} onOpenChange={(open) => { if (!open) setRunNotice(null); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="runNoticeOverlay" />
+          <Dialog.Content className="runNoticeWindow" aria-describedby="run-notice-reason">
+            <span className="runNoticeEyebrow">Run needs attention</span>
+            <Dialog.Title className="runNoticeTitle">{runNotice?.title}</Dialog.Title>
+            <div className="runNoticeBlock">
+              <strong>What happened</strong>
+              <p id="run-notice-reason">{runNotice?.reason}</p>
+            </div>
+            <div className="runNoticeBlock" data-tone="next">
+              <strong>What to do next</strong>
+              <p>{runNotice?.nextAction}</p>
+            </div>
+            <div className="runNoticeActions">
+              {runNotice?.actionTarget === "profile" ? (
+                <Button variant="primary" onClick={() => { setRunNotice(null); onOpenProfile?.(); }}>
+                  Show me where
+                </Button>
+              ) : runNotice?.actionTarget === "grants" ? (
+                <Button variant="primary" onClick={() => {
+                  const agentId = participants[0]?.agentId ?? null;
+                  setRunNotice(null);
+                  setSelectedP(agentId);
+                  setGrantPickerFor(agentId);
+                }}>
+                  Review tool grants
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={() => { setRunNotice(null); void handleRun(); }} disabled={running}>
+                  Start a new run
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => { setRunNotice(null); setOpenDrawer("activity"); }}>
+                Review activity
+              </Button>
+              <Dialog.Close asChild><Button variant="ghost">Close</Button></Dialog.Close>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
       {/* FULL-WIDTH RUN HEADER — flow selector + run controls + spend, always visible */}
       <header className="wsHeader">
         <div className="wsHeaderMain">

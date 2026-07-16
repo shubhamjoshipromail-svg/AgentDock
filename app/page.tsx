@@ -10,6 +10,7 @@ import { Profile } from "../components/profile/Profile";
 import { Store } from "../components/store/Store";
 import { ToastProvider } from "../components/layout/Toast";
 import { AttentionProvider, AttentionBanner, AttentionWindow } from "../components/attention/AttentionCenter";
+import { GettingStarted } from "../components/onboarding/GettingStarted";
 import type { Section } from "../lib/types";
 import { useEffect } from "react";
 
@@ -41,10 +42,18 @@ function AppInner() {
           the queue and the focused window — never a separate store. */}
       <AttentionBanner />
       <AttentionWindow />
+      <GettingStarted
+        openProfile={() => setActiveSection("Profile")}
+        openWorkspace={() => setActiveSection("Workspace")}
+      />
       <Shell activeSection={activeSection} onSelectSection={setActiveSection}>
         <BootstrapGate>
           {activeSection === "Workspace" && (
-            <FlowWorkspace flowId={workspaceFlowId} onFlowChange={setWorkspaceFlowId} />
+            <FlowWorkspace
+              flowId={workspaceFlowId}
+              onFlowChange={setWorkspaceFlowId}
+              onOpenProfile={() => setActiveSection("Profile")}
+            />
           )}
           {activeSection === "Store" && (
             <Store />

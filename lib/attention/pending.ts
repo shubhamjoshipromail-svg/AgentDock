@@ -29,3 +29,28 @@ export function bannerState(intents: PendingIntentSummary[]): BannerState {
 export function isRichIntent(intentType: string | null | undefined): boolean {
   return intentType === "choice" || intentType === "form" || intentType === "confirmation";
 }
+
+export function intentGuidance(intent: Pick<PendingIntentSummary, "intentType" | "title" | "flowName">): string {
+  if (intent.intentType === "choice") return "Choose the option or options you want, then press Continue. The run is paused until you decide.";
+  if (intent.intentType === "form") return "Fill in the requested information, then press Submit. Only the fields needed to continue are shown.";
+  if (intent.intentType === "confirmation") return "Review the request and confirm whether the run should continue.";
+  return "Review the exact action below. Approve it to resume the run, or deny it to stop the action.";
+}
+
+export function intentNotification(intent: Pick<PendingIntentSummary, "intentType" | "flowName">): string {
+  const action = intent.intentType === "choice"
+    ? "Choose an option"
+    : intent.intentType === "form"
+      ? "Provide the missing information"
+      : intent.intentType === "confirmation"
+        ? "Confirm the next step"
+        : "Approve or deny the requested action";
+  return `${intent.flowName}: ${action}.`;
+}
+
+export function newestUnannouncedIntent(
+  intents: PendingIntentSummary[],
+  announcedIds: ReadonlySet<string>
+): PendingIntentSummary | null {
+  return sortNewestFirst(intents).find((intent) => !announcedIds.has(intent.id)) ?? null;
+}

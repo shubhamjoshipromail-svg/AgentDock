@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mockAuthUserModule, setCurrentUser } from "./helpers/auth";
 import { createTestUser, prisma, resetDatabase } from "./helpers/db";
-import { bannerState, isRichIntent, sortNewestFirst } from "../lib/attention/pending";
+import {
+  bannerState,
+  intentGuidance,
+  intentNotification,
+  isRichIntent,
+  newestUnannouncedIntent,
+  sortNewestFirst
+} from "../lib/attention/pending";
 import type { PendingIntentSummary } from "../lib/api/client";
 
 vi.mock("../lib/auth-user", () => mockAuthUserModule());
@@ -80,6 +87,21 @@ describe("attention selectors — banner state derives from pending intents", ()
     expect(isRichIntent("confirmation")).toBe(true);
     expect(isRichIntent("approval")).toBe(false);
     expect(isRichIntent(null)).toBe(false);
+  });
+
+  it("new pending work automatically selects the newest unseen ask exactly once", () => {
+    const old = summary({ id: "old", requestedAt: new Date(Date.now() - 60_000).toISOString() });
+    const fresh = summary({ id: "fresh", intentType: "choice", requestedAt: new Date().toISOString() });
+    expect(newestUnannouncedIntent([old, fresh], new Set())?.id).toBe("fresh");
+    expect(newestUnannouncedIntent([old, fresh], new Set(["fresh"]))?.id).toBe("old");
+    expect(newestUnannouncedIntent([old, fresh], new Set(["fresh", "old"]))).toBeNull();
+  });
+
+  it("explains the concrete action in plain language", () => {
+    expect(intentGuidance(summary({ intentType: "choice" }))).toMatch(/choose/i);
+    expect(intentGuidance(summary({ intentType: "form" }))).toMatch(/fill/i);
+    expect(intentGuidance(summary({ intentType: "approval" }))).toMatch(/approve.*deny/i);
+    expect(intentNotification(summary({ intentType: "confirmation", flowName: "Research" }))).toContain("Research");
   });
 });
 

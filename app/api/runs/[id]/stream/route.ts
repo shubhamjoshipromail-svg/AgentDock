@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
 import { isTerminalRunStatus } from "../../../../../lib/runs/terminal";
+import { terminalRunGuidance } from "../../../../../lib/runs/guidance";
 
 const POLL_MS = 1_000;
 // How long to keep the SSE connection open when the run is terminal but the
@@ -113,9 +114,20 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
             if (!drained) {
               drained = true;
               // Send the terminal-status event so the client can close.
-              controller.enqueue(
-                sseChunk({ type: "run_terminal", runId, status })
-              );
+              let guidance = {};
+              if (status !== "completed") {
+                const lastBlock = await prisma.workflowRunEvent.findFirst({
+                  where: { workflowRunId: runId, eventType: "action_blocked" },
+                  orderBy: { createdAt: "desc" },
+                  select: { description: true }
+                });
+                const freshRun = await prisma.workflowRun.findUnique({
+                  where: { id: runId },
+                  select: { killReason: true }
+                });
+                guidance = terminalRunGuidance(status, freshRun?.killReason ?? lastBlock?.description);
+              }
+              controller.enqueue(sseChunk({ type: "run_terminal", runId, status, ...guidance }));
               setTimeout(() => {
                 try { controller.close(); } catch { /* already closed */ }
               }, TERMINAL_DRAIN_MS);
