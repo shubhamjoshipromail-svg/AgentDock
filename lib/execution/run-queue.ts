@@ -130,6 +130,14 @@ export async function createQueuedRun(
   }
 }
 
+// Make a run's job eligible for a worker again.
+//
+// INVARIANT (Chunk 22 Phase 2): never disturb a job a worker currently holds.
+// This used to unconditionally reset the row to queued/claimedBy:null, so a
+// second approval resolve could hand a run that was already executing to another
+// worker — two workers, one run. A live claim (status running with an unexpired
+// lease) is now left strictly alone; the running worker owns it until it
+// finishes or its lease expires and the normal reclaim path takes over.
 export async function enqueueRunJob(userId: string, runId: string): Promise<{ ok: boolean; status?: string }> {
   const run = await prisma.workflowRun.findFirst({
     where: { id: runId, userId },
@@ -140,14 +148,29 @@ export async function enqueueRunJob(userId: string, runId: string): Promise<{ ok
     return { ok: true, status: run.status };
   }
 
-  await prisma.runJob.upsert({
+  const existing = await prisma.runJob.findUnique({
     where: { workflowRunId: run.id },
-    create: {
-      userId,
+    select: { id: true }
+  });
+
+  if (!existing) {
+    try {
+      await prisma.runJob.create({ data: { userId, workflowRunId: run.id, status: "queued" } });
+      return { ok: true, status: "queued" };
+    } catch (err) {
+      // Lost a create race; fall through to the conditional revive below.
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2002") throw err;
+    }
+  }
+
+  // Conditional revive: everything EXCEPT a job actively held under a live lease.
+  // Expressed as a single predicate so the decision is atomic, not read-then-write.
+  const revived = await prisma.runJob.updateMany({
+    where: {
       workflowRunId: run.id,
-      status: "queued"
+      NOT: { status: "running", leaseExpiresAt: { gt: new Date() } }
     },
-    update: {
+    data: {
       status: "queued",
       claimedBy: null,
       leaseExpiresAt: null,
@@ -156,7 +179,7 @@ export async function enqueueRunJob(userId: string, runId: string): Promise<{ ok
     }
   });
 
-  return { ok: true, status: "queued" };
+  return { ok: true, status: revived.count > 0 ? "queued" : "running" };
 }
 
 export async function markRunJobFailed(userId: string, runId: string, error: string): Promise<void> {

@@ -4,10 +4,34 @@ import type { Prisma } from "@prisma/client";
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { prisma } from "../../../../../lib/prisma";
 import { parseJsonBody } from "../../../../../lib/validation/parse";
-import { approvalResolveSchema } from "../../../../../lib/validation/schemas";
+import { approvalResolveSchema, type ApprovalResolveInput } from "../../../../../lib/validation/schemas";
 import { enqueueRunJob, markRunJobFailed } from "../../../../../lib/execution/run-queue";
 import { validateIntentResponse } from "../../../../../lib/execution/interaction-intent";
 import { recordProductEvent } from "../../../../../lib/analytics/product-events";
+import { runIdempotently } from "../../../../../lib/idempotency";
+
+// ============================================================================
+// RESOLUTION IS SINGLE-SHOT.
+//
+// An approval row is a record of human consent, so resolving it must be a
+// one-way transition out of `pending` and nothing else. Two guarantees:
+//
+//  1. STATUS PRECONDITION (the invariant). Every write is a conditional update
+//     predicated on `status = pending`, so the database — not a prior read —
+//     decides who wins. A resolve of an already-resolved intent changes nothing
+//     and returns 409. This is what stops a DENIED approval being replayed into
+//     APPROVED, and stops two concurrent resolves both "succeeding".
+//
+//  2. IDEMPOTENCY (the ergonomics). An optional Idempotency-Key lets a genuine
+//     retry of the SAME logical request replay the original response instead of
+//     colliding with (1). Two distinct user actions carry two distinct keys and
+//     are still governed by (1).
+//
+// Never replace (1) with an application-level read-then-write: that is the exact
+// race this closes.
+// ============================================================================
+
+const CONFLICT = (message: string) => NextResponse.json({ message }, { status: 409 });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -25,11 +49,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   const body = parsed.data;
 
+  // The key is optional: without it the status precondition alone still makes
+  // resolution single-shot; with it, a retried request replays rather than 409s.
+  if (request.headers.get("idempotency-key")) {
+    return runIdempotently({
+      request,
+      userId: user.id,
+      scope: "approval_resolve",
+      input: { approvalId: id, ...body },
+      work: () => resolveOnce(user.id, id, body)
+    });
+  }
+
+  return resolveOnce(user.id, id, body);
+}
+
+async function resolveOnce(userId: string, id: string, body: ApprovalResolveInput): Promise<NextResponse> {
   try {
     const approval = await prisma.approvalRequest.findFirst({
       where: {
         id,
-        userId: user.id
+        userId
       },
       include: {
         workflowRun: true,
@@ -41,6 +81,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ message: "Approval request not found for the signed-in user." }, { status: 404 });
     }
 
+    // Fail fast on an obviously-resolved row. This is a courtesy, NOT the
+    // guarantee — the conditional updates below are what actually decide.
+    if (approval.status !== "pending") {
+      return CONFLICT(`This request was already ${approval.status}. Resolutions cannot be changed or replayed.`);
+    }
+
     // Non-approval interaction intent (choice/form/confirmation): validate the
     // response against the intent payload, store it, and resume the run. Choice is
     // not authorization — a consequential action still hits its own approval intent.
@@ -49,12 +95,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (!validation.ok) {
         return NextResponse.json({ message: `Invalid response: ${validation.error}` }, { status: 400 });
       }
-      const updated = await prisma.approvalRequest.update({
+
+      // Conditional: only a still-pending intent may be answered, so a second
+      // submission can never overwrite the answer the human actually gave.
+      const claimed = await prisma.approvalRequest.updateMany({
+        where: { id: approval.id, userId, status: "pending" },
+        data: { status: "responded", response: validation.data as Prisma.InputJsonValue, resolvedAt: new Date() }
+      });
+      if (claimed.count === 0) {
+        return CONFLICT("This request has already been answered.");
+      }
+
+      const updated = await prisma.approvalRequest.findUnique({
         where: { id: approval.id },
-        data: { status: "responded", response: validation.data as Prisma.InputJsonValue, resolvedAt: new Date() },
         include: { workflowRun: true, agent: true }
       });
-      const queued = await enqueueRunJob(user.id, approval.workflowRunId);
+      const queued = await enqueueRunJob(userId, approval.workflowRunId);
       return NextResponse.json({
         approvalRequest: updated,
         run: queued.ok ? { runId: approval.workflowRunId, status: queued.status ?? "queued" } : null
@@ -80,22 +136,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const effectiveStatus: "approved" | "denied" | "edited" = editing ? "edited" : body.status;
     const editedKeys = editing ? Object.keys(body.editedArgs as Record<string, string>) : [];
 
+    // Claim the resolution and write its audit row atomically. If the conditional
+    // update matches nothing, someone else already resolved this and we abort
+    // WITHOUT writing an ActivityLog row or emitting a funnel event.
     const updatedApproval = await prisma.$transaction(async (tx) => {
-      const updated = await tx.approvalRequest.update({
-        where: { id: approval.id },
+      const claimed = await tx.approvalRequest.updateMany({
+        where: { id: approval.id, userId, status: "pending" },
         data: {
           status: effectiveStatus,
           resolvedAt: new Date()
-        },
-        include: {
-          workflowRun: true,
-          agent: true
         }
       });
+      if (claimed.count === 0) return null;
 
       await tx.activityLog.create({
         data: {
-          userId: user.id,
+          userId,
           workflowId: approval.workflowRun.workflowId,
           workflowRunId: approval.workflowRunId,
           agentId: approval.agentId,
@@ -118,12 +174,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         }
       });
 
-      return updated;
+      return tx.approvalRequest.findUnique({
+        where: { id: approval.id },
+        include: { workflowRun: true, agent: true }
+      });
     });
+
+    if (!updatedApproval) {
+      return CONFLICT("This request has already been resolved. Resolutions cannot be changed or replayed.");
+    }
 
     // Funnel: an approval was resolved. `approved` is the activation-critical
     // outcome (a genuine consent to a consequential action). Ids + flag only.
-    await recordProductEvent(user.id, "approval_resolved", {
+    await recordProductEvent(userId, "approval_resolved", {
       runId: approval.workflowRunId,
       workflowId: approval.workflowRun.workflowId,
       approved: effectiveStatus === "approved"
@@ -142,7 +205,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           await tx.workflowRunEvent.create({
             data: {
               workflowRunId: approval.workflowRunId,
-              userId: user.id,
+              userId,
               agentId: approval.agentId,
               eventType: "action_blocked",
               title: editing ? "Run halted — action edited" : "Run halted — policy edited",
@@ -151,7 +214,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                 : "Policy edited; pending action not executed; run halted. Re-run to apply the updated policy.",
               decision: "blocked",
               actorType: "human",
-              actorId: user.id,
+              actorId: userId,
               authorityRef: approval.id,
               schemaVersion: 1,
               metadata: {
@@ -169,21 +232,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             data: { status: "halted_error", endedAt: new Date() }
           });
         });
-        await markRunJobFailed(user.id, approval.workflowRunId, editing ? "Action edited; edited arguments not executed." : "Policy edited; pending action not executed.");
+        await markRunJobFailed(userId, approval.workflowRunId, editing ? "Action edited; edited arguments not executed." : "Policy edited; pending action not executed.");
         run = { runId: approval.workflowRunId, status: "halted_error" };
       } else if (effectiveStatus === "denied") {
         await prisma.$transaction(async (tx) => {
           await tx.workflowRunEvent.create({
             data: {
               workflowRunId: approval.workflowRunId,
-              userId: user.id,
+              userId,
               agentId: approval.agentId,
               eventType: "action_blocked",
               title: "Approval denied",
               description: "Human denied the requested action. Run halted.",
               decision: "denied",
               actorType: "human",
-              actorId: user.id,
+              actorId: userId,
               authorityRef: approval.id,
               schemaVersion: 1,
               metadata: {
@@ -199,10 +262,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             data: { status: "halted_error", endedAt: new Date() }
           });
         });
-        await markRunJobFailed(user.id, approval.workflowRunId, "Approval denied; pending action not executed.");
+        await markRunJobFailed(userId, approval.workflowRunId, "Approval denied; pending action not executed.");
         run = { runId: approval.workflowRunId, status: "halted_error" };
       } else {
-        const queued = await enqueueRunJob(user.id, approval.workflowRunId);
+        const queued = await enqueueRunJob(userId, approval.workflowRunId);
         run = queued.ok ? { runId: approval.workflowRunId, status: queued.status ?? "queued" } : null;
       }
     }

@@ -30,7 +30,7 @@ export function readIdempotencyKey(request: Request):
 export async function runIdempotently(options: {
   request: Request;
   userId: string;
-  scope: "flow_plan" | "flow_save";
+  scope: "flow_plan" | "flow_save" | "approval_resolve";
   input: unknown;
   work: () => Promise<NextResponse>;
 }): Promise<NextResponse> {
