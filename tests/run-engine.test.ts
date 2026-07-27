@@ -286,7 +286,9 @@ describe("run engine — bounded, gated, killable", () => {
     expect(await prisma.workflowRun.count({ where: { userId: user.id, workflowId: workflow.id } })).toBe(1);
   });
 
-  it("Chunk 21: allowConcurrent is the only way around the short-window workflow guard", async () => {
+  // Chunk 22 Phase 4: the guard is no longer a time window — it is the partial
+  // unique index, and allowConcurrent is expressed inside its predicate.
+  it("allowConcurrent is the only way around the one-active-run invariant", async () => {
     const user = await createTestUser();
     const { workflow } = await seedFlow(user.id);
     const create = createQueuedRun as unknown as (

@@ -9,9 +9,11 @@ const DEFAULT_LEASE_MS = 60_000;
 const DEFAULT_POLL_MS = 2_000;
 const DEFAULT_PER_USER_CONCURRENCY = 1;
 
-// Non-terminal run statuses used by the atomic 10-second workflow guard.
+// Non-terminal run statuses. This list MUST stay in step with the predicate of
+// the `workflow_runs_active_per_flow_unique` partial index (Chunk 22 Phase 4) --
+// the index is the guarantee; this constant is only how the application avoids
+// provoking it.
 const ACTIVE_RUN_STATUSES = ["queued", "running", "pending", "waiting_for_approval", "paused_for_approval"] satisfies WorkflowRunStatus[];
-const DEFAULT_RUN_CREATION_WINDOW_MS = 10_000;
 
 export type RunJobWithRun = {
   id: string;
@@ -48,18 +50,25 @@ function dateAfter(ms: number): Date {
   return new Date(Date.now() + ms);
 }
 
+// Create a queued run for a saved flow.
+//
+// INVARIANT (Chunk 22 Phase 4): at most ONE active run per (user, flow) unless the
+// caller deliberately opts out with allowConcurrent. This is enforced by the
+// partial unique index `workflow_runs_active_per_flow_unique`, NOT by the checks
+// below -- those exist so the common path returns the existing run instead of
+// surfacing a constraint violation. Do not replace the index with a timing window;
+// that is exactly the regression this restored (see the migration's header).
 export async function createQueuedRun(
   userId: string,
   workflowId: string,
-  options: { idempotencyKey?: string; allowConcurrent?: boolean; recentWindowMs?: number } = {}
+  options: { idempotencyKey?: string; allowConcurrent?: boolean } = {}
 ): Promise<{ ok: true; result: RunResult; created: boolean } | { ok: false; status: number; message: string }> {
   const runnable = await loadRunnable(userId, workflowId);
   if (!runnable) return { ok: false, status: 404, message: "Flow not found." };
   if (runnable.agents.length === 0) return { ok: false, status: 400, message: "This flow has no agents — it was likely saved from a failed plan. Re-plan it (describe the goal again) or add agents on the build canvas." };
 
   const idempotencyKey = options.idempotencyKey ?? randomUUID();
-  const recentWindowMs = options.recentWindowMs ?? DEFAULT_RUN_CREATION_WINDOW_MS;
-  const cutoff = new Date(Date.now() - recentWindowMs);
+  const allowConcurrent = options.allowConcurrent ?? false;
   const lockKey = `${userId}:${workflowId}`;
 
   try {
@@ -75,18 +84,21 @@ export async function createQueuedRun(
       });
       if (replay) return { run: replay, created: false };
 
-      if (!options.allowConcurrent) {
-        const recent = await tx.workflowRun.findFirst({
+      // No time bound: an active run blocks a second one for as long as it is
+      // active, which is the case (a run paused for approval) the old 10-second
+      // window failed to cover.
+      if (!allowConcurrent) {
+        const active = await tx.workflowRun.findFirst({
           where: {
             userId,
             workflowId,
             status: { in: ACTIVE_RUN_STATUSES },
-            createdAt: { gte: cutoff }
+            allowConcurrent: false
           },
           orderBy: { createdAt: "desc" },
           select: { id: true, status: true }
         });
-        if (recent) return { run: recent, created: false };
+        if (active) return { run: active, created: false };
       }
 
       const created = await tx.workflowRun.create({
@@ -96,7 +108,8 @@ export async function createQueuedRun(
           status: "queued",
           riskLevel: "medium",
           startedAt: new Date(),
-          idempotencyKey
+          idempotencyKey,
+          allowConcurrent
         }
       });
 
@@ -117,14 +130,24 @@ export async function createQueuedRun(
       created: outcome.created
     };
   } catch (err) {
-    // The same key can race on different flow locks. The DB uniqueness constraint
-    // remains the final authority and returns the original run on replay.
+    // The database constraints are the final authority; the checks above only
+    // avoid provoking them. Two can fire here:
+    //   - the idempotency-key uniqueness (the same click raced itself), and
+    //   - the one-active-run index (two different clicks raced on this flow).
+    // Either way the correct answer is the run that already exists.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       const raced = await prisma.workflowRun.findUnique({
         where: { userId_idempotencyKey: { userId, idempotencyKey } },
         select: { id: true, status: true }
       });
       if (raced) return { ok: true, result: { runId: raced.id, status: raced.status }, created: false };
+
+      const active = await prisma.workflowRun.findFirst({
+        where: { userId, workflowId, status: { in: ACTIVE_RUN_STATUSES }, allowConcurrent: false },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true }
+      });
+      if (active) return { ok: true, result: { runId: active.id, status: active.status }, created: false };
     }
     throw err;
   }

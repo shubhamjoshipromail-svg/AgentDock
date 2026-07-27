@@ -375,6 +375,11 @@ model WorkflowRun {
   killReason      String?             @map("kill_reason")
   riskLevel       String              @map("risk_level")
   idempotencyKey  String?             @map("idempotency_key")
+  // Chunk 22: a deliberately-concurrent run. The one-active-run partial unique
+  // index covers only rows where this is false, so the escape hatch lives INSIDE
+  // the constraint's predicate instead of being bought by weakening it.
+  // Default false; the UI never sets it.
+  allowConcurrent Boolean             @default(false) @map("allow_concurrent")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
   user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
