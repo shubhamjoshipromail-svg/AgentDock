@@ -29,7 +29,8 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
 });
 
 import { callMcpTool } from "../lib/execution/mcp-client";
-import { startRun, resumeAfterApproval } from "../lib/execution/run-engine";
+import { startRun } from "../lib/execution/run-engine";
+import { resumeThroughQueue } from "./helpers/queue";
 import { storeGoogleOAuthToken } from "../lib/execution/credentials";
 
 const callMcpToolMock = vi.mocked(callMcpTool);
@@ -136,7 +137,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
 
     llm.queue = [{ text: FINAL("Email sent.") }];
-    await resumeAfterApproval(user.id, approval.id, true);
+    await resumeThroughQueue(user.id, approval.id, true);
 
     expect(callMcpToolMock).toHaveBeenCalledTimes(1);
     const [server, toolName, args, ctx] = callMcpToolMock.mock.calls[0];
@@ -161,7 +162,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id, status: "pending" } });
 
     llm.queue = [{ text: FINAL("Draft created in Gmail.") }];
-    expect((await resumeAfterApproval(user.id, approval.id, true))?.status).toBe("completed");
+    expect((await resumeThroughQueue(user.id, approval.id, true))?.status).toBe("completed");
 
     expect(callMcpToolMock).toHaveBeenCalledTimes(1);
     const [server, toolName, , ctx] = callMcpToolMock.mock.calls[0];
@@ -183,7 +184,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
 
     // Approve → the real send errors. The run must end honestly, NOT completed.
-    const resumeResult = await resumeAfterApproval(user.id, approval.id, true);
+    const resumeResult = await resumeThroughQueue(user.id, approval.id, true);
     expect(resumeResult?.status).toBe("halted_error");
 
     const finalRun = await prisma.workflowRun.findFirstOrThrow({ where: { id: run.id } });
@@ -293,7 +294,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
 
     llm.queue = [{ text: FINAL("The email could not be sent — required fields were missing.") }];
-    await resumeAfterApproval(user.id, approval.id, true);
+    await resumeThroughQueue(user.id, approval.id, true);
 
     // The tool was never dispatched with an empty/partial object.
     expect(callMcpToolMock).not.toHaveBeenCalled();
@@ -320,7 +321,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
       { text: TOOL_ARGS("send_email", { to: "a@example.com", subject: "Hi", body: "Hello" }) },
       { text: FINAL("The email was sent.") }
     ];
-    await resumeAfterApproval(user.id, approval.id, true);
+    await resumeThroughQueue(user.id, approval.id, true);
 
     // The approved action executed exactly once (idempotency intact).
     expect(callMcpToolMock).toHaveBeenCalledTimes(1);
@@ -344,7 +345,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     // Production repro: the approved draft succeeds, but the provider ignores
     // the finalize nudge and asks for the identical write twice more.
     llm.queue = [{ text: draft }, { text: draft }];
-    await resumeAfterApproval(user.id, approval.id, true);
+    await resumeThroughQueue(user.id, approval.id, true);
 
     const finalRun = await prisma.workflowRun.findUniqueOrThrow({ where: { id: run.id } });
     expect(finalRun.status).toBe("completed");
@@ -374,7 +375,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     // Only the first agent gets a synthesis completion. The downstream agent
     // must be skipped without a model call, form, approval, draft, or send.
     llm.queue = [{ text: FINAL("The email was sent once.") }];
-    await resumeAfterApproval(user.id, approval.id, true);
+    await resumeThroughQueue(user.id, approval.id, true);
 
     const finalRun = await prisma.workflowRun.findUniqueOrThrow({ where: { id: run.id } });
     expect(finalRun.status).toBe("completed");
@@ -404,7 +405,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
 
     llm.queue = [{ text: FINAL("Done.") }];
-    await resumeAfterApproval(user.id, approval.id, true);
+    await resumeThroughQueue(user.id, approval.id, true);
 
     // The partition was read once (pre-pause), not re-read/re-logged on resume.
     const memReads = await prisma.workflowRunEvent.count({
@@ -423,7 +424,7 @@ describe("MCP execution — governed Gmail tools through the gate", () => {
     const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
     const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
 
-    const result = await resumeAfterApproval(user.id, approval.id, false);
+    const result = await resumeThroughQueue(user.id, approval.id, false);
     expect(result?.status).toBe("halted_error");
     expect(callMcpToolMock).not.toHaveBeenCalled();
   });

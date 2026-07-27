@@ -44,7 +44,8 @@ vi.mock("../lib/execution/provider", () => ({
   }))
 }));
 
-import { startRun, resumeAfterApproval, killRun } from "../lib/execution/run-engine";
+import { startRun, killRun } from "../lib/execution/run-engine";
+import { resumeThroughQueue } from "./helpers/queue";
 import { createQueuedRun } from "../lib/execution/run-queue";
 import { POST as startRunRoute, GET as listRunsRoute } from "../app/api/runs/route";
 import { GET as runDetailRoute } from "../app/api/runs/[id]/route";
@@ -488,7 +489,7 @@ describe("run engine — bounded, gated, killable", () => {
     // Approve → resumes, executes the (stub) tool, completes.
     llm.queue = [{ text: FINAL("Used search results.") }];
     await prisma.approvalRequest.update({ where: { id: approval.id }, data: { status: "approved" } });
-    const resumed = await resumeAfterApproval(user.id, approval.id, true);
+    const resumed = await resumeThroughQueue(user.id, approval.id, true);
     expect(resumed?.status).toBe("completed");
     const evs = await events(run.id);
     expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(true);
@@ -502,7 +503,7 @@ describe("run engine — bounded, gated, killable", () => {
     const run = await prisma.workflowRun.findFirstOrThrow({ where: { userId: user.id } });
     const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
 
-    const resumed = await resumeAfterApproval(user.id, approval.id, false);
+    const resumed = await resumeThroughQueue(user.id, approval.id, false);
     expect(resumed?.status).toBe("halted_error");
     const evs = await events(run.id);
     expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
@@ -565,7 +566,7 @@ describe("run engine — bounded, gated, killable", () => {
     });
 
     llm.queue = [{ text: FINAL("should not run") }];
-    const resumed = await resumeAfterApproval(user.id, approval.id, true);
+    const resumed = await resumeThroughQueue(user.id, approval.id, true);
     expect(resumed?.status).toBe("halted_error");
 
     const evs = await events(run.id);
@@ -585,7 +586,7 @@ describe("run engine — bounded, gated, killable", () => {
     await prisma.workflowRun.update({ where: { id: run.id }, data: { totalCostCents: 3 } });
 
     llm.queue = [{ text: FINAL("should not run") }];
-    const resumed = await resumeAfterApproval(user.id, approval.id, true);
+    const resumed = await resumeThroughQueue(user.id, approval.id, true);
     expect(resumed?.status).toBe("halted_cost");
     const evs = await events(run.id);
     expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
@@ -617,7 +618,7 @@ describe("run engine — bounded, gated, killable", () => {
     const before = (await events(run.id)).length;
     // Even if someone approves after a kill, the boundary check stops execution.
     llm.queue = [{ text: FINAL("should not run") }];
-    await resumeAfterApproval(user.id, approval.id, true);
+    await resumeThroughQueue(user.id, approval.id, true);
     const evs = await events(run.id);
     expect(evs.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);
     const killed = await prisma.workflowRun.findFirstOrThrow({ where: { id: run.id } });

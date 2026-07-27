@@ -342,10 +342,15 @@ export async function processRunJob(job: RunJobWithRun, workerId: string, leaseM
     const freshJob = await prisma.runJob.findUnique({ where: { id: job.id }, select: { stepCursor: true } });
     const stepCursor = freshJob?.stepCursor ?? 0;
 
+    // Proof of ownership handed to the engine: it refuses to execute without a
+    // live lease, so the queue is the only path into a run.
+    const lease = { jobId: job.id, workerId };
+
     const result =
       job.workflowRun.status === "paused_for_approval"
-        ? await resumeRunFromLatestApproval(job.userId, job.workflowRunId)
+        ? await resumeRunFromLatestApproval(job.userId, job.workflowRunId, lease)
         : await executeExistingRun(job.userId, job.workflowRunId, {
+            lease,
             stepCursor,
             onAgentStepComplete: async (idx) => {
               await updateStepCursor(job.id, workerId, idx);

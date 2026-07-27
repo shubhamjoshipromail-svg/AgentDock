@@ -33,8 +33,6 @@ vi.mock("../lib/execution/provider", () => ({
 }));
 
 import {
-  executeExistingRun,
-  resumeAfterApproval,
   killRun
 } from "../lib/execution/run-engine";
 import {
@@ -44,6 +42,7 @@ import {
   updateStepCursor,
   completeRunJob
 } from "../lib/execution/run-queue";
+import { resumeThroughQueue } from "./helpers/queue";
 
 const FINAL = (t = "done") => JSON.stringify({ type: "final", text: t });
 const TOOL = (tool: string, action = "read", input = "q") => JSON.stringify({ type: "tool_call", tool, action, input });
@@ -171,7 +170,7 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
 
     // Resume via the approved path — the send executes.
     llm.queue = [{ text: FINAL("Email sent.") }];
-    const resumeResult = await resumeAfterApproval(user.id, approval.id, true);
+    const resumeResult = await resumeThroughQueue(user.id, approval.id, true);
     expect(resumeResult?.status).toBe("completed");
     expect(mcpCalls.calls.length).toBe(1); // send_email was called once
 
@@ -208,7 +207,7 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
     const job2 = await claimNextRunJob({ workerId: "worker-2" });
     expect(job2).not.toBeNull();
     llm.queue = [{ text: FINAL("Email sent.") }];
-    const resumeResult2 = await resumeAfterApproval(user.id, approval2.id, true);
+    const resumeResult2 = await resumeThroughQueue(user.id, approval2.id, true);
     // The idempotency guard found the prior send_email event and skipped re-execution.
     expect(resumeResult2?.status).not.toBe("halted_error");
 
@@ -241,8 +240,8 @@ describe("crash recovery — reclaim, idempotency, and semantics survive", () =>
       data: { leaseExpiresAt: new Date(Date.now() - 60_000), status: "running" }
     });
 
-    // Worker 2 reclaims. processRunJob sees paused_for_approval →
-    // calls resumeRunFromLatestApproval but no approval is approved → stays paused.
+    // Worker 2 reclaims. processRunJob sees paused_for_approval and takes the
+    // resume path, but no intent has been resolved → the run stays paused.
     const job2 = await claimNextRunJob({ workerId: "worker-2" });
     expect(job2).not.toBeNull();
     const result2 = await processRunJob(job2!, "worker-2");

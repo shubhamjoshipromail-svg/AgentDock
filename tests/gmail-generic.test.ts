@@ -34,7 +34,8 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
   };
 });
 
-import { startRun, resumeAfterApproval } from "../lib/execution/run-engine";
+import { startRun } from "../lib/execution/run-engine";
+import { resumeThroughQueue } from "./helpers/queue";
 import { registerCredentialProvider } from "../lib/execution/credential-broker";
 
 const TOOL_ARGS = (tool: string, args: Record<string, unknown>) => JSON.stringify({ type: "tool_call", tool, arguments: args });
@@ -81,7 +82,7 @@ async function runSendAndApprove(userId: string, workflowId: string, toolName: s
   expect(run.status).toBe("paused_for_approval"); // external send always halts
   const approval = await prisma.approvalRequest.findFirstOrThrow({ where: { workflowRunId: run.id } });
   llm.queue = [{ text: FINAL("sent") }];
-  await resumeAfterApproval(userId, approval.id, true);
+  await resumeThroughQueue(userId, approval.id, true);
   return run;
 }
 

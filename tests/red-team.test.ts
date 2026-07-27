@@ -35,7 +35,8 @@ vi.mock("../lib/execution/provider", () => ({
   }))
 }));
 
-import { startRun, resumeAfterApproval } from "../lib/execution/run-engine";
+import { startRun } from "../lib/execution/run-engine";
+import { resumeThroughQueue } from "./helpers/queue";
 import { encryptSecret, last4 } from "../lib/execution/crypto";
 
 const FINAL = (t = "done") => JSON.stringify({ type: "final", text: t });
@@ -128,7 +129,7 @@ describe("red-team — guarantees hold under attack", () => {
     // Revoke the grant the run depends on, then try to resume.
     await prisma.mcpAccessGrant.updateMany({ where: { userId: user.id, mcpServerId: search.id }, data: { revokedAt: new Date() } });
     llm.queue = [{ text: FINAL("should not run") }];
-    await resumeAfterApproval(user.id, approval.id, true);
+    await resumeThroughQueue(user.id, approval.id, true);
 
     const events = await evs(run.id);
     // No tool executed after the revocation.
@@ -161,7 +162,7 @@ describe("red-team — guarantees hold under attack", () => {
     expect(log).toBeTruthy();
 
     llm.queue = [{ text: FINAL("should not run") }];
-    const resumed = await resumeAfterApproval(user.id, approval.id, true);
+    const resumed = await resumeThroughQueue(user.id, approval.id, true);
     expect(resumed?.status).toBe("killed");
     const events = await evs(run.id);
     expect(events.some((e) => e.eventType === "mcp_tool_use" && e.decision === "allowed")).toBe(false);

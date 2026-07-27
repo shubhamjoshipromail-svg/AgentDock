@@ -27,7 +27,8 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
 });
 
 import { callMcpTool } from "../lib/execution/mcp-client";
-import { executeExistingRun, startRun, resumeAfterApproval, killRun } from "../lib/execution/run-engine";
+import { startRun, killRun } from "../lib/execution/run-engine";
+import { executeThroughQueue, resumeThroughQueue } from "./helpers/queue";
 import { POST as resolveApproval } from "../app/api/approvals/[id]/resolve/route";
 
 const callMcpToolMock = vi.mocked(callMcpTool);
@@ -149,7 +150,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
 
     // Resume (worker) → the selection reaches the model as framed untrusted data.
     llm.queue = [{ text: FINAL("Emailed your picks: Jazz Night and Art Walk.") }];
-    const result = await resumeAfterApproval(user.id, intent.id, true);
+    const result = await resumeThroughQueue(user.id, intent.id, true);
     expect(result?.status).toBe("completed");
     expect(await prisma.workflowRun.count({ where: { userId: user.id, workflowId: workflow.id } })).toBe(1);
     const resumePrompt = llm.prompts[llm.prompts.length - 1];
@@ -189,7 +190,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     expect(response.status).toBe(200);
 
     llm.queue = [{ text: FINAL("Summary of governed AI agents.") }];
-    expect((await resumeAfterApproval(user.id, intent.id, true))?.status).toBe("completed");
+    expect((await resumeThroughQueue(user.id, intent.id, true))?.status).toBe("completed");
     expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: run.id } })).resultText)
       .toBe("Summary of governed AI agents.");
     expect(llm.prompts[llm.prompts.length - 1]).toContain("governed AI agents");
@@ -233,7 +234,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
       { params: Promise.resolve({ id: choice.id }) }
     );
     llm.queue = [{ text: TOOL_ARGS("send_email", { to: "u@example.com", subject: "Your pick", body: "Jazz Night" }) }];
-    const result = await resumeAfterApproval(user.id, choice.id, true);
+    const result = await resumeThroughQueue(user.id, choice.id, true);
 
     // The send did NOT execute — it paused for an approval intent of its own.
     expect(result?.status).toBe("paused_for_approval");
@@ -267,7 +268,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
       { text: TOOL_ARGS("create_draft", { to: "u@example.com", subject: "For execs", body: "Crisp note: ship it." }) },
       { text: FINAL("Draft created from your brief.") }
     ];
-    const result = await resumeAfterApproval(user.id, form.id, true);
+    const result = await resumeThroughQueue(user.id, form.id, true);
     expect(result?.status).toBe("paused_for_approval");
     expect(callMcpToolMock).not.toHaveBeenCalled();
     const draftApproval = await prisma.approvalRequest.findFirstOrThrow({
@@ -275,7 +276,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     });
 
     llm.queue = [{ text: FINAL("Draft created from your brief.") }];
-    expect((await resumeAfterApproval(user.id, draftApproval.id, true))?.status).toBe("completed");
+    expect((await resumeThroughQueue(user.id, draftApproval.id, true))?.status).toBe("completed");
     expect(callMcpToolMock).toHaveBeenCalledTimes(1);
     const [, toolName] = callMcpToolMock.mock.calls[0];
     expect(toolName).toBe("create_draft");
@@ -306,7 +307,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
       { text: INTENT("form", { ...FORM_PAYLOAD, prompt: "Tell me about the draft email" }) },
       { text: TOOL_ARGS("create_draft", { to: "u@example.com", subject: "Summary", body: "Research summary" }) }
     ];
-    expect((await resumeAfterApproval(user.id, form.id, true))?.status).toBe("paused_for_approval");
+    expect((await resumeThroughQueue(user.id, form.id, true))?.status).toBe("paused_for_approval");
     expect(await prisma.approvalRequest.count({ where: { workflowRunId: run.id, intentType: "form" } })).toBe(1);
     expect(await prisma.workflowRunEvent.count({
       where: { workflowRunId: run.id, title: "Redundant input request suppressed" }
@@ -330,7 +331,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     );
 
     llm.queue = [{ text: INTENT("choice", CHOICE_PAYLOAD) }];
-    expect((await resumeAfterApproval(user.id, form.id, true))?.status).toBe("paused_for_approval");
+    expect((await resumeThroughQueue(user.id, form.id, true))?.status).toBe("paused_for_approval");
     expect(await prisma.approvalRequest.count({ where: { workflowRunId: run.id, intentType: "choice" } })).toBe(1);
   });
 
@@ -366,7 +367,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
       { params: Promise.resolve({ id: conf.id }) }
     );
     llm.queue = [{ text: TOOL_ARGS("send_email", { to: "u@example.com", subject: "s", body: "b" }) }];
-    const result = await resumeAfterApproval(user.id, conf.id, true);
+    const result = await resumeThroughQueue(user.id, conf.id, true);
 
     expect(result?.status).toBe("paused_for_approval");
     expect(callMcpToolMock).not.toHaveBeenCalled();
@@ -406,7 +407,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
     });
 
     llm.queue = [{ text: FINAL("The requested work is complete.") }];
-    expect((await executeExistingRun(user.id, run.id)).status).toBe("completed");
+    expect((await executeThroughQueue(user.id, run.id))?.status).toBe("completed");
     expect((await prisma.approvalRequest.findUniqueOrThrow({ where: { id: intent.id } })).status).toBe("expired");
   });
 
@@ -426,7 +427,7 @@ describe("choice intent — pause, respond, resume with framed selection", () =>
       }
     });
 
-    expect((await executeExistingRun(user.id, run.id)).status).toBe("halted_error");
+    expect((await executeThroughQueue(user.id, run.id))?.status).toBe("halted_error");
     expect((await prisma.approvalRequest.findUniqueOrThrow({ where: { id: intent.id } })).status).toBe("expired");
   });
 });

@@ -38,7 +38,7 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
 import { callMcpTool } from "../lib/execution/mcp-client";
 import { ensureVettedFlowsForUser, VETTED_FLOW_NAMES } from "../lib/catalog/vetted-flows";
 import { storeGoogleOAuthToken } from "../lib/execution/credentials";
-import { executeExistingRun, resumeAfterApproval } from "../lib/execution/run-engine";
+import { executeThroughQueue, resumeThroughQueue } from "./helpers/queue";
 import { POST as startRunRoute } from "../app/api/runs/route";
 import { POST as resolveApprovalRoute } from "../app/api/approvals/[id]/resolve/route";
 
@@ -57,7 +57,7 @@ async function enqueue(userId: string, workflowId: string) {
   }));
   expect(response.status).toBe(201);
   const body = await response.json();
-  await executeExistingRun(userId, body.run.runId);
+  await executeThroughQueue(userId, body.run.runId);
   return prisma.workflowRun.findUniqueOrThrow({ where: { id: body.run.runId } });
 }
 
@@ -71,7 +71,7 @@ async function answerIntent(userId: string, approvalId: string, response: unknow
     { params: Promise.resolve({ id: approvalId }) }
   );
   expect(resolved.status).toBe(200);
-  return resumeAfterApproval(userId, approvalId, true);
+  return resumeThroughQueue(userId, approvalId, true);
 }
 
 async function approveAction(userId: string, approvalId: string) {
@@ -84,7 +84,7 @@ async function approveAction(userId: string, approvalId: string) {
     { params: Promise.resolve({ id: approvalId }) }
   );
   expect(resolved.status).toBe(200);
-  return resumeAfterApproval(userId, approvalId, true);
+  return resumeThroughQueue(userId, approvalId, true);
 }
 
 async function expectCompleteFunnel(userId: string, runId: string) {

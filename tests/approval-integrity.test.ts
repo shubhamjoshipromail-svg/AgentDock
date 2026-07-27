@@ -34,7 +34,8 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
   };
 });
 
-import { startRun, resumeRunFromLatestApproval } from "../lib/execution/run-engine";
+import { startRun } from "../lib/execution/run-engine";
+import { resumeLatestThroughQueue } from "./helpers/queue";
 import { storeProviderKey, storeGoogleOAuthToken } from "../lib/execution/credentials";
 
 const TOOL_ARGS = (tool: string, args: Record<string, unknown>) => JSON.stringify({ type: "tool_call", tool, arguments: args });
@@ -140,7 +141,7 @@ describe("approval integrity — what you approved is exactly what runs", () => 
     // And a halted run cannot be resumed into executing the attacker's action.
     mcp.reset();
     llm.queue = [{ text: FINAL("done") }];
-    const resumed = await resumeRunFromLatestApproval(user.id, runId);
+    const resumed = await resumeLatestThroughQueue(user.id, runId);
     expect(resumed?.status).not.toBe("completed");
     expect(mcp.calls.find((c) => JSON.stringify(c.args).includes("attacker@evil.test"))).toBeUndefined();
     expect(mcp.calls.filter((c) => c.toolName === "send_email")).toHaveLength(0);
@@ -166,7 +167,7 @@ describe("approval integrity — what you approved is exactly what runs", () => 
 
     // Simulate the worker picking up the approved run.
     llm.queue = [{ text: FINAL("Email sent.") }];
-    const resumed = await resumeRunFromLatestApproval(user.id, runId);
+    const resumed = await resumeLatestThroughQueue(user.id, runId);
     expect(resumed?.status).not.toBe("halted_error");
     const sends = mcp.calls.filter((c) => c.toolName === "send_email");
     expect(sends).toHaveLength(1);

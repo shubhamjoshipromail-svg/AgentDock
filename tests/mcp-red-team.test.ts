@@ -38,7 +38,8 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
 });
 
 import { callMcpTool } from "../lib/execution/mcp-client";
-import { resumeAfterApproval, startRun } from "../lib/execution/run-engine";
+import { startRun } from "../lib/execution/run-engine";
+import { resumeThroughQueue } from "./helpers/queue";
 import { storeGoogleOAuthToken } from "../lib/execution/credentials";
 
 const callMcpToolMock = vi.mocked(callMcpTool);
@@ -159,7 +160,7 @@ describe("MCP red-team — the governed client cannot be tricked into a silent s
     const approval = await prisma.approvalRequest.findFirstOrThrow({
       where: { workflowRunId: run.id, status: "pending" }
     });
-    expect((await resumeAfterApproval(user.id, approval.id, true))?.status).toBe("completed");
+    expect((await resumeThroughQueue(user.id, approval.id, true))?.status).toBe("completed");
     expect(callMcpToolMock).toHaveBeenCalledTimes(1);
 
     const evs = await events(run.id);

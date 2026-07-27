@@ -26,7 +26,8 @@ vi.mock("../lib/execution/mcp-client", async (importActual) => {
 });
 
 import { callMcpTool } from "../lib/execution/mcp-client";
-import { resumeAfterApproval, startRun } from "../lib/execution/run-engine";
+import { startRun } from "../lib/execution/run-engine";
+import { resumeThroughQueue } from "./helpers/queue";
 
 const callMcpToolMock = vi.mocked(callMcpTool);
 
@@ -126,7 +127,7 @@ describe("Chunk 12 Phase 3 — grant discovered tools into a flow", () => {
     const approval = await prisma.approvalRequest.findFirstOrThrow({
       where: { workflowRunId: result.result.runId, status: "pending" }
     });
-    expect((await resumeAfterApproval(user.id, approval.id, true))?.status).toBe("completed");
+    expect((await resumeThroughQueue(user.id, approval.id, true))?.status).toBe("completed");
 
     // create_draft was called via the real MCP execution path.
     expect(callMcpToolMock).toHaveBeenCalled();

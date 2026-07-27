@@ -1553,6 +1553,44 @@ export async function startRun(userId: string, workflowId: string): Promise<{ ok
   return { ok: true, result };
 }
 
+// ============================================================================
+// THE QUEUE IS THE ONLY WAY A RUN EXECUTES (Chunk 22 Phase 3).
+//
+// Both entry points below demand proof that the caller holds a LIVE lease on this
+// run's job row. That makes "execution goes through the durable queue" a runtime
+// invariant rather than a convention: you cannot execute or resume a run unless a
+// worker actually claimed it, so two callers can never drive the same run at once.
+//
+// This closed the structural root of the duplication family. Previously the
+// race-proof queued path was barely exercised (nearly every call site was a test
+// invoking the engine directly), while production races lived precisely there.
+// Now a direct call throws, so a test cannot accidentally certify a path that
+// production does not use.
+// ============================================================================
+export type ExecutionLease = {
+  jobId: string;
+  workerId: string;
+};
+
+async function assertQueueLease(runId: string, lease: ExecutionLease): Promise<void> {
+  const held = await prisma.runJob.findFirst({
+    where: {
+      id: lease.jobId,
+      workflowRunId: runId,
+      claimedBy: lease.workerId,
+      status: "running",
+      leaseExpiresAt: { gt: new Date() }
+    },
+    select: { id: true }
+  });
+  if (!held) {
+    throw new Error(
+      "Refusing to execute: the caller does not hold a live queue lease on this run. " +
+        "Runs execute only through the worker queue (claimNextRunJob → processRunJob)."
+    );
+  }
+}
+
 // Worker entrypoint: execute a run row that was already created by the API.
 // This is intentionally thin: it reuses the exact same runnable loader, context
 // builder, caps, gate, memory firewall, and drive loop as the synchronous test
@@ -1560,8 +1598,9 @@ export async function startRun(userId: string, workflowId: string): Promise<{ ok
 export async function executeExistingRun(
   userId: string,
   runId: string,
-  opts?: { stepCursor?: number; onAgentStepComplete?: (stepIndex: number) => Promise<void> }
+  opts: { lease: ExecutionLease; stepCursor?: number; onAgentStepComplete?: (stepIndex: number) => Promise<void> }
 ): Promise<RunResult> {
+  await assertQueueLease(runId, opts.lease);
   const run = await prisma.workflowRun.findFirst({
     where: { id: runId, userId },
     select: { id: true, workflowId: true, status: true }
@@ -1606,7 +1645,12 @@ export async function executeExistingRun(
   return drive(ctx, fromStep, [], resumeHandoff, null, { onAgentStepComplete: opts?.onAgentStepComplete });
 }
 
-export async function resumeRunFromLatestApproval(userId: string, runId: string): Promise<RunResult | null> {
+export async function resumeRunFromLatestApproval(
+  userId: string,
+  runId: string,
+  lease: ExecutionLease
+): Promise<RunResult | null> {
+  await assertQueueLease(runId, lease);
   // The latest RESOLVED interaction intent (an approval that was approved/edited,
   // or a choice/form/confirmation that was responded to) is what we resume from.
   const approval = await prisma.approvalRequest.findFirst({
@@ -1622,7 +1666,17 @@ export async function resumeRunFromLatestApproval(userId: string, runId: string)
 //   • approval → authorize + execute the pending tool and continue (denied → halt);
 //   • choice/form/confirmation → deliver the human's response as framed untrusted
 //     data and continue forward (no authorization, no tool execution).
-export async function resumeAfterApproval(userId: string, approvalId: string, approved: boolean): Promise<RunResult | null> {
+//
+// DELIBERATELY NOT EXPORTED. This is an internal step of resumeRunFromLatestApproval,
+// which is itself lease-guarded. Exporting it is what previously let ~40 test call
+// sites resume a run without ever touching the queue, certifying a path production
+// does not use. Reach it through the queue.
+//
+// `approved` is always true from the only caller: a denial is resolved by
+// POST /api/approvals/[id]/resolve, which halts the run and never enqueues, so a
+// denied intent is never selected for resume. The false branch is retained as a
+// defensive backstop, not as a supported entry point.
+async function resumeAfterApproval(userId: string, approvalId: string, approved: boolean): Promise<RunResult | null> {
   const approval = await prisma.approvalRequest.findFirst({ where: { id: approvalId, userId }, include: { workflowRun: true } });
   if (!approval || !approval.workflowRun) return null;
   const runId = approval.workflowRunId;
