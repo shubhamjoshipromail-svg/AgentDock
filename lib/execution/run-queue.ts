@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type WorkflowRunStatus } from "@prisma/client";
 
 import { prisma } from "../prisma";
-import { executeExistingRun, loadRunnable, resumeRunFromLatestApproval, type RunResult } from "./run-engine";
+import { executeExistingRun, failRunTerminally, loadRunnable, resumeRunFromLatestApproval, type RunResult } from "./run-engine";
 
 const DEFAULT_LEASE_MS = 60_000;
 const DEFAULT_POLL_MS = 2_000;
@@ -412,8 +412,16 @@ export async function runWorkerOnce(options: {
   try {
     return await processRunJob(job, options.workerId, options.leaseMs);
   } catch (error) {
+    // An unexpected error must not (a) leave the RUN dangling, or (b) take the
+    // worker down with it. Previously this marked only the job failed and then
+    // rethrew: the exception unwound through runWorkerLoop to the process
+    // handler, the worker exited, Railway restarted it, it re-claimed the same
+    // job and crashed again -- while the run sat at "running" indefinitely.
+    const message = error instanceof Error ? error.message : String(error);
     await failRunJob(job.id, options.workerId, error);
-    throw error;
+    await failRunTerminally(job.workflowRunId, message);
+    console.error(`[worker] job ${job.id} failed; run ${job.workflowRunId} halted:`, message);
+    return { runId: job.workflowRunId, status: "halted_error" };
   }
 }
 

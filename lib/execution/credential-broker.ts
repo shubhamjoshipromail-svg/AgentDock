@@ -101,6 +101,26 @@ export async function brokerCredentialForAction(
       }
     }
   }
-  const token = await loadBrokeredCredential(provider, userId);
-  return { ok: true, token };
+  // A credential load can FAIL rather than be absent: an OAuth refresh can be
+  // rejected (invalid_grant when the refresh token expired or was revoked), the
+  // provider can be down, the network can drop. That is an expected, recoverable
+  // condition -- it must surface as a refusal the run can report honestly, never
+  // as an exception thrown through the run engine.
+  //
+  // It previously threw: the error escaped executeAllowedTool (which expects an
+  // { ok: false } result), propagated out of processRunJob, killed the worker
+  // process, and left the run pinned at "running" forever with no explanation.
+  try {
+    const token = await loadBrokeredCredential(provider, userId);
+    return { ok: true, token };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const expired = /invalid_grant|invalid_token|unauthorized|401|400/i.test(detail);
+    return {
+      ok: false,
+      reason: expired
+        ? `the ${provider} connection has expired or was revoked — reconnect ${provider} in Profile and run again`
+        : `could not obtain a ${provider} credential (${detail.slice(0, 120)})`
+    };
+  }
 }

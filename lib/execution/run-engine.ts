@@ -1766,6 +1766,34 @@ async function resumeAfterApproval(userId: string, approvalId: string, approved:
   return drive(ctx, fromStep, meta.seedResults ?? [], meta.handoffContent ?? null, approvedCall);
 }
 
+// End a run that failed outside the drive loop (an unexpected error escaping the
+// worker). Without this a crashed job left its RUN at "running" forever while the
+// job row said failed — the user saw a run that never finished and never said why.
+// Shares transitionRunToTerminal, so pending intents are resolved in the same
+// transaction and no approval card is orphaned.
+export async function failRunTerminally(runId: string, reason: string): Promise<void> {
+  const run = await prisma.workflowRun.findUnique({
+    where: { id: runId },
+    select: { userId: true, status: true }
+  });
+  if (!run) return;
+  if (["completed", "halted_cost", "halted_error", "killed"].includes(run.status)) return;
+
+  await appendEvent({
+    runId,
+    userId: run.userId,
+    eventType: "action_blocked",
+    title: "Run stopped by an unexpected error",
+    description: reason.slice(0, 500),
+    decision: "denied",
+    actorType: "system"
+  });
+  await transitionRunToTerminal(runId, {
+    status: "halted_error",
+    endedAt: new Date()
+  });
+}
+
 // Kill switch: set the run to killed. The drive loop terminates at its next
 // boundary; if it is not running, this is the terminal state.
 export async function killRun(userId: string, runId: string, reason = "killed by user"): Promise<boolean> {
