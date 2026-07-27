@@ -60,7 +60,7 @@ async function seedSendFlow(userId: string) {
       mcpServerKey: "gmail", mcpToolName: "send_email", credentialProvider: "google", isExternalSend: true
     }
   });
-  await prisma.mcpAccessGrant.create({ data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, canWrite: true, requiresApproval: false } });
+  await prisma.mcpAccessGrant.create({ data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, scope: `${server.mcpServerKey}:${server.mcpToolName}`, canRead: true, canWrite: true, requiresApproval: false } });
   return { workflow };
 }
 
@@ -80,7 +80,7 @@ async function seedSearchFlow(userId: string) {
       mcpServerKey: "search", mcpToolName: "web_search", isExternalSend: false
     }
   });
-  await prisma.mcpAccessGrant.create({ data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, requiresApproval: false } });
+  await prisma.mcpAccessGrant.create({ data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, scope: `${server.mcpServerKey}:${server.mcpToolName}`, canRead: true, requiresApproval: false } });
   return { workflow };
 }
 

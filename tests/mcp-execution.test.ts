@@ -57,7 +57,7 @@ async function seedSearchFlow(userId: string, suffix = "default") {
     }
   });
   await prisma.mcpAccessGrant.create({
-    data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, requiresApproval: false }
+    data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, scope: `${server.mcpServerKey}:${server.mcpToolName}`, canRead: true, requiresApproval: false }
   });
   return { agent, workflow };
 }
@@ -93,7 +93,7 @@ async function seedGmailFlow(userId: string) {
     // draft_only grant: create_draft is a reversible write and send_email is an
     // external send; both require approval, but only send crosses the boundary.
     await prisma.mcpAccessGrant.create({
-      data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, canWrite: true, requiresApproval: false }
+      data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, scope: `${server.mcpServerKey}:${server.mcpToolName}`, canRead: true, canWrite: true, requiresApproval: false }
     });
   }
   return { agent, workflow };

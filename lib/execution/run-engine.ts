@@ -32,6 +32,25 @@ import type { RunEventMeta } from "../types";
 // system) is untrusted and sandboxable.
 // ============================================================================
 
+// The monetary amount an action itself declares, in CENTS. Only explicit
+// *Cents fields are honoured: a bare `amount` could be dollars, and a spend
+// limit must never be compared against a guessed unit.
+//
+// This is what makes the mandate limit real for a payment-shaped tool: the value
+// the broker checks is the transaction the tool is about to perform, not a
+// platform cost and not a constant.
+const MONETARY_ARG_KEYS = ["amountCents", "totalCents", "priceCents"] as const;
+
+export function declaredAmountCents(args: Record<string, unknown> | null | undefined): number | null {
+  if (!args) return null;
+  for (const key of MONETARY_ARG_KEYS) {
+    const raw = args[key];
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) return Math.round(raw);
+    if (typeof raw === "string" && /^\d+$/.test(raw.trim())) return Number.parseInt(raw.trim(), 10);
+  }
+  return null;
+}
+
 // Governance classification comes from persisted server metadata, never tool
 // name branches. External sends are sends; draft-only tools are reversible
 // writes; remaining non-external tools are reads.
@@ -1200,13 +1219,23 @@ async function executeAllowedTool(
     }
     const structuredArgs = coerced.args;
     toolInputForAudit = JSON.stringify(structuredArgs);
+    // The cost basis of performing this tool call (0 unless configured).
+    costCents = intEnv("RUN_TOOL_COST_CENTS", 0);
+    // What the mandate is asked to authorize: the amount the action itself
+    // declares (a payment), otherwise the cost of performing it. NEVER a
+    // constant — passing 0 here is what made every spend limit inert.
+    const actionAmountCents = declaredAmountCents(structuredArgs) ?? costCents;
+    // The authority this action needs, named by canonical tool identity. The
+    // grant must carry exactly this scope; a scopeless grant is refused.
+    const requiredScope = `${tool.server.mcpServerKey}:${tool.server.mcpToolName}`;
     // Issue the credential through the broker's guarded path. For an external
     // send, the broker enforces the grant mandate (scope/limit/expiry/revocation)
     // and refuses an unauthorized action — the tool then never runs.
     const envResult = await mcpServerEnv(tool.server, ctx.userId, {
       external: tool.isExternalSend,
       mandate: { scope: tool.grant.scope, limitCents: tool.grant.limitCents, expiresAt: tool.grant.expiresAt, revokedAt: tool.grant.revokedAt },
-      amountCents: costCents
+      amountCents: actionAmountCents,
+      requiredScope
     });
     if (!envResult.ok) {
       output = `[policy] credential broker refused: ${envResult.reason}`;

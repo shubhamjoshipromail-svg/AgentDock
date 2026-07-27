@@ -70,7 +70,7 @@ async function seedSendFlow(userId: string, opts: { serverKey: string; toolName:
       mcpServerKey: opts.serverKey, mcpToolName: opts.toolName, credentialProvider: opts.credentialProvider, isExternalSend: true
     }
   });
-  await prisma.mcpAccessGrant.create({ data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, canRead: true, canWrite: true, requiresApproval: false } });
+  await prisma.mcpAccessGrant.create({ data: { userId, workflowId: workflow.id, agentId: agent.id, mcpServerId: server.id, scope: `${server.mcpServerKey}:${server.mcpToolName}`, canRead: true, canWrite: true, requiresApproval: false } });
   return { workflow };
 }
 

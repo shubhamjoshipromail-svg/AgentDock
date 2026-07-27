@@ -8,6 +8,16 @@ export type CanonicalToolIdentity = {
   key: string;
 };
 
+// The mandate scope a grant for this tool must carry (Chunk 22 Phase 5).
+//
+// A grant's authority is named by the canonical identity of the tool it grants,
+// so scope and execution identity can never drift apart. The broker denies a
+// scopeless grant, so every write of an McpAccessGrant must set this.
+// Returns null for a metadata-only catalog row (nothing executable to authorize).
+export function grantScopeFor(server: Pick<McpServer, "mcpServerKey" | "mcpToolName">): string | null {
+  return canonicalToolIdentity(server)?.key ?? null;
+}
+
 export function canonicalToolIdentity(server: Pick<McpServer, "mcpServerKey" | "mcpToolName">): CanonicalToolIdentity | null {
   if (!server.mcpServerKey || !server.mcpToolName) return null;
   return {

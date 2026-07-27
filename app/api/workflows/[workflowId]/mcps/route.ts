@@ -4,6 +4,7 @@ import type { McpDefaultPermission } from "@prisma/client";
 import { getCurrentUser } from "../../../../../lib/auth-user";
 import { defaultPermissionForRisk, grantTemplateForPermission } from "../../../../../lib/mcp-catalog";
 import { prisma } from "../../../../../lib/prisma";
+import { grantScopeFor } from "../../../../../lib/execution/tool-identity";
 import { executableToolIdentity } from "../../../../../lib/execution/tool-identity";
 import { recordProductEvent } from "../../../../../lib/analytics/product-events";
 import { parseJsonBody } from "../../../../../lib/validation/parse";
@@ -195,6 +196,7 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
             data: {
               agentId: body.agentId ?? null,
               ...grantTemplate,
+              scope: grantScopeFor(mcpServer),
               allowedActions: grantTemplate.allowedActions,
               blockedActions: grantTemplate.blockedActions,
               revokedAt: null // clear any prior revocation on re-grant
@@ -212,6 +214,7 @@ export async function POST(request: Request, context: { params: Promise<{ workfl
               agentId: body.agentId ?? null,
               mcpServerId: mcpServer.id,
               ...grantTemplate,
+              scope: grantScopeFor(mcpServer),
               allowedActions: grantTemplate.allowedActions,
               blockedActions: grantTemplate.blockedActions
             },

@@ -88,8 +88,17 @@ export async function brokerCredentialForAction(
     if (m.limitCents != null && (scope.amountCents ?? 0) > m.limitCents) {
       return { ok: false, reason: "action cost exceeds grant limit" };
     }
-    if (scope.requiredScope && m.scope && m.scope !== scope.requiredScope) {
-      return { ok: false, reason: "action is outside the granted scope" };
+    // Scope is DENY-BY-DEFAULT. A grant that carries no scope authorizes nothing
+    // scoped: absence of authority is not authority. (Previously `&& m.scope`
+    // short-circuited here, so a scopeless grant satisfied every action.)
+    if (scope.requiredScope) {
+      const granted = m.scope?.trim();
+      if (!granted) {
+        return { ok: false, reason: "grant carries no scope, so it cannot authorize this action" };
+      }
+      if (granted !== scope.requiredScope) {
+        return { ok: false, reason: "action is outside the granted scope" };
+      }
     }
   }
   const token = await loadBrokeredCredential(provider, userId);

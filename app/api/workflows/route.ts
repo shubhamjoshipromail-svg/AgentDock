@@ -7,6 +7,7 @@ import { agentDefaultsByName } from "../../../lib/catalog/agent-defaults";
 import { defaultPermissionForRisk, grantTemplateForPermission } from "../../../lib/mcp-catalog";
 import { runIdempotently } from "../../../lib/idempotency";
 import { prisma } from "../../../lib/prisma";
+import { grantScopeFor } from "../../../lib/execution/tool-identity";
 import { parseJsonBody } from "../../../lib/validation/parse";
 import { createFlowSchema, type CreateFlowAgentInput, type CreateFlowInput } from "../../../lib/validation/schemas";
 
@@ -169,6 +170,10 @@ async function resolveWorkflowTools(workflowId: string, userId: string, tools: C
 
     const permission = tool.defaultPermission ?? defaultPermissionForRisk(mcpServer.riskLevel);
     const grantTemplate = grantTemplateForPermission(permission, mcpServer.riskLevel);
+    // Mandate scope = the canonical tool identity this grant authorizes. The
+    // broker denies a scopeless grant, so this must be set wherever a grant is
+    // written (Chunk 22 Phase 5).
+    const grantScope = grantScopeFor(mcpServer);
 
     await tx.workflowMcp.upsert({
       where: { workflowId_mcpServerId: { workflowId, mcpServerId: mcpServer.id } },
@@ -180,13 +185,14 @@ async function resolveWorkflowTools(workflowId: string, userId: string, tools: C
     // constraint, so re-saves update in place instead of accumulating dupes.
     await tx.mcpAccessGrant.upsert({
       where: { userId_workflowId_mcpServerId: { userId, workflowId, mcpServerId: mcpServer.id } },
-      update: { agentId: tool.agentId ?? null, ...grantTemplate, allowedActions: grantTemplate.allowedActions, blockedActions: grantTemplate.blockedActions },
+      update: { agentId: tool.agentId ?? null, ...grantTemplate, scope: grantScope, allowedActions: grantTemplate.allowedActions, blockedActions: grantTemplate.blockedActions },
       create: {
         userId,
         workflowId,
         agentId: tool.agentId ?? null,
         mcpServerId: mcpServer.id,
         ...grantTemplate,
+        scope: grantScope,
         allowedActions: grantTemplate.allowedActions,
         blockedActions: grantTemplate.blockedActions
       }
