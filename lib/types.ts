@@ -275,6 +275,10 @@ export type PersistedWorkflowMcp = {
 
 export type PersistedMcpAccessGrant = {
   id: string;
+  // Which agent this grant authorizes. A flow-scoped grant has none. Present on
+  // the wire already; without it the UI cannot show per-agent authority and
+  // silently renders every agent as holding every grant.
+  agentId?: string | null;
   canRead: boolean;
   canWrite: boolean;
   canExecute: boolean;

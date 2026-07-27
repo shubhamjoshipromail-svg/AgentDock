@@ -95,5 +95,24 @@ export async function GET() {
     workflowName: workflow?.name ?? "Untitled flow",
     resultPreview: previewText(resultText, 140)
   }));
-  return NextResponse.json({ runs });
+
+  // The REAL spend caps, so the client never has to invent one. Both are the
+  // limits actually enforced: the daily cap is checked above before any provider
+  // call, and runMaxCostCents is the ceiling the run engine halts at.
+  // Computed the same way the cap check is, so the two can never disagree.
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const todaySpend = await prisma.workflowRun.aggregate({
+    _sum: { totalCostCents: true },
+    where: { userId: user.id, createdAt: { gte: startOfToday } }
+  });
+
+  return NextResponse.json({
+    runs,
+    spend: {
+      todayCents: todaySpend._sum.totalCostCents ?? 0,
+      dailyCapCents: intEnv("USER_DAILY_RUN_COST_CAP_CENTS", 200),
+      runMaxCostCents: intEnv("RUN_MAX_COST_CENTS", 50)
+    }
+  });
 }

@@ -298,8 +298,15 @@ export function getRealRun(id: string, fallbackMessage = "Unable to load run.") 
   return request<{ run: RealRun }>(`/api/runs/${id}`, fallbackMessage);
 }
 
+// The real, server-enforced spend caps. The client never invents a cap.
+export type RealSpendCaps = {
+  todayCents: number;
+  dailyCapCents: number;
+  runMaxCostCents: number;
+};
+
 export function listRealRuns(fallbackMessage = "Unable to load real runs.") {
-  return request<{ runs: RealRunSummary[] }>("/api/runs", fallbackMessage);
+  return request<{ runs: RealRunSummary[]; spend?: RealSpendCaps }>("/api/runs", fallbackMessage);
 }
 
 export function killRealRun(id: string, fallbackMessage = "Unable to kill run.") {

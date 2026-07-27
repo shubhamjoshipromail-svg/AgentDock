@@ -23,6 +23,7 @@ import {
   type PersistedConnection
 } from "../../lib/api/client";
 import type { PersistedWorkflow } from "../../lib/types";
+import { effectiveGrantPermission } from "../../lib/execution/policy-gate";
 import { Badge, Button, EmptyState } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
 import { Builder } from "../build/Builder";
@@ -180,7 +181,14 @@ export function FlowWorkspace({
       // Build participants from workflow agents + their grants.
       const parts: Participant[] = (f.workflowAgents ?? []).map((wa) => {
         const grants = (f.mcpAccessGrants ?? []).filter(
-          (g) => g.mcpServer?.mcpServerKey && g.mcpServer?.mcpToolName
+          (g) =>
+            g.mcpServer?.mcpServerKey &&
+            g.mcpServer?.mcpToolName &&
+            // Authority is per-agent. Without this every agent card listed every
+            // grant in the flow, so a revoke aimed at one agent looked scoped but
+            // was not, and the counts were multiplied by the agent count.
+            // A grant with no agentId is flow-scoped and applies to all.
+            (g.agentId == null || g.agentId === wa.agent.id)
         );
         return {
           agentId: wa.agent.id,
@@ -193,7 +201,16 @@ export function FlowWorkspace({
             toolName: g.mcpServer.mcpToolName ?? g.mcpServer.name,
             isExternalSend: g.mcpServer.isExternalSend ?? false,
             grantId: g.id,
-            permission: g.requiresApproval ? "approval_required" : g.canWrite ? "draft_only" : "read_only",
+            // Single source of truth: the SAME function the policy gate uses to
+            // decide what this grant actually permits. Deriving it separately is
+            // how a blocked grant came to render as a green check.
+            permission: effectiveGrantPermission({
+              canRead: g.canRead,
+              canWrite: g.canWrite,
+              canExecute: g.canExecute,
+              canDelete: g.canDelete,
+              requiresApproval: g.requiresApproval
+            }),
             revoked: Boolean(g.revokedAt)
           }))
         };
@@ -474,12 +491,15 @@ export function FlowWorkspace({
 
   // --- Derive ---
   const grantedToolIds = new Set(participants.flatMap((p) => p.tools.map((t) => t.serverId)));
-  // Permission state shown on each granted tool: external-write needs approval,
-  // everything else is allowed outright.
-  const permView = (permission: string) =>
-    permission === "approval_required"
-      ? { icon: "⚠", label: "approval", kind: "approval" }
-      : { icon: "✓", label: permission.replaceAll("_", " "), kind: "allowed" };
+  // Permission state shown on each granted tool. This must mirror the gate: a
+  // BLOCKED grant is not an allowed one, and must never render as a green check
+  // in a product whose whole claim is that the display matches enforcement.
+  const permView = (permission: string, revoked = false) => {
+    if (revoked) return { icon: "⊘", label: "revoked", kind: "blocked" };
+    if (permission === "blocked") return { icon: "⊘", label: "blocked", kind: "blocked" };
+    if (permission === "approval_required") return { icon: "⚠", label: "approval", kind: "approval" };
+    return { icon: "✓", label: permission.replaceAll("_", " "), kind: "allowed" };
+  };
 
   if (!session?.user) {
     return <EmptyState icon={<span style={{ fontSize: 28 }}>🔐</span>} title="Sign in to use the workspace" body="Sign in with Google to build, grant, run, and watch your flows." />;
@@ -655,7 +675,7 @@ export function FlowWorkspace({
               <div className="pGrants">
                 {activeTools.length === 0 && <div className="pGrantEmpty">· no tools granted</div>}
                 {activeTools.map((t) => {
-                  const v = permView(t.permission);
+                  const v = permView(t.permission, t.revoked);
                   return (
                     <div className="pGrantRow" key={t.serverId}>
                       <span className="pGrantPerm" data-kind={v.kind}>{v.icon}</span>

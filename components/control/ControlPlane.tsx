@@ -11,7 +11,8 @@ import {
   resolveApproval,
   type RealRun,
   type RealRunEvent,
-  type RealRunSummary
+  type RealRunSummary,
+  type RealSpendCaps
 } from "../../lib/api/client";
 import type {
   Decision,
@@ -303,6 +304,9 @@ export function ControlPlane() {
   const { data: session } = useSession();
   const toast = useToast();
   const [realRunHistory, setRealRunHistory] = useState<RealRunSummary[]>([]);
+  // The caps the SERVER enforces. Null until reported — never defaulted to a
+  // guess, because a wrong governance number is worse than an absent one.
+  const [spendCaps, setSpendCaps] = useState<RealSpendCaps | null>(null);
   const [resolvingApprovalId, setResolvingApprovalId] = useState("");
   const [decisionFilter, setDecisionFilter] = useState<Decision | "all">("all");
   // Real governed run (Chunk 4).
@@ -321,6 +325,7 @@ export function ControlPlane() {
     try {
       const realRunsData = await listRealRuns("Unable to load real runs.");
       setRealRunHistory(realRunsData.runs ?? []);
+      setSpendCaps(realRunsData.spend ?? null);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Unable to load Control data.", "danger");
     }
@@ -389,7 +394,10 @@ export function ControlPlane() {
     if (selectedRunId || !session?.user || !boardHasActiveRun) return;
     const id = window.setInterval(() => {
       listRealRuns("Unable to load real runs.")
-        .then((data) => setRealRunHistory(data.runs ?? []))
+        .then((data) => {
+          setRealRunHistory(data.runs ?? []);
+          setSpendCaps(data.spend ?? null);
+        })
         .catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(id);
@@ -409,7 +417,6 @@ export function ControlPlane() {
     }
   };
 
-  const RUN_CAP_CENTS = 50;
   const liveRunning = liveRun ? ["running", "queued", "paused_for_approval"].includes(liveRun.status) : false;
   const detailMode = Boolean(selectedRunId && liveRun);
 
@@ -418,12 +425,16 @@ export function ControlPlane() {
       ? liveRun.events
       : liveRun.events.filter((e) => (e.decision ?? "info") === decisionFilter))
     : [];
-  // Spend + approvals computed from the real-run list only — no new endpoint,
-  // nothing simulated.
-  const todaySpendCents = realRunHistory.reduce((sum, run) => sum + run.totalCostCents, 0);
+  // Spend comes from the server, which reports the caps it actually enforces.
+  // Previously this summed whatever runs happened to be in the list and called it
+  // "today", then plotted it against an invented $5.00 weekly cap that exists
+  // nowhere in the schema, the API, or the engine. Both are gone: if the server
+  // has not reported real caps, the surface is hidden rather than guessed.
+  const todaySpendCents = spendCaps?.todayCents ?? null;
+  const dailyCapCents = spendCaps?.dailyCapCents ?? null;
+  const runMaxCostCents = spendCaps?.runMaxCostCents ?? null;
   // Recent costs come straight from the run list — no per-run detail fetch.
   const recentCosts = realRunHistory.filter((run) => run.totalCostCents > 0).slice(0, 5);
-  const capCents = 500;
   const pausedRuns = realRunHistory.filter((run) => run.status === "paused_for_approval");
   const pendingCount = pausedRuns.length;
   const activeRunCount = realRunHistory.filter((run) => ACTIVE_STATUSES.includes(run.status)).length;
@@ -505,7 +516,7 @@ export function ControlPlane() {
           {detailMode && (
             <Card title="Run status" meta={statusLabel(liveRun!.status)}>
               <div className="runMetricGrid">
-                <div className="metric"><span>Real spend</span><strong className="data">${(liveRun!.totalCostCents / 100).toFixed(2)} / ${(RUN_CAP_CENTS / 100).toFixed(2)}</strong></div>
+                <div className="metric"><span>Real spend</span><strong className="data">${(liveRun!.totalCostCents / 100).toFixed(2)}{runMaxCostCents != null ? ` / $${(runMaxCostCents / 100).toFixed(2)}` : ""}</strong></div>
                 <div className="metric"><span>Steps</span><strong className="data">{liveRun!.stepCount}</strong></div>
                 <div className="metric"><span>Tools executed</span><strong className="data">{liveRun!.toolCallCount}</strong></div>
                 <div className="metric"><span>Status</span><strong className="data">{statusLabel(liveRun!.status)}</strong></div>
@@ -541,10 +552,14 @@ export function ControlPlane() {
             )}
           </Card>
 
-          <Card title="Spend" meta="$5.00 weekly cap">
-            <div className="spendTotal">${(todaySpendCents / 100).toFixed(2)}</div>
-            <div className="spendCap">of $5.00 weekly cap</div>
-            <div className="meter"><span style={{ width: `${Math.min(100, (todaySpendCents / capCents) * 100)}%` }} /></div>
+          <Card title="Spend" meta={dailyCapCents != null ? `$${(dailyCapCents / 100).toFixed(2)} daily cap` : "today"}>
+            <div className="spendTotal">${((todaySpendCents ?? 0) / 100).toFixed(2)}</div>
+            {dailyCapCents != null && (
+              <>
+                <div className="spendCap">of ${(dailyCapCents / 100).toFixed(2)} daily cap</div>
+                <div className="meter"><span style={{ width: `${Math.min(100, ((todaySpendCents ?? 0) / dailyCapCents) * 100)}%` }} /></div>
+              </>
+            )}
             {recentCosts.length > 0 && (
               <div className="spendRows">
                 {recentCosts.map((run) => (
