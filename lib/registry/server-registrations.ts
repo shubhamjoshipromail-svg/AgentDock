@@ -24,6 +24,11 @@ export type CuratedRegistration = {
   url?: string | null;
   credentialProvider?: string | null;
   tokenEnvVar?: string | null;
+  // ISOLATION FLOOR (Chunk 22): the host env keys this server may receive.
+  // Deny-by-default — omit it and the server gets no host environment at all.
+  // The brokered credential arrives via tokenEnvVar and is NOT listed here.
+  // Never add a secret to this list; see docs/CHUNK22_CLOSED.md.
+  envAllowlist?: string[];
 };
 
 export const CURATED_SERVER_REGISTRATIONS: CuratedRegistration[] = [
@@ -35,7 +40,10 @@ export const CURATED_SERVER_REGISTRATIONS: CuratedRegistration[] = [
     command: process.env.GMAIL_MCP_COMMAND ?? process.execPath,
     args: (process.env.GMAIL_MCP_ARGS ?? "servers/gmail/dist/index.js").split(" ").filter(Boolean),
     credentialProvider: "google",
-    tokenEnvVar: "GMAIL_ACCESS_TOKEN"
+    tokenEnvVar: "GMAIL_ACCESS_TOKEN",
+    // Reads only GMAIL_ACCESS_TOKEN, which the broker injects — so it needs
+    // nothing from the host environment.
+    envAllowlist: []
   },
   {
     // Web search — first-party stdio MCP server, read-only, no credential. Web
@@ -46,7 +54,9 @@ export const CURATED_SERVER_REGISTRATIONS: CuratedRegistration[] = [
     command: process.env.SEARCH_MCP_COMMAND ?? process.execPath,
     args: (process.env.SEARCH_MCP_ARGS ?? "servers/search/dist/index.js").split(" ").filter(Boolean),
     credentialProvider: null,
-    tokenEnvVar: null
+    tokenEnvVar: null,
+    // Reads only its own cost knob (servers/search/search-tools.ts).
+    envAllowlist: ["RUN_TOOL_COST_CENTS"]
   }
 ];
 

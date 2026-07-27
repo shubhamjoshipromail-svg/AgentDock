@@ -40,6 +40,9 @@ async function main() {
       args: (process.env.GMAIL_MCP_ARGS ?? "servers/gmail/dist/index.js").split(" ").filter(Boolean),
       credentialProvider: "google",
       tokenEnvVar: "GMAIL_ACCESS_TOKEN",
+      // Isolation floor (Chunk 22): reads only the brokered GMAIL_ACCESS_TOKEN,
+      // so it needs nothing from the host environment.
+      envAllowlist: [],
       enabled: true,
       curated: true
     },
@@ -51,6 +54,8 @@ async function main() {
       args: (process.env.SEARCH_MCP_ARGS ?? "servers/search/dist/index.js").split(" ").filter(Boolean),
       credentialProvider: null,
       tokenEnvVar: null,
+      // Isolation floor (Chunk 22): reads only its own cost knob.
+      envAllowlist: ["RUN_TOOL_COST_CENTS"],
       enabled: true,
       curated: true
     }

@@ -692,6 +692,13 @@ model ServerRegistration {
   credentialProvider String?         @map("credential_provider")
   // The env var the brokered token is injected into (stdio), nullable.
   tokenEnvVar        String?         @map("token_env_var")
+  // ISOLATION FLOOR (Chunk 22): the exact host environment variable names this
+  // server is permitted to receive. Deny-by-default — a key not listed here NEVER
+  // reaches the child process, so host secrets (CREDENTIAL_ENCRYPTION_KEY,
+  // DATABASE_URL, provider keys) cannot leak into a tool process. The brokered
+  // credential arrives separately via tokenEnvVar and is not listed here.
+  // This must stay minimal; it is the precondition for running ANY third-party server.
+  envAllowlist       String[]        @default([]) @map("env_allowlist")
   enabled            Boolean         @default(true)
   curated            Boolean         @default(true)
   createdAt          DateTime        @default(now()) @map("created_at")

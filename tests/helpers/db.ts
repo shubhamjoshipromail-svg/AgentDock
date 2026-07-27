@@ -27,6 +27,7 @@ export async function resetDatabase() {
         url: reg.url ?? null,
         credentialProvider: reg.credentialProvider ?? null,
         tokenEnvVar: reg.tokenEnvVar ?? null,
+        envAllowlist: reg.envAllowlist ?? [],
         enabled: true,
         curated: true
       }

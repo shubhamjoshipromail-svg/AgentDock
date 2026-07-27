@@ -1,5 +1,5 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
@@ -45,7 +45,42 @@ export type ResolvedRegistration = {
   url: string | null;
   credentialProvider: string | null;
   tokenEnvVar: string | null;
+  // The host env keys this server may receive. Deny-by-default (empty = none).
+  envAllowlist: string[];
 };
+
+// ============================================================================
+// THE ISOLATION FLOOR — what a spawned MCP server is allowed to see.
+//
+// An MCP server is untrusted by construction: it is a separate process, it may be
+// third-party, and it can read its own environment. It therefore receives ONLY:
+//   1. a minimal safe base (PATH/HOME/…, from the SDK's sudo-inspired default),
+//   2. the host env keys its registration explicitly declares, and
+//   3. the brokered credential the run engine injects for this specific call.
+//
+// It must NEVER receive the host environment wholesale. CREDENTIAL_ENCRYPTION_KEY
+// and DATABASE_URL together are enough to decrypt every user's stored OAuth tokens
+// and BYO provider keys, so leaking them to a tool process is a total compromise.
+//
+// This is a floor, not a sandbox: it bounds what a server can READ from its env.
+// Process/filesystem/network/resource isolation is still required before any
+// THIRD-PARTY server runs (see docs/FULL_REVIEW.md Track 6).
+//
+// Proved end-to-end against a real spawned child in tests/mcp-env-isolation.test.ts.
+// ============================================================================
+export function buildChildEnv(
+  envAllowlist: readonly string[],
+  brokered: Record<string, string> = {}
+): Record<string, string> {
+  const env: Record<string, string> = { ...getDefaultEnvironment() };
+  for (const key of envAllowlist) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  // The brokered credential is injected last: it is issued per-call for this
+  // server and must not be shadowed by a host value of the same name.
+  return { ...env, ...brokered };
+}
 
 // Resolve a server's registration: the DB table is authoritative; first-party
 // curated data is the bootstrap/fallback so a fresh (or truncated test) database
@@ -63,7 +98,8 @@ export async function resolveRegistration(serverKey: string): Promise<ResolvedRe
       args: Array.isArray(row.args) ? (row.args as string[]) : [],
       url: row.url,
       credentialProvider: row.credentialProvider,
-      tokenEnvVar: row.tokenEnvVar
+      tokenEnvVar: row.tokenEnvVar,
+      envAllowlist: Array.isArray(row.envAllowlist) ? row.envAllowlist : []
     };
   }
   const curated = findCuratedRegistration(serverKey);
@@ -76,7 +112,8 @@ export async function resolveRegistration(serverKey: string): Promise<ResolvedRe
     args: curated.args ?? [],
     url: curated.url ?? null,
     credentialProvider: curated.credentialProvider ?? null,
-    tokenEnvVar: curated.tokenEnvVar ?? null
+    tokenEnvVar: curated.tokenEnvVar ?? null,
+    envAllowlist: curated.envAllowlist ?? []
   };
 }
 
@@ -122,7 +159,8 @@ async function defaultTransport(serverKey: string, ctx?: McpConnectContext): Pro
   return new StdioClientTransport({
     command: registration.command,
     args: registration.args,
-    env: { ...(process.env as Record<string, string>), ...(ctx?.env ?? {}) }
+    // Deny-by-default: NEVER spread process.env here. See buildChildEnv above.
+    env: buildChildEnv(registration.envAllowlist, ctx?.env ?? {})
   });
 }
 
