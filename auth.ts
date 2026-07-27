@@ -6,13 +6,25 @@ import { prisma } from "./lib/prisma";
 import { storeGoogleOAuthToken } from "./lib/execution/credentials";
 import { recordProductEvent } from "./lib/analytics/product-events";
 
-// Gmail scopes for the first-party Gmail MCP server: compose (drafts) + send.
-const GMAIL_SCOPES = [
+// Scopes for the first-party Google MCP servers. One consent covers every Google
+// tool because they share the `google` credential-broker provider.
+//
+// NOTE: this list is a code constant, which is the one genuinely un-generic part
+// of adding a Google tool — everything else (registration, discovery, grants,
+// execution, audit) is data. Adding a scope forces every existing user to
+// re-consent, so add them deliberately, not speculatively.
+const GOOGLE_SCOPES = [
   "openid",
   "email",
   "profile",
+  // Gmail: drafts + send
   "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/gmail.send"
+  "https://www.googleapis.com/auth/gmail.send",
+  // Calendar: read and create events on the user's own calendars
+  "https://www.googleapis.com/auth/calendar.events",
+  // Docs: create and edit documents, limited to files this app creates
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/drive.file"
 ].join(" ");
 
 if (!process.env.NEXTAUTH_URL && process.env.AUTH_URL) {
@@ -35,7 +47,7 @@ export const authOptions: NextAuthOptions = {
           clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
           authorization: {
             params: {
-              scope: GMAIL_SCOPES,
+              scope: GOOGLE_SCOPES,
               // Needed to receive a refresh token so the Gmail server can act
               // server-side after the access token expires.
               access_type: "offline",

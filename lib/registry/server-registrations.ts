@@ -57,6 +57,30 @@ export const CURATED_SERVER_REGISTRATIONS: CuratedRegistration[] = [
     tokenEnvVar: null,
     // Reads only its own cost knob (servers/search/search-tools.ts).
     envAllowlist: ["RUN_TOOL_COST_CENTS"]
+  },
+  {
+    // Google Calendar — first-party stdio MCP server, OAuth via the generic
+    // `google` broker provider. Added as DATA: no execution code changed.
+    serverKey: "calendar",
+    displayName: "Google Calendar",
+    transport: "stdio",
+    command: process.env.CALENDAR_MCP_COMMAND ?? process.execPath,
+    args: (process.env.CALENDAR_MCP_ARGS ?? "servers/calendar/dist/index.js").split(" ").filter(Boolean),
+    credentialProvider: "google",
+    tokenEnvVar: "GOOGLE_ACCESS_TOKEN",
+    // Reads only the brokered token.
+    envAllowlist: []
+  },
+  {
+    // Google Docs — same generic path, same broker provider.
+    serverKey: "docs",
+    displayName: "Google Docs",
+    transport: "stdio",
+    command: process.env.DOCS_MCP_COMMAND ?? process.execPath,
+    args: (process.env.DOCS_MCP_ARGS ?? "servers/docs/dist/index.js").split(" ").filter(Boolean),
+    credentialProvider: "google",
+    tokenEnvVar: "GOOGLE_ACCESS_TOKEN",
+    envAllowlist: []
   }
 ];
 

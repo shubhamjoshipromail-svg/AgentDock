@@ -76,9 +76,18 @@ export async function POST(
     const name = `${connection.serverKey}-${tool.name.replace(/_/g, "-")}`;
     const registryId = `agentdock:discovered:${connection.serverKey}:${tool.name}`;
     const isExternalSend = classifyExternalSend(connection.serverKey, tool.name);
-    // An external-send tool (send_email, post, …) must recommend approval — it is
-    // never merely draft-safe. Reversible tools (create_draft, read) stay draft_only.
-    const recommendedPermission = isExternalSend ? "approval_required" : "draft_only";
+    // Three tiers, strictest first:
+    //   external send  → approval_required (irreversible, reaches outsiders)
+    //   read-shaped    → read_only        (changes nothing anywhere)
+    //   everything else→ draft_only       (a write; the gate makes it approval-gated)
+    // Defaulting reads to draft_only made every read an approval-gated "write",
+    // which buries the consequential approvals in noise — the opposite of what an
+    // approval is for.
+    const recommendedPermission = isExternalSend
+      ? "approval_required"
+      : classifyReadOnly(tool.name)
+        ? "read_only"
+        : "draft_only";
 
     // Use upsert on the @@unique([registrySource, registryId]) compound key,
     // NOT the UUID id — avoids an invalid "" UUID fallback on new rows.
@@ -169,4 +178,17 @@ function classifyExternalSend(serverKey: string, toolName: string): boolean {
   // is a safe/reversible operation. This is a heuristic, not a server-specific
   // branch — it works for gmail (send_email) as well as any future server.
   return toolName.startsWith("send_") || toolName.includes("_send_");
+}
+
+// A tool that only reads. Deliberately conservative: anything not clearly
+// read-shaped falls through to draft_only and is therefore approval-gated, so a
+// misclassification over-gates rather than under-gates.
+//
+// NOTE (honest limitation): this is still a NAME heuristic, and names are not a
+// security boundary. `calendar:create_event` is treated as a reversible write to
+// the user's own calendar, but with attendees it does email outsiders — arguably
+// an external send. When classification moves off names and onto declared tool
+// metadata, that is the first case to revisit.
+function classifyReadOnly(toolName: string): boolean {
+  return /^(list|get|read|search|find|query|fetch|lookup|browse)(_|$)/.test(toolName);
 }

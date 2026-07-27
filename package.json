@@ -14,6 +14,9 @@
     "worker": "npx tsx servers/worker.ts",
     "build:gmail": "npx tsc servers/gmail/index.ts servers/gmail/server.ts servers/gmail/gmail-tools.ts --outDir servers/gmail/dist --esModuleInterop --module commonjs --target es2022 --resolveJsonModule --skipLibCheck",
     "build:search": "npx tsc servers/search/index.ts servers/search/server.ts servers/search/search-tools.ts --outDir servers/search/dist --esModuleInterop --module commonjs --target es2022 --resolveJsonModule --skipLibCheck",
+    "build:calendar": "npx tsc servers/calendar/index.ts servers/calendar/server.ts servers/calendar/calendar-tools.ts --outDir servers/calendar/dist --esModuleInterop --module commonjs --target es2022 --resolveJsonModule --skipLibCheck",
+    "build:docs": "npx tsc servers/docs/index.ts servers/docs/server.ts servers/docs/docs-tools.ts --outDir servers/docs/dist --esModuleInterop --module commonjs --target es2022 --resolveJsonModule --skipLibCheck",
+    "build:servers": "npm run build:gmail && npm run build:search && npm run build:calendar && npm run build:docs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -58,6 +58,30 @@ async function main() {
       envAllowlist: ["RUN_TOOL_COST_CENTS"],
       enabled: true,
       curated: true
+    },
+    {
+      serverKey: "calendar",
+      displayName: "Google Calendar",
+      transport: "stdio",
+      command: process.env.CALENDAR_MCP_COMMAND ?? process.execPath,
+      args: (process.env.CALENDAR_MCP_ARGS ?? "servers/calendar/dist/index.js").split(" ").filter(Boolean),
+      credentialProvider: "google",
+      tokenEnvVar: "GOOGLE_ACCESS_TOKEN",
+      envAllowlist: [],
+      enabled: true,
+      curated: true
+    },
+    {
+      serverKey: "docs",
+      displayName: "Google Docs",
+      transport: "stdio",
+      command: process.env.DOCS_MCP_COMMAND ?? process.execPath,
+      args: (process.env.DOCS_MCP_ARGS ?? "servers/docs/dist/index.js").split(" ").filter(Boolean),
+      credentialProvider: "google",
+      tokenEnvVar: "GOOGLE_ACCESS_TOKEN",
+      envAllowlist: [],
+      enabled: true,
+      curated: true
     }
   ];
   for (const reg of serverRegistrations) {

@@ -30,11 +30,22 @@ describe("production deployment contract", () => {
     expect(worker.deploy).not.toHaveProperty("healthcheckPath");
   });
 
-  it("builds both first-party MCP servers and binds Next to Railway's port", () => {
+  it("builds EVERY first-party MCP server and binds Next to Railway's port", () => {
     const dockerfile = read("Dockerfile");
+    const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
 
-    expect(dockerfile).toContain("npm run build:gmail");
-    expect(dockerfile).toContain("npm run build:search");
+    // Assert the outcome (every adapter is compiled), not one literal command —
+    // a server whose dist is never built fails at runtime with "not registered",
+    // which is a confusing way to discover a missing build step.
+    expect(dockerfile).toContain("npm run build:servers");
+
+    const buildAll = pkg.scripts["build:servers"];
+    expect(buildAll).toBeTruthy();
+    for (const server of ["gmail", "search", "calendar", "docs"]) {
+      expect(pkg.scripts[`build:${server}`], `missing build script for ${server}`).toBeTruthy();
+      expect(buildAll, `build:servers does not build ${server}`).toContain(`build:${server}`);
+    }
+
     expect(dockerfile).toContain("ENV HOSTNAME=0.0.0.0");
     expect(dockerfile).toContain("ENV PORT=3000");
   });

@@ -31,8 +31,7 @@ COPY . .
 # build the Next.js app. No secrets are needed at build time (all routes are
 # dynamic and read env at runtime).
 RUN npx prisma generate \
-  && npm run build:gmail \
-  && npm run build:search \
+  && npm run build:servers \
   && npm run build
 
 ENV NODE_ENV=production

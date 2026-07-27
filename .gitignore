@@ -31,3 +31,6 @@ pnpm-debug.log*
 .env.railway.bak
 .env.test
 .gstack/
+
+# Compiled first-party MCP servers (built at image build time)
+servers/*/dist/
