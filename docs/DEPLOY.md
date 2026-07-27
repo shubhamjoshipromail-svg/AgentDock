@@ -20,19 +20,50 @@ production alpha.
 
 ## Current alpha deployment
 
-As of 2026-07-15, the `AgentDock` Railway project's `production` environment is
-deployed from branch `codex/chunk21-final-pass`:
+As of 2026-07-27, the `AgentDock` Railway project's `production` environment
+deploys from **`main`** (Chunk 24 Phase 0 made `main` canonical):
 
 - Public web URL: `https://web-production-e123b.up.railway.app`
 - Google callback to register: `https://web-production-e123b.up.railway.app/api/auth/callback/google`
 - `web`, `worker`, and Railway `Postgres`: running in EU West
-- Infrastructure smoke: `/` returned HTTP 200 and `/api/health` returned
-  `db.ok: true` plus `worker.ok: true`
+- Verified after the repoint: both services deployed `main` successfully,
+  `/` returned HTTP 200, `/api/health` returned `db.ok: true` and
+  `worker.ok: true` with a fresh heartbeat, release logs showed
+  `26 migrations found` / `No pending migrations to apply`, and the worker logged
+  `[worker] ... starting (pollMs=2000, leaseMs=60000, perUserConcurrency=1)`.
+
+> **Branch history — read before cleaning up branches again.**
+> Until 2026-07-27 both services tracked `codex/chunk21-final-pass`, so every push
+> to that branch auto-deployed. That is why production was already running the
+> Chunk 22 security work (`c0c4cef`) rather than the older `main`. When that
+> branch was deleted during consolidation, the services were left tracking a
+> branch that no longer existed: the running deployment survived, but nothing
+> further could deploy. **Check the deploy source before deleting any branch.**
 
 Fresh `NEXTAUTH_SECRET` and `CREDENTIAL_ENCRYPTION_KEY` values are already set in
 Railway and were not printed or committed. Google OAuth/client variables and a
 planner key are intentionally still unset, so the hosted sign-in and end-to-end
 Gmail smoke remain pending the steps below.
+
+### Reproducing the repo/branch binding
+
+The config files below make the build and run settings reproducible, but the
+repo/branch binding is service state, not file state. Set it explicitly rather
+than by hand in the dashboard:
+
+```bash
+railway link                       # select the AgentDock project / production
+railway service source connect --repo <owner>/<repo> --branch main --service web
+railway service source connect --repo <owner>/<repo> --branch main --service worker
+```
+
+Both commands trigger a deployment. Confirm the branch actually changed before
+assuming success — the CLI can print an unrelated notice instead of a result:
+
+```bash
+railway deployment list --service web --json
+railway deployment list --service worker --json
+```
 
 ## 1. Prerequisites
 
@@ -57,7 +88,8 @@ Google tokens unreadable.
 
 ## 2. Create the Railway project and Postgres
 
-1. In Railway, click **New Project** → **Empty Project**.
+1. In Railway, click **New Project** → **Empty Project**. (Deploy `main`; it is
+   the canonical branch. All work branches from it and merges back promptly.)
 2. On the project canvas, click **+ New** → **Database** → **Add PostgreSQL**.
 3. Keep the database service name `Postgres`. If you rename it, replace
    `Postgres` in every `${{Postgres.DATABASE_URL}}` reference below.
