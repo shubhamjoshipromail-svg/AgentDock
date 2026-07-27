@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import { loadMemory, patchMemoryGrant, revokeMemoryGrant } from "../../lib/api/client";
-import { memoryPartitions } from "../mock-data";
 import type { PersistedMemoryGrant, PersistedMemoryPartition, PersistedMemoryPayload } from "../../lib/types";
 import { Button, DetailBlock } from "../layout/primitives";
 import { useToast } from "../layout/Toast";
@@ -16,9 +15,12 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
   const [loadingMemory, setLoadingMemory] = useState(false);
   const [updatingGrantId, setUpdatingGrantId] = useState("");
   const [confirmRevokeId, setConfirmRevokeId] = useState("");
-  const activeMockPartition = memoryPartitions.find((partition) => partition.name === selectedMemory) ?? memoryPartitions[1];
   const activeDbPartition = memoryData?.partitions.find((partition) => partition.name === selectedMemory) ?? memoryData?.partitions[0];
   const dbBacked = Boolean(session?.user && memoryData?.partitions.length);
+  // A memory firewall that invents memory zones when its fetch fails is the worst
+  // possible failure for this product: fabricated governance data presented as
+  // governance data. When there is nothing real to show, show nothing.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const loadMemoryData = async () => {
     if (!session?.user) {
@@ -38,8 +40,9 @@ export function MemorySection({ selectedMemory, onSelectMemory }: { selectedMemo
 toast("Created starter DB-backed Memory Zones for this profile.", "ok");
       }
     } catch (error) {
-toast(error instanceof Error ? error.message : "Unable to load memory policy. Showing mock fallback.", "danger");
+toast(error instanceof Error ? error.message : "Unable to load memory zones.", "danger");
       setMemoryData(null);
+      setLoadFailed(true);
     } finally {
       setLoadingMemory(false);
     }
@@ -86,9 +89,21 @@ toast(error instanceof Error ? error.message : "Unable to revoke memory grant.",
           <p>AgentDock partitions memory by Flow, sensitivity, and access so agents only see what they need.</p>
         </div>
         <div className="dbStatus">
-          <span>{dbBacked ? "DB-backed Memory Zones" : "Demo Memory Zones"}</span>
-          <strong>{dbBacked ? `${memoryData?.partitions.length ?? 0} zones loaded from Postgres` : "Mock-backed UI"}</strong>
-          <p>{dbBacked ? "Access, items, and memory logs are loaded for the signed-in user." : "Sign in to load zones, access, items, and logs from Postgres."}</p>
+          <span>{dbBacked ? "Memory Zones" : loadFailed ? "Zones unavailable" : "No zones yet"}</span>
+          <strong>
+            {dbBacked
+              ? `${memoryData?.partitions.length ?? 0} zones loaded`
+              : loadFailed
+                ? "Could not load"
+                : session?.user ? "Nothing to show" : "Sign in"}
+          </strong>
+          <p>
+            {dbBacked
+              ? "Access, items, and memory logs are loaded for the signed-in user."
+              : loadFailed
+                ? "Your zones could not be loaded, so none are shown. This is a display failure — your zones and their access rules are unchanged."
+                : "Sign in to load zones, access, items, and logs."}
+          </p>
         </div>
       </div>
       {loadingMemory && <div className="sectionLoading">Loading Memory Zones…</div>}
@@ -96,7 +111,7 @@ toast(error instanceof Error ? error.message : "Unable to revoke memory grant.",
         <div className="card">
           <div className="panelHeader">
             <span>Memory Zones</span>
-            <strong>{dbBacked ? `${memoryData?.partitions.length ?? 0} DB zones` : `${memoryPartitions.length} mock zones`}</strong>
+            <strong>{dbBacked ? `${memoryData?.partitions.length ?? 0} zones` : "—"}</strong>
           </div>
           <div className="memoryTable">
             {dbBacked && memoryData ? (
@@ -110,20 +125,18 @@ toast(error instanceof Error ? error.message : "Unable to revoke memory grant.",
                 </button>
               ))
             ) : (
-              memoryPartitions.map((partition) => (
-                <button className={`memoryRow ${partition.name === activeMockPartition.name ? "selected" : ""}`} key={partition.name} onClick={() => onSelectMemory(partition.name)}>
-                  <div><strong>{partition.name}</strong><span>{partition.description}</span></div>
-                  <span className={`sensitivityBadge ${partition.sensitivity}`}>{partition.sensitivity}</span>
-                  <span>{partition.access}</span>
-                  <span>{partition.permissionLevel}</span>
-                  <span className="rowActions">Edit / Revoke</span>
-                </button>
-              ))
+              <div className="pGrantEmpty">
+                {loadFailed
+                  ? "Memory zones could not be loaded."
+                  : session?.user
+                    ? "No memory zones yet."
+                    : "Sign in to see your memory zones."}
+              </div>
             )}
           </div>
         </div>
         <aside className="card memoryDetail">
-          <div className="panelHeader"><span>Zone detail</span><strong>{dbBacked ? activeDbPartition?.name : activeMockPartition.name}</strong></div>
+          <div className="panelHeader"><span>Zone detail</span><strong>{dbBacked ? activeDbPartition?.name : "—"}</strong></div>
           {dbBacked && activeDbPartition ? (
             <>
               <div className="detailStack">
@@ -177,17 +190,11 @@ toast(error instanceof Error ? error.message : "Unable to revoke memory grant.",
               </div>
             </>
           ) : (
-            <>
-              <div className="detailStack">
-                <DetailBlock label="Flow" value={activeMockPartition.workflow} />
-                <DetailBlock label="Allowed agents" value={activeMockPartition.allowedAgents.length ? activeMockPartition.allowedAgents.join(", ") : "None by default"} />
-                <DetailBlock label="Blocked agents" value={activeMockPartition.blockedAgents.join(", ")} />
-              </div>
-              <div className="permissionList">
-                <span>Access</span>
-                {activeMockPartition.permissions.map((permission) => <p key={permission}>{permission}</p>)}
-              </div>
-            </>
+            <div className="pGrantEmpty">
+              {loadFailed
+                ? "No zone to show — loading failed."
+                : "Select a memory zone to see its access rules, items, and logs."}
+            </div>
           )}
         </aside>
       </div>

@@ -84,6 +84,9 @@ export async function GET() {
     select: {
       id: true, status: true, totalCostCents: true, stepCount: true, toolCallCount: true,
       resultText: true, createdAt: true, endedAt: true,
+      // workflowId lets the workspace re-adopt a run that is still in flight when
+      // the page is reloaded, instead of claiming nothing is running.
+      workflowId: true,
       workflow: { select: { name: true } }
     }
   });

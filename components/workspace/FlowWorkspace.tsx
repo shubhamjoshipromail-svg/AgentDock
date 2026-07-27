@@ -217,6 +217,34 @@ export function FlowWorkspace({
       });
       setParticipants(parts);
       if (parts.length > 0) setSelectedP(parts[0].agentId);
+
+      // Re-adopt a run that is still in flight for this flow. Without this a page
+      // reload mid-run showed "Press ▶ Run to execute this flow" while the run was
+      // still executing and billing — two surfaces contradicting each other, and a
+      // reload on camera looked like the run had vanished.
+      try {
+        const { listRealRuns } = await import("../../lib/api/client");
+        const { runs } = await listRealRuns();
+        const live = (runs ?? []).find(
+          (r) => r.workflowId === id && !isTerminalRunStatus(r.status)
+        );
+        if (live) {
+          setRun((prev) =>
+            prev.runId === live.id
+              ? prev
+              : {
+                  runId: live.id,
+                  status: live.status,
+                  output: live.resultText ?? null,
+                  steps: [],
+                  approvals: [],
+                  toolCallCount: live.toolCallCount,
+                  stepCount: live.stepCount,
+                  spentCents: live.totalCostCents
+                }
+          );
+        }
+      } catch { /* the flow still renders without run adoption */ }
     } catch { /* mute */ }
   }, []);
 

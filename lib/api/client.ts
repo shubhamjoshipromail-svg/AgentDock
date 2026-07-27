@@ -276,6 +276,7 @@ export type RealRun = {
 };
 
 export type RealRunSummary = {
+  workflowId?: string;
   id: string; status: string; totalCostCents: number; stepCount: number; toolCallCount: number;
   resultText?: string | null; resultPreview?: string | null; workflowName?: string;
   createdAt: string; endedAt?: string | null;
