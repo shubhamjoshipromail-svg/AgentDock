@@ -17,6 +17,31 @@ export function terminalRunGuidance(status: string, rawReason?: string | null): 
       actionTarget: "activity"
     };
   }
+  // The draft-only default (Chunk 20) is the most common reason a send "silently"
+  // does not happen: a new account is never granted a send tool at all, so the
+  // gate blocks it as ungranted. Name the actual remedy rather than sending the
+  // user to inspect grants that were never created.
+  if (lower.includes("send") && (lower.includes("allow-list") || lower.includes("allow list"))) {
+    return {
+      title: "Real sending is not enabled for this account",
+      reason,
+      nextAction:
+        "New accounts are draft-only. Turn on real sending in Profile, re-plan the flow so a send step can be granted, then run again.",
+      actionTarget: "profile"
+    };
+  }
+  // A mandate refusal splits two ways, and the difference matters: an AUTHORITY
+  // problem (scope/limit) belongs in grants, while a CONNECTION problem (no token)
+  // belongs in Profile and is handled by the credential branch below. Match the
+  // authority reasons specifically — not "broker refused" generally, which is both.
+  if (lower.includes("scope") || lower.includes("exceeds grant limit")) {
+    return {
+      title: "This action is outside what you authorized",
+      reason,
+      nextAction: "Review the agent’s tool grants and re-grant the action you intend to allow, then start a new run.",
+      actionTarget: "grants"
+    };
+  }
   if (lower.includes("api key") || lower.includes("credential") || lower.includes("oauth") || lower.includes("token")) {
     return {
       title: "Account connection needs attention",

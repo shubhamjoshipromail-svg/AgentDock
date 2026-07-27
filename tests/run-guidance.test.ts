@@ -2,6 +2,27 @@ import { describe, expect, it } from "vitest";
 
 import { terminalRunGuidance } from "../lib/runs/guidance";
 
+describe("guidance names the real remedy for a blocked send", () => {
+  it("an ungranted send points at the draft-only toggle, not at grants", () => {
+    const g = terminalRunGuidance(
+      "halted_error",
+      "blocked: send_email — tool is not on the agent's allow-list"
+    );
+    expect(g.title).toMatch(/sending is not enabled/i);
+    expect(g.actionTarget).toBe("profile");
+    expect(g.nextAction).toMatch(/draft-only/i);
+  });
+
+  it("a mandate refusal points at grants, not at the account connection", () => {
+    const g = terminalRunGuidance(
+      "halted_error",
+      "credential broker refused: grant carries no scope, so it cannot authorize this action"
+    );
+    expect(g.actionTarget).toBe("grants");
+    expect(g.title).toMatch(/outside what you authorized/i);
+  });
+});
+
 describe("terminal run guidance", () => {
   it("routes credentials to Profile", () => {
     const guidance = terminalRunGuidance("halted_error", "credential broker refused: Google token missing");
