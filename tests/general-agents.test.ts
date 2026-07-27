@@ -60,6 +60,24 @@ describe("general-purpose agents", () => {
     }
   });
 
+  it("they forbid claiming a FAILURE without attempting the tool", () => {
+    // Observed in production: an agent holding calendar:list_events reported
+    // "couldn't access your calendar" having made zero tool calls. False failure
+    // is as dishonest as false success, and the original rules only covered the
+    // latter.
+    for (const agent of GENERAL_AGENTS) {
+      expect(agent.systemPrompt, `${agent.name} may claim it lacks access without trying`).toMatch(
+        /never say you lack access|without CALLING/i
+      );
+    }
+  });
+
+  it("the researcher is told to gather before asking the human", () => {
+    const researcher = GENERAL_AGENTS.find((a: { name: string }) => a.name === "Researcher");
+    // It held a calendar tool and asked the human which meeting instead of reading it.
+    expect(researcher?.systemPrompt).toMatch(/gather first, ask second/i);
+  });
+
   it("they are runnable: a model and a system prompt are both set", async () => {
     await ensureVettedFlowsForUser(prisma, user.id);
 

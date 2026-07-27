@@ -6,6 +6,56 @@ Audience: technical. Goal: convey the vision, not prove a finished product.
 > live in one take. Runs take 30–90 seconds of real time; you will speed those up
 > in the edit. Dead air is the only thing that can make this look weak.
 
+## Recording decision — use two flows, not one fragile chain
+
+Do **not** make the recording depend on Calendar → choice → search → Docs →
+Calendar write → Gmail all succeeding in one run.
+
+Use two honest, clearly separated clips:
+
+1. **Composition proof (plan only):** type the ambitious five-tool goal and show
+   the generated three-agent plan. This proves discovery, composition, canonical
+   tool resolution, least privilege, and approval placement. Do not run it.
+2. **Governance proof (run end to end):** run a concrete research → email goal
+   using Web Search and Gmail. Use this run for approval, consent-integrity
+   failure, successful re-run, kill/idempotency, and the audit trail.
+
+Say this transition on camera:
+
+> "That is the full composition. To show the execution rail without making you
+> wait through five network calls, I’ll run a smaller version through the exact
+> same permission, approval, and audit path."
+
+This is stronger than pretending every screen belongs to one run. The platform
+is the product; the task is only the vehicle.
+
+### Exact goals to paste
+
+**Composition-only goal**
+
+> Look at my next three calendar events, let me choose one, research the company
+> or topic, create a one-page Google Doc briefing, book a 15-minute review event,
+> and email me the document link.
+
+The plan should show:
+
+| Step | Agent | Tools | Expected permission |
+|---|---|---|---|
+| 1 | Researcher | `calendar:list_events`, `search:web_search` | read only |
+| 2 | Writer | `docs:create_doc` | approval gated |
+| 3 | Coordinator | `calendar:create_event`, `gmail:send_email` | approval gated |
+
+If those tools and permissions appear, the composition shot succeeded. The run
+does not need to execute.
+
+**Governance-run goal**
+
+> Research three current approaches to securing AI agent tool use and email me
+> a five-bullet brief with source links.
+
+This has one read capability and one consequential action. It is enough to show
+the entire governance thesis with much less live-demo risk.
+
 ---
 
 ## Part 1 — Setup (do this in order, the day you record)
@@ -51,13 +101,26 @@ stale one will not ask you for a topic and will look scripted on camera.
 **Check:** `db.ok: true` **and** `worker.ok: true`. A 200 alone is not enough —
 the web app stays up when the executor is dead.
 
-**8. Do one full practice run. This is the real gate.**
-Run the meeting-prep goal end to end: calendar read → choice → research → doc →
-event → email.
-*Why:* **Calendar and Docs have never been called against real Google APIs.** The
-adapters are unit-tested against mocks; this is their first real contact.
-**If it fails:** grab the worker log (`railway logs --service worker`) — the error
-will name the cause, and a scope or payload-shape problem is a quick fix.
+**8. Refresh the managed agent prompts after deploying.**
+The Calendar failure was not an access failure: the Researcher held
+`calendar:list_events` but made zero tool calls and falsely claimed it lacked
+access. The prompt fix requires agents to attempt an available tool before
+reporting failure.
+**Check:** deploy the fix, reload/sign in so `/api/bootstrap` updates the managed
+Researcher, then confirm a Calendar practice run records at least one tool call.
+
+**9. Rehearse the two clips separately. This is the real gate.**
+
+- Plan the composition-only goal and verify the five expected tools. Do not run.
+- Run the governance goal end to end: search → approval → send → audit.
+
+Only the second rehearsal must succeed before recording.
+
+**10. Treat Calendar and Docs execution as optional pickup shots.**
+Their adapters are unit-tested, but a live Google call adds OAuth, payload, and
+network risk that the core story does not need. If a separate practice call
+works, capture the resulting Doc/event for B-roll. If it fails, get the worker
+log (`railway logs --service worker`) after the core recording is safe.
 
 ---
 
@@ -67,15 +130,29 @@ will name the cause, and a scope or payload-shape problem is a quick fix.
 |---|---|---|
 | A | Store, scrolling the synced registry | Get the risk/verification badges in frame |
 | B | Connect → Discover on Calendar | The tools appearing is the moment |
-| C | Typing the goal → the composed flow | Get the per-step tool + permission badges |
-| D | The choice surface | Your cursor picking an option |
+| C | Composition-only goal → generated flow | Get all five tool + per-step permission badges; do not run |
+| D | Governance goal → smaller generated flow | Make the transition between the two flows explicit |
 | E | The approval card, full screen | Recipient, subject, body must be readable |
 | F | **Edit a word → approve → run halts** | The money shot. Get it twice. |
 | G | Re-run → approve cleanly → email arrives | Show the real inbox |
 | H | Spam the Run button 5× → one run | Show the run list after |
 | I | Kill a run mid-flight | |
 | J | The audit trail, scrolling, with costs | Get the per-step cents in frame |
-| K | The created Doc and the calendar event | Real artifacts — show the actual Google UI |
+| K | Optional: created Doc/calendar event | Use only if separately proven against the real Google APIs |
+
+### Best capture order
+
+1. Successful governance run and the received email.
+2. Consent-integrity halt after editing the approval.
+3. Audit trail and idempotency/kill controls.
+4. Five-tool composition plan.
+5. Registry and discovery.
+6. Optional Calendar/Docs B-roll.
+7. Voiceover last.
+
+Capture every important state for 5–8 seconds without moving the cursor. Record
+notifications off, use a clean browser window, zoom until badges are readable,
+and hide bookmarks or accounts you do not want in frame.
 
 ---
 
@@ -109,13 +186,17 @@ Type the goal, let it plan.
 > box: you give it a goal and hope. This is a glass box. Nobody wrote this flow;
 > it was composed against the tools I happen to have connected."
 
-### 1:15–1:35 — It asks *(shot D)*
+Point to the two read-only tools on Researcher, the document tool on Writer, and
+the two approval-gated actions on Coordinator.
 
-> "It read my calendar, found three meetings, and stopped to ask which one
-> matters. It didn't guess. And my answer comes back in as data — not as
-> instructions it obeys."
+### 1:15–1:30 — Smaller run, same rail *(shot D)*
 
-### 1:35–2:05 — Consent integrity *(shots E, F, G)* — **the core**
+> "That is the full composition. To show the execution rail without making you
+> wait through five network calls, I’ll run a smaller version through the exact
+> same permission, approval, and audit path. It can research freely. Sending
+> outside the system still requires me."
+
+### 1:30–2:05 — Consent integrity *(shots E, F, G)* — **the core**
 
 > "Before it sends anything, it shows me the exact action. Real recipient, real
 > subject, real body."
@@ -137,11 +218,11 @@ Fast cuts.
 > replayed into an approval. Kill it mid-flight — nothing further executes. Ask
 > for a tool I never granted — refused, and it tells me exactly why."
 
-### 2:30–2:45 — The audit *(shots J, K)*
+### 2:30–2:45 — The audit *(shot J, optional K)*
 
-> "A real doc. A real calendar event. A real email. And every step: what ran,
-> what it decided, what it cost. Show me what your agent did last Tuesday, under
-> whose authority, and what it cost — no LLM product can answer that. This can."
+> "A real email, and every step behind it: what ran, what it decided, what it
+> cost, and which permission authorized it. The exact same rail governs the
+> Calendar and Docs tools you saw in the composition."
 
 ### 2:45–3:00 — The vision and the honest boundary
 
@@ -153,6 +234,10 @@ Fast cuts.
 > Right now I'm the only publisher. What turns this into a platform is the day
 > someone else publishes into it — and the only thing between here and there is
 > isolation. I know exactly what that is, and I won't open it before it's built."
+
+Do not call third-party process isolation or arbitrary MCP execution "sandboxed"
+yet. Today the true claims are scoped permissions, approval gates, server-side
+authorization, revocation, idempotency, kill control, and auditability.
 
 ---
 
